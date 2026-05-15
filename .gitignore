@@ -33,6 +33,17 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Node dependencies
+node_modules/
+**/node_modules/
+
+# Local environment, secrets, and diagnostics
+.env
+*.env
+*.hprof
+**/serviceAccount*.json
+tools/private/
+
 # Symbolication related
 app.*.symbols
 
