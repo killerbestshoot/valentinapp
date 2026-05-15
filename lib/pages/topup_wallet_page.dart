@@ -23,11 +23,6 @@ class _TopupWalletPageState extends State<TopupWalletPage> {
     super.dispose();
   }
 
-  double _asDouble(dynamic value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse('$value') ?? 0;
-  }
-
   Future<void> submitRequest(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> users,
   ) async {

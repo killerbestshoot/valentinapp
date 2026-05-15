@@ -40,11 +40,12 @@ class AgentsPage extends StatelessWidget {
               final u = userDoc.data();
 
               final uid = userDoc.id;
-              final name = (u['displayName'] ?? u['fullName'] ?? 'Agent').toString();
+              final name =
+                  (u['displayName'] ?? u['fullName'] ?? 'Agent').toString();
               final email = (u['email'] ?? '').toString();
               final enterpriseId = (u['enterpriseId'] ?? '').toString();
 
-              return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>?>(
                 future: enterpriseId.isEmpty
                     ? Future.value(null)
                     : FirebaseFirestore.instance
