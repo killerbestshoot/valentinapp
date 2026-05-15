@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../services/uuid_v4.dart';
+
 class UserRoleManagerPage extends StatefulWidget {
   const UserRoleManagerPage({super.key});
 
@@ -109,9 +111,12 @@ class _UserRoleManagerPageState extends State<UserRoleManagerPage> {
       );
 
       final newUid = cred.user!.uid;
+      final appUserId = UuidV4.generate();
 
       await FirebaseFirestore.instance.collection('users').doc(newUid).set({
         'uid': newUid,
+        'authUid': newUid,
+        'userId': appUserId,
         'displayName': _displayNameCtrl.text.trim(),
         'email': _emailCtrl.text.trim(),
         'role': _selectedRole,
@@ -124,6 +129,8 @@ class _UserRoleManagerPageState extends State<UserRoleManagerPage> {
 
       await FirebaseFirestore.instance.collection('enterprise_users').add({
         'uid': newUid,
+        'authUid': newUid,
+        'userId': appUserId,
         'displayName': _displayNameCtrl.text.trim(),
         'email': _emailCtrl.text.trim(),
         'role': _selectedRole,
@@ -283,9 +290,14 @@ class _UserRoleManagerPageState extends State<UserRoleManagerPage> {
               }).toList();
 
               final total = allDocs.length;
-              final active = allDocs.where((d) => d.data()['isActive'] != false).length;
-              final agents = allDocs.where((d) => _text(d.data()['role'], '') == 'agent').length;
-              final admins = allDocs.where((d) => _text(d.data()['role'], '') == 'administrator').length;
+              final active =
+                  allDocs.where((d) => d.data()['isActive'] != false).length;
+              final agents = allDocs
+                  .where((d) => _text(d.data()['role'], '') == 'agent')
+                  .length;
+              final admins = allDocs
+                  .where((d) => _text(d.data()['role'], '') == 'administrator')
+                  .length;
 
               return ListView(
                 padding: const EdgeInsets.all(16),
@@ -390,7 +402,8 @@ class _UserRoleManagerPageState extends State<UserRoleManagerPage> {
                               icon: const Icon(Icons.person_add_alt_1_outlined),
                               label: Text(
                                 _saving ? 'Ap kreye...' : 'Ajoute user',
-                                style: const TextStyle(fontWeight: FontWeight.w700),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700),
                               ),
                             ),
                           ),
@@ -565,7 +578,8 @@ class _UserRoleManagerPageState extends State<UserRoleManagerPage> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         displayName,

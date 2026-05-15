@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'services/uuid_v4.dart';
+
 class FirestoreService {
   final _auth = FirebaseAuth.instance;
   final _db = FirebaseFirestore.instance;
@@ -16,9 +18,17 @@ class FirestoreService {
   /// 1) Ekri users/{uid}
   Future<void> writeUserDoc() async {
     final userId = uid;
+    final ref = _db.collection('users').doc(userId);
+    final snap = await ref.get();
+    final data = snap.data() ?? <String, dynamic>{};
+    final existingAppUserId = (data['userId'] ?? '').toString();
 
-    await _db.collection('users').doc(userId).set({
+    await ref.set({
       'uid': userId,
+      'authUid': userId,
+      'userId': UuidV4.isValid(existingAppUserId)
+          ? existingAppUserId
+          : UuidV4.generate(),
       'phone': phone ?? '',
       'role': 'agent',
       'balance': 0,
