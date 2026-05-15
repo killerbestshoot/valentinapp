@@ -1,25 +1,49 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:mon_premye_app/pages/agents_page.dart';
-import 'package:mon_premye_app/pages/auth_debug_page.dart';
-import 'package:mon_premye_app/pages/new_transaction_page.dart';
-import 'package:mon_premye_app/pages/payout_page.dart';
-import 'package:mon_premye_app/pages/run_commission_page.dart';
-import 'package:mon_premye_app/pages/send_page.dart';
-import 'package:mon_premye_app/pages/settings_page.dart';
-import 'package:mon_premye_app/pages/topup_page.dart';
-import 'package:mon_premye_app/pages/wallet_topup_approval_page.dart';
+
+import 'pages/agents_page.dart';
+import 'pages/auth_debug_page.dart';
+import 'pages/commission_history_page.dart';
+import 'pages/new_transaction_page.dart';
+import 'pages/owner_admin_wallet_dashboard_page.dart';
+import 'pages/payout_page.dart';
+import 'pages/receipt_page.dart';
+import 'pages/reports_page.dart';
+import 'pages/run_commission_page.dart';
+import 'pages/send_page.dart';
+import 'pages/settings_page.dart';
+import 'pages/topup_page.dart';
+import 'pages/transaction_management_page.dart';
+import 'pages/user_role_manager_page.dart';
+import 'pages/wallet_history_page.dart';
+import 'pages/wallet_topup_approval_page.dart';
+import 'widgets/logout_action.dart';
 
 class OwnerDashboard extends StatelessWidget {
-  final String enterpriseId;
-  final String enterpriseName;
-
   const OwnerDashboard({
     super.key,
     this.enterpriseId = 'ENT-001',
     this.enterpriseName = 'VOUPVAPCASH',
+    this.displayName = 'Owner',
+    this.email = '',
+    this.userId = '',
   });
+
+  final String enterpriseId;
+  final String enterpriseName;
+  final String displayName;
+  final String email;
+  final String userId;
+
+  String get _resolvedEnterpriseId {
+    final value = enterpriseId.trim();
+    return value.isEmpty ? 'ENT-001' : value;
+  }
+
+  String get _resolvedEnterpriseName {
+    final value = enterpriseName.trim();
+    return value.isEmpty ? 'VOUPVAPCASH' : value;
+  }
 
   void _open(BuildContext context, Widget page) {
     Navigator.of(context).push(
@@ -27,212 +51,843 @@ class OwnerDashboard extends StatelessWidget {
     );
   }
 
-  Widget _quickCard({
-    required BuildContext context,
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return Expanded(
-      child: SizedBox(
-        height: 110,
-        child: Card(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, size: 28),
-                  const SizedBox(height: 10),
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+  List<_DashboardAction> _actions(BuildContext context) {
+    return [
+      _DashboardAction(
+        title: 'New Tx',
+        subtitle: 'Create a transaction',
+        icon: Icons.add_circle_outline,
+        color: const Color(0xFF1F7A3A),
+        onTap: () => _open(context, const NewTransactionPage()),
+      ),
+      _DashboardAction(
+        title: 'Send',
+        subtitle: 'Send money flow',
+        icon: Icons.send_outlined,
+        color: const Color(0xFF0B6E99),
+        onTap: () => _open(context, const SendPage()),
+      ),
+      _DashboardAction(
+        title: 'Payout',
+        subtitle: 'Create payout request',
+        icon: Icons.payments_outlined,
+        color: const Color(0xFF8A5A12),
+        onTap: () => _open(context, const PayoutPage()),
+      ),
+      _DashboardAction(
+        title: 'Topup',
+        subtitle: 'Recharge accounts',
+        icon: Icons.phone_android_outlined,
+        color: const Color(0xFF6F4BC1),
+        onTap: () => _open(context, const TopupPage()),
+      ),
+      _DashboardAction(
+        title: 'Wallets',
+        subtitle: 'Live balances',
+        icon: Icons.account_balance_wallet_outlined,
+        color: const Color(0xFF0F766E),
+        onTap: () => _open(context, const OwnerAdminWalletDashboardPage()),
+      ),
+      _DashboardAction(
+        title: 'Topup Approval',
+        subtitle: 'Review requests',
+        icon: Icons.fact_check_outlined,
+        color: const Color(0xFFB45309),
+        onTap: () => _open(context, const WalletTopupApprovalPage()),
+      ),
+      _DashboardAction(
+        title: 'Agents',
+        subtitle: 'Manage field staff',
+        icon: Icons.groups_outlined,
+        color: const Color(0xFF2563EB),
+        onTap: () => _open(context, const AgentsPage()),
+      ),
+      _DashboardAction(
+        title: 'Users',
+        subtitle: 'Roles and access',
+        icon: Icons.manage_accounts_outlined,
+        color: const Color(0xFF7C3AED),
+        onTap: () => _open(context, const UserRoleManagerPage()),
+      ),
+      _DashboardAction(
+        title: 'Transactions',
+        subtitle: 'Audit operations',
+        icon: Icons.receipt_long_outlined,
+        color: const Color(0xFF334155),
+        onTap: () => _open(context, const TransactionManagementPage()),
+      ),
+      _DashboardAction(
+        title: 'Wallet History',
+        subtitle: 'Ledger activity',
+        icon: Icons.history_outlined,
+        color: const Color(0xFF475569),
+        onTap: () => _open(context, const WalletHistoryPage()),
+      ),
+      _DashboardAction(
+        title: 'Commission',
+        subtitle: 'Run automation',
+        icon: Icons.percent_outlined,
+        color: const Color(0xFFBE123C),
+        onTap: () => _open(context, const RunCommissionPage()),
+      ),
+      _DashboardAction(
+        title: 'Reports',
+        subtitle: 'Owner reporting',
+        icon: Icons.bar_chart_outlined,
+        color: const Color(0xFF047857),
+        onTap: () => _open(context, const ReportsPage()),
+      ),
+      _DashboardAction(
+        title: 'Commission Logs',
+        subtitle: 'Review payouts',
+        icon: Icons.assignment_outlined,
+        color: const Color(0xFF9333EA),
+        onTap: () => _open(context, const CommissionHistoryPage()),
+      ),
+      _DashboardAction(
+        title: 'Settings',
+        subtitle: 'Enterprise setup',
+        icon: Icons.settings_outlined,
+        color: const Color(0xFF525252),
+        onTap: () => _open(context, const SettingsPage()),
+      ),
+      _DashboardAction(
+        title: 'Auth Debug',
+        subtitle: 'Session diagnostics',
+        icon: Icons.verified_user_outlined,
+        color: const Color(0xFF0F172A),
+        onTap: () => _open(context, const AuthDebugPage()),
+      ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final resolvedEnterpriseId = _resolvedEnterpriseId;
+    final resolvedEnterpriseName = _resolvedEnterpriseName;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F8F7),
+      appBar: AppBar(
+        title: const Text('Owner Dashboard'),
+        actions: const [LogoutAction()],
+      ),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1180),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+              children: [
+                _OwnerHeader(
+                  enterpriseId: resolvedEnterpriseId,
+                  enterpriseName: resolvedEnterpriseName,
+                  displayName: displayName,
+                  email: email,
+                  userId: userId,
+                ),
+                const SizedBox(height: 16),
+                _MetricGrid(enterpriseId: resolvedEnterpriseId),
+                const SizedBox(height: 20),
+                _SectionHeader(
+                  title: 'Quick Actions',
+                  action: IconButton(
+                    tooltip: 'Open transactions',
+                    onPressed: () => _open(
+                      context,
+                      const TransactionManagementPage(),
+                    ),
+                    icon: const Icon(Icons.open_in_new),
                   ),
-                ],
-              ),
+                ),
+                _ActionGrid(actions: _actions(context)),
+                const SizedBox(height: 20),
+                _RecentTransactionsPanel(
+                  enterpriseId: resolvedEnterpriseId,
+                  onOpenReceipt: (transactionId) {
+                    _open(
+                      context,
+                      ReceiptPage(transactionId: transactionId),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
+}
+
+class _OwnerHeader extends StatelessWidget {
+  const _OwnerHeader({
+    required this.enterpriseId,
+    required this.enterpriseName,
+    required this.displayName,
+    required this.email,
+    required this.userId,
+  });
+
+  final String enterpriseId;
+  final String enterpriseName;
+  final String displayName;
+  final String email;
+  final String userId;
 
   @override
   Widget build(BuildContext context) {
-    final enterpriseStream = FirebaseFirestore.instance
-        .collection('enterprises')
-        .doc(enterpriseId)
-        .snapshots();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 820;
 
-    return Scaffold(
-      appBar: AppBar(
-        actions: [
-          IconButton(
-            tooltip: 'Logout',
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-            },
-          ),
-        ],
-        title: const Text('OWNER DASHBOARD'),
-      ),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: enterpriseStream,
-        builder: (context, snapshot) {
-          final data = snapshot.data?.data() ?? {};
-          final ownerBalance = (data['ownerBalance'] is num)
-              ? (data['ownerBalance'] as num).toDouble()
-              : 0.0;
-
-          return ListView(
-            padding: const EdgeInsets.all(16),
+        final profileCard = _InfoPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'OWNER INFO',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      const Text('Display name: Owner'),
-                      const Text('Role: owner'),
-                      Text('Enterprise: $enterpriseName'),
-                      Text('Enterprise ID: $enterpriseId'),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      const Icon(Icons.account_balance_wallet_outlined,
-                          size: 36),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'OWNER LIVE BALANCE',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 22,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(enterpriseName),
-                      const SizedBox(height: 10),
-                      Text(
-                        '${ownerBalance.toStringAsFixed(2)} USD',
-                        style: const TextStyle(fontSize: 24),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'QUICK ACTIONS',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
               Row(
                 children: [
-                  _quickCard(
-                    context: context,
-                    icon: Icons.add_circle_outline,
-                    title: 'New Tx',
-                    onTap: () => _open(context, const NewTransactionPage()),
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE7F6E9),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.admin_panel_settings_outlined,
+                      color: Color(0xFF1F7A3A),
+                    ),
                   ),
                   const SizedBox(width: 12),
-                  _quickCard(
-                    context: context,
-                    icon: Icons.send,
-                    title: 'Send',
-                    onTap: () => _open(context, const SendPage()),
-                  ),
-                  const SizedBox(width: 12),
-                  _quickCard(
-                    context: context,
-                    icon: Icons.payments_outlined,
-                    title: 'Payout',
-                    onTap: () => _open(context, const PayoutPage()),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName.trim().isEmpty ? 'Owner' : displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF102A1A),
+                                  ),
+                        ),
+                        Text(
+                          email.trim().isEmpty ? 'owner session' : email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Color(0xFF647067)),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
+              const SizedBox(height: 18),
+              _InfoLine(label: 'Role', value: 'owner'),
+              _InfoLine(label: 'Enterprise', value: enterpriseName),
+              _InfoLine(label: 'Enterprise ID', value: enterpriseId),
+              _InfoLine(
+                label: 'User ID',
+                value: userId.trim().isEmpty ? 'UUID pending' : userId,
+              ),
+            ],
+          ),
+        );
+
+        final balanceCard = _OwnerBalanceSummary(
+          enterpriseId: enterpriseId,
+          enterpriseName: enterpriseName,
+        );
+
+        if (!wide) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              profileCard,
               const SizedBox(height: 12),
+              balanceCard,
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: profileCard),
+            const SizedBox(width: 12),
+            Expanded(child: balanceCard),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _OwnerBalanceSummary extends StatelessWidget {
+  const _OwnerBalanceSummary({
+    required this.enterpriseId,
+    required this.enterpriseName,
+  });
+
+  final String enterpriseId;
+  final String enterpriseName;
+
+  double _num(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse((value ?? '').toString()) ?? 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final docId = '${enterpriseId}_OWNER';
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('balances')
+          .doc(docId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() ?? <String, dynamic>{};
+        final balance = _num(data['balance']);
+        final reserved = _num(data['reserved']);
+        final currency = (data['currency'] ?? 'USD').toString();
+
+        return _InfoPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(
                 children: [
-                  _quickCard(
-                    context: context,
-                    icon: Icons.phone_android_outlined,
-                    title: 'Topup',
-                    onTap: () => _open(context, const TopupPage()),
+                  const Icon(
+                    Icons.account_balance_wallet_outlined,
+                    color: Color(0xFF1F7A3A),
                   ),
-                  const SizedBox(width: 12),
-                  _quickCard(
-                    context: context,
-                    icon: Icons.groups_outlined,
-                    title: 'Agents',
-                    onTap: () => _open(context, const AgentsPage()),
-                  ),
-                  const SizedBox(width: 12),
-                  _quickCard(
-                    context: context,
-                    icon: Icons.settings_outlined,
-                    title: 'Settings',
-                    onTap: () => _open(context, const SettingsPage()),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Owner Live Balance',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-              const Text(
-                'TOOLS',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              const SizedBox(height: 18),
+              Text(
+                '${balance.toStringAsFixed(2)} $currency',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFF102A1A),
+                    ),
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _open(context, const RunCommissionPage()),
-                  icon: const Icon(Icons.percent),
-                  label: const Text('Run Commission'),
+              const SizedBox(height: 8),
+              Text(
+                enterpriseName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Color(0xFF647067)),
+              ),
+              const SizedBox(height: 14),
+              _InfoLine(label: 'Reserved', value: reserved.toStringAsFixed(2)),
+              _InfoLine(label: 'Balance Doc', value: docId),
+              if (snapshot.hasError)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Balance error: ${snapshot.error}',
+                    style: const TextStyle(color: Color(0xFFB91C1C)),
+                  ),
+                )
+              else if (!snapshot.hasData)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: LinearProgressIndicator(),
+                )
+              else if (!snapshot.data!.exists)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text('Balance doc poko kreye.'),
                 ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => _open(context, const AuthDebugPage()),
-                  icon: const Icon(Icons.verified_user_outlined),
-                  label: const Text('Auth Debug'),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MetricGrid extends StatelessWidget {
+  const _MetricGrid({required this.enterpriseId});
+
+  final String enterpriseId;
+
+  @override
+  Widget build(BuildContext context) {
+    final db = FirebaseFirestore.instance;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 900
+            ? 4
+            : constraints.maxWidth >= 620
+                ? 2
+                : 1;
+
+        return GridView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            mainAxisExtent: 118,
+          ),
+          children: [
+            _CountMetricCard(
+              title: 'Transactions',
+              icon: Icons.receipt_long_outlined,
+              color: const Color(0xFF1F7A3A),
+              stream: db
+                  .collection('transactions')
+                  .where('enterpriseId', isEqualTo: enterpriseId)
+                  .snapshots(),
+            ),
+            _CountMetricCard(
+              title: 'Active Agents',
+              icon: Icons.groups_outlined,
+              color: const Color(0xFF2563EB),
+              stream: db
+                  .collection('enterprise_users')
+                  .where('enterpriseId', isEqualTo: enterpriseId)
+                  .where('role', isEqualTo: 'agent')
+                  .where('isActive', isEqualTo: true)
+                  .snapshots(),
+            ),
+            _CountMetricCard(
+              title: 'Pending Payouts',
+              icon: Icons.pending_actions_outlined,
+              color: const Color(0xFFB45309),
+              stream: db
+                  .collection('payout_requests')
+                  .where('enterpriseId', isEqualTo: enterpriseId)
+                  .where('status', isEqualTo: 'pending')
+                  .snapshots(),
+            ),
+            _CountMetricCard(
+              title: 'Topup Requests',
+              icon: Icons.fact_check_outlined,
+              color: const Color(0xFF7C3AED),
+              stream: db
+                  .collection('wallet_topup_requests')
+                  .where('enterpriseId', isEqualTo: enterpriseId)
+                  .where('status', isEqualTo: 'pending')
+                  .snapshots(),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _CountMetricCard extends StatelessWidget {
+  const _CountMetricCard({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.stream,
+  });
+
+  final String title;
+  final IconData icon;
+  final Color color;
+  final Stream<QuerySnapshot<Map<String, dynamic>>> stream;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: stream,
+      builder: (context, snapshot) {
+        final count = snapshot.data?.docs.length;
+        final value = snapshot.hasError ? '!' : (count?.toString() ?? '...');
+
+        return _InfoPanel(
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: color.withAlpha(31),
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                child: Icon(icon, color: color),
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () =>
-                      _open(context, const WalletTopupApprovalPage()),
-                  icon: const Icon(Icons.approval_outlined),
-                  label: const Text('Topup Approval'),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF647067),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                color: snapshot.hasError
+                                    ? const Color(0xFFB91C1C)
+                                    : const Color(0xFF102A1A),
+                              ),
+                    ),
+                  ],
                 ),
               ),
             ],
-          );
-        },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ActionGrid extends StatelessWidget {
+  const _ActionGrid({required this.actions});
+
+  final List<_DashboardAction> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 1020
+            ? 5
+            : constraints.maxWidth >= 760
+                ? 4
+                : constraints.maxWidth >= 520
+                    ? 3
+                    : 2;
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: actions.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            mainAxisExtent: 136,
+          ),
+          itemBuilder: (context, index) {
+            return _ActionCard(action: actions[index]);
+          },
+        );
+      },
+    );
+  }
+}
+
+class _ActionCard extends StatelessWidget {
+  const _ActionCard({required this.action});
+
+  final _DashboardAction action;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: action.onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFE2E8E4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: action.color.withAlpha(31),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(action.icon, color: action.color),
+              ),
+              const Spacer(),
+              Text(
+                action.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF102A1A),
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                action.subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF647067),
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+}
+
+class _RecentTransactionsPanel extends StatelessWidget {
+  const _RecentTransactionsPanel({
+    required this.enterpriseId,
+    required this.onOpenReceipt,
+  });
+
+  final String enterpriseId;
+  final ValueChanged<String> onOpenReceipt;
+
+  String _text(dynamic value, [String fallback = '-']) {
+    final result = (value ?? '').toString().trim();
+    return result.isEmpty ? fallback : result;
+  }
+
+  double _num(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse((value ?? '').toString()) ?? 0;
+  }
+
+  String _fmtDate(dynamic value) {
+    DateTime? date;
+    if (value is Timestamp) date = value.toDate();
+    if (value is String) date = DateTime.tryParse(value);
+    if (date == null) return '-';
+
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$day/$month/${date.year} $hour:$minute';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _InfoPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionHeader(title: 'Recent Transactions'),
+          const SizedBox(height: 10),
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('transactions')
+                .where('enterpriseId', isEqualTo: enterpriseId)
+                .orderBy('createdAt', descending: true)
+                .limit(8)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Text(
+                  'Transactions error: ${snapshot.error}',
+                  style: const TextStyle(color: Color(0xFFB91C1C)),
+                );
+              }
+
+              if (!snapshot.hasData) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 18),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              final docs = snapshot.data!.docs;
+              if (docs.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  child: Text('Pa gen tranzaksyon pou enterprise sa a.'),
+                );
+              }
+
+              return Column(
+                children: docs.map((doc) {
+                  final data = doc.data();
+                  final service = _text(data['serviceName'], 'Transaction');
+                  final status = _text(data['status']);
+                  final customer =
+                      _text(data['customerName'] ?? data['beneficiaryName']);
+                  final amount = _num(
+                    data['paymentAmount'] ?? data['transferAmount'],
+                  );
+                  final currency = _text(
+                    data['paymentCurrency'] ?? data['transferCurrency'],
+                    'USD',
+                  );
+
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFFE7F6E9),
+                      foregroundColor: Color(0xFF1F7A3A),
+                      child: Icon(Icons.receipt_long_outlined),
+                    ),
+                    title: Text(
+                      service,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      '$customer | $status | ${_fmtDate(data['createdAt'])}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: Text(
+                      '${amount.toStringAsFixed(2)} $currency',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    onTap: () => onOpenReceipt(doc.id),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    this.action,
+  });
+
+  final String title;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF102A1A),
+                ),
+          ),
+        ),
+        if (action != null) action!,
+      ],
+    );
+  }
+}
+
+class _InfoPanel extends StatelessWidget {
+  const _InfoPanel({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE2E8E4)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0F111827),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 112,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF647067),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value.trim().isEmpty ? '-' : value,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardAction {
+  const _DashboardAction({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
 }
