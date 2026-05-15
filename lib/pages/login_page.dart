@@ -1,7 +1,11 @@
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 
-import 'home_page.dart';
+import '../services/auth_service.dart';
+import '../services/remember_me_service.dart';
+import '../services/user_profile_service.dart';
+
+enum _AuthMode { login, register }
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -11,60 +15,177 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final emailCtrl = TextEditingController();
-  final passCtrl = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
 
-  bool loading = false;
-  bool showPassword = false;
+  _AuthMode _mode = _AuthMode.login;
+  bool _loading = false;
+  bool _resettingPassword = false;
+  bool _showPassword = false;
+  bool _showConfirmPassword = false;
+  bool _rememberMe = false;
+
+  bool get _isLogin => _mode == _AuthMode.login;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRememberedLogin();
+  }
 
   @override
   void dispose() {
-    emailCtrl.dispose();
-    passCtrl.dispose();
+    _nameCtrl.dispose();
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    _confirmCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> login() async {
-    final email = emailCtrl.text.trim();
-    final password = passCtrl.text;
+  Future<void> _loadRememberedLogin() async {
+    final remembered = await RememberMeService.instance.load();
+    if (!mounted) return;
 
-    if (email.isEmpty || !email.contains('@')) {
-      _showMessage('Antre yon email ki valid.');
-      return;
-    }
+    setState(() {
+      _rememberMe = remembered.rememberMe;
+      _emailCtrl.text = remembered.email;
+    });
+  }
 
-    if (password.length < 6) {
-      _showMessage('Modpas dwe gen omwen 6 karakte.');
-      return;
-    }
+  Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
+
+    if (_loading || !_formKey.currentState!.validate()) return;
+
+    final email = _emailCtrl.text.trim();
+    final password = _passCtrl.text;
+    final displayName = _nameCtrl.text.trim();
+
+    setState(() => _loading = true);
 
     try {
-      setState(() => loading = true);
+      if (_isLogin) {
+        await AuthService.instance.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+          rememberMe: _rememberMe,
+        );
+        await UserProfileService.instance.ensureCurrentProfile();
+      } else {
+        final credential =
+            await AuthService.instance.registerWithEmailAndPassword(
+          email: email,
+          password: password,
+          rememberMe: _rememberMe,
+        );
 
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        await credential.user?.updateDisplayName(displayName);
+        final user = credential.user;
+        if (user != null) {
+          await UserProfileService.instance.ensureProfileForUser(
+            user: user,
+            defaultRole: 'client',
+            displayName: displayName,
+          );
+        }
+      }
+
+      await RememberMeService.instance.save(
+        rememberMe: _rememberMe,
         email: email,
-        password: password,
-      );
-
-      if (!mounted) return;
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const HomePage(),
-        ),
       );
     } on FirebaseAuthException catch (e) {
       _showMessage(_authErrorMessage(e));
+    } catch (e) {
+      _showMessage('Erreur: $e');
     } finally {
       if (mounted) {
-        setState(() => loading = false);
+        setState(() => _loading = false);
       }
     }
   }
 
+  Future<void> _sendPasswordReset() async {
+    final email = _emailCtrl.text.trim();
+    final emailError = _validateEmail(email);
+
+    if (emailError != null) {
+      _showMessage(emailError);
+      return;
+    }
+
+    setState(() => _resettingPassword = true);
+
+    try {
+      await AuthService.instance.sendPasswordResetEmail(email);
+      await RememberMeService.instance.save(
+        rememberMe: true,
+        email: email,
+      );
+
+      if (!mounted) return;
+      setState(() => _rememberMe = true);
+      _showMessage('Nou voye yon lyen reset modpas nan email la.');
+    } on FirebaseAuthException catch (e) {
+      _showMessage(_authErrorMessage(e));
+    } catch (e) {
+      _showMessage('Erreur reset modpas: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _resettingPassword = false);
+      }
+    }
+  }
+
+  void _toggleMode() {
+    setState(() {
+      _mode = _isLogin ? _AuthMode.register : _AuthMode.login;
+      _passCtrl.clear();
+      _confirmCtrl.clear();
+      _showPassword = false;
+      _showConfirmPassword = false;
+    });
+  }
+
+  String? _validateEmail(String? value) {
+    final email = (value ?? '').trim();
+    if (email.isEmpty || !email.contains('@') || !email.contains('.')) {
+      return 'Antre yon email ki valid.';
+    }
+    return null;
+  }
+
+  String? _validateName(String? value) {
+    if (_isLogin) return null;
+    if ((value ?? '').trim().length < 2) {
+      return 'Antre non moun nan.';
+    }
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    final password = value ?? '';
+    if (password.length < 6) {
+      return 'Modpas dwe gen omwen 6 karakte.';
+    }
+    return null;
+  }
+
+  String? _validateConfirmPassword(String? value) {
+    if (_isLogin) return null;
+    if ((value ?? '') != _passCtrl.text) {
+      return 'Modpas yo pa menm.';
+    }
+    return null;
+  }
+
   String _authErrorMessage(FirebaseAuthException e) {
     switch (e.code) {
+      case 'email-already-in-use':
+        return 'Email sa a deja gen yon kont.';
       case 'invalid-email':
         return 'Email la pa valid.';
       case 'user-not-found':
@@ -72,6 +193,8 @@ class _LoginPageState extends State<LoginPage> {
         return 'Kont sa pa jwenn oswa enfomasyon yo pa bon.';
       case 'wrong-password':
         return 'Modpas la pa bon.';
+      case 'weak-password':
+        return 'Modpas la two feb.';
       case 'too-many-requests':
         return 'Twop tantativ. Tann yon ti moman epi eseye anko.';
       case 'network-request-failed':
@@ -98,18 +221,22 @@ class _LoginPageState extends State<LoginPage> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= 860;
+            final panelPadding = constraints.maxWidth < 420 ? 18.0 : 28.0;
 
             return Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
+                padding: EdgeInsets.all(constraints.maxWidth < 420 ? 16 : 24),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 1040),
                   child: wide
                       ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             const Expanded(child: _LoginBrandPanel()),
                             const SizedBox(width: 28),
-                            Expanded(child: _buildLoginPanel(theme)),
+                            Expanded(
+                              child: _buildAuthPanel(theme, panelPadding),
+                            ),
                           ],
                         )
                       : Column(
@@ -117,7 +244,7 @@ class _LoginPageState extends State<LoginPage> {
                           children: [
                             const _LoginBrandPanel(compact: true),
                             const SizedBox(height: 20),
-                            _buildLoginPanel(theme),
+                            _buildAuthPanel(theme, panelPadding),
                           ],
                         ),
                 ),
@@ -129,9 +256,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildLoginPanel(ThemeData theme) {
+  Widget _buildAuthPanel(ThemeData theme, double panelPadding) {
     return Container(
-      padding: const EdgeInsets.all(28),
+      padding: EdgeInsets.all(panelPadding),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
@@ -145,97 +272,211 @@ class _LoginPageState extends State<LoginPage> {
         ],
       ),
       child: AutofillGroup(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Konekte',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF173B24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _isLogin ? 'Konekte' : 'Kreye kont',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF173B24),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Antre nan kont VOUPVAPCASH ou pou jere tranzaksyon yo.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF607064),
+              const SizedBox(height: 8),
+              Text(
+                _isLogin
+                    ? 'Antre nan kont VOUPVAPCASH ou pou jere tranzaksyon yo.'
+                    : 'Kreye yon kont client ak yon userId UUID v4.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF607064),
+                ),
               ),
-            ),
-            const SizedBox(height: 28),
-            TextField(
-              controller: emailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              autofillHints: const [AutofillHints.email],
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                prefixIcon: Icon(Icons.mail_outline),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: passCtrl,
-              obscureText: !showPassword,
-              autofillHints: const [AutofillHints.password],
-              onSubmitted: (_) {
-                if (!loading) login();
-              },
-              decoration: const InputDecoration(
-                labelText: 'Modpas',
-                prefixIcon: Icon(Icons.lock_outline),
-                border: OutlineInputBorder(),
-              ).copyWith(
-                suffixIcon: IconButton(
-                  tooltip: showPassword ? 'Kache modpas' : 'Montre modpas',
-                  icon: Icon(
-                    showPassword ? Icons.visibility_off : Icons.visibility,
+              const SizedBox(height: 28),
+              if (!_isLogin) ...[
+                TextFormField(
+                  controller: _nameCtrl,
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.name],
+                  validator: _validateName,
+                  decoration: const InputDecoration(
+                    labelText: 'Non konple',
+                    prefixIcon: Icon(Icons.badge_outlined),
+                    border: OutlineInputBorder(),
                   ),
-                  onPressed: () {
-                    setState(() => showPassword = !showPassword);
+                ),
+                const SizedBox(height: 16),
+              ],
+              TextFormField(
+                controller: _emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                autofillHints: const [AutofillHints.email],
+                validator: _validateEmail,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.mail_outline),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _passCtrl,
+                obscureText: !_showPassword,
+                textInputAction:
+                    _isLogin ? TextInputAction.done : TextInputAction.next,
+                autofillHints: [
+                  _isLogin ? AutofillHints.password : AutofillHints.newPassword,
+                ],
+                validator: _validatePassword,
+                onFieldSubmitted: (_) {
+                  if (_isLogin && !_loading) _submit();
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Modpas',
+                  prefixIcon: Icon(Icons.lock_outline),
+                  border: OutlineInputBorder(),
+                ).copyWith(
+                  suffixIcon: IconButton(
+                    tooltip: _showPassword ? 'Kache modpas' : 'Montre modpas',
+                    icon: Icon(
+                      _showPassword ? Icons.visibility_off : Icons.visibility,
+                    ),
+                    onPressed: () {
+                      setState(() => _showPassword = !_showPassword);
+                    },
+                  ),
+                ),
+              ),
+              if (!_isLogin) ...[
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _confirmCtrl,
+                  obscureText: !_showConfirmPassword,
+                  textInputAction: TextInputAction.done,
+                  autofillHints: const [AutofillHints.newPassword],
+                  validator: _validateConfirmPassword,
+                  onFieldSubmitted: (_) {
+                    if (!_loading) _submit();
                   },
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1F7A3A),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                  decoration: const InputDecoration(
+                    labelText: 'Konfime modpas',
+                    prefixIcon: Icon(Icons.lock_reset_outlined),
+                    border: OutlineInputBorder(),
+                  ).copyWith(
+                    suffixIcon: IconButton(
+                      tooltip: _showConfirmPassword
+                          ? 'Kache modpas'
+                          : 'Montre modpas',
+                      icon: Icon(
+                        _showConfirmPassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                      onPressed: () {
+                        setState(
+                          () => _showConfirmPassword = !_showConfirmPassword,
+                        );
+                      },
+                    ),
                   ),
                 ),
-                onPressed: loading ? null : login,
-                child: loading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.4,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.login, size: 20),
-                          SizedBox(width: 10),
-                          Text(
-                            'Konekte',
-                            style: TextStyle(fontWeight: FontWeight.w700),
+              ],
+              const SizedBox(height: 10),
+              _buildRememberAndResetRow(),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1F7A3A),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: _loading ? null : _submit,
+                  child: _loading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            color: Colors.white,
                           ),
-                        ],
-                      ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(_isLogin ? Icons.login : Icons.person_add),
+                            const SizedBox(width: 10),
+                            Text(
+                              _isLogin ? 'Konekte' : 'Kreye kont',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: _loading ? null : _toggleMode,
+                icon: Icon(_isLogin ? Icons.person_add_alt : Icons.login),
+                label: Text(
+                  _isLogin ? 'Kreye yon kont' : 'Mwen gen kont deja',
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildRememberAndResetRow() {
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      alignment: WrapAlignment.spaceBetween,
+      runSpacing: 4,
+      children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: _loading
+              ? null
+              : () => setState(() => _rememberMe = !_rememberMe),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Checkbox(
+                value: _rememberMe,
+                onChanged: _loading
+                    ? null
+                    : (value) {
+                        setState(() => _rememberMe = value ?? false);
+                      },
+              ),
+              const Text('Sonje mwen'),
+            ],
+          ),
+        ),
+        if (_isLogin)
+          TextButton.icon(
+            onPressed:
+                (_loading || _resettingPassword) ? null : _sendPasswordReset,
+            icon: _resettingPassword
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.help_outline),
+            label: const Text('Modpas bliye?'),
+          ),
+      ],
     );
   }
 }

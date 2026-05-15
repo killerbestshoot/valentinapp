@@ -1,12 +1,16 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+
+import '../services/auth_service.dart';
 
 class LogoutAction extends StatelessWidget {
   const LogoutAction({super.key});
 
   Future<void> _logout(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
+    await AuthService.instance.signOut();
     if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).popUntil((route) {
+        return route.isFirst;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ou dekonekte.')),
       );

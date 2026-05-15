@@ -1,20 +1,15 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import 'pages/login_page.dart';
-import 'pages/agent_dashboard.dart';
 import 'admin_dashboard.dart';
 import 'owner_dashboard.dart';
+import 'pages/agent_dashboard.dart';
+import 'pages/home_page.dart';
+import 'pages/login_page.dart';
+import 'services/user_profile_service.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
-
-  Future<Map<String, dynamic>?> _loadUserDoc(String uid) async {
-    final snap =
-        await FirebaseFirestore.instance.collection('users').doc(uid).get();
-    return snap.data();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,102 +17,129 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnap) {
         if (authSnap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const _GateLoading();
         }
 
         final user = authSnap.data;
-
         if (user == null) {
           return const LoginPage();
         }
 
-        return FutureBuilder<Map<String, dynamic>?>(
-          future: _loadUserDoc(user.uid),
-          builder: (context, userSnap) {
-            if (userSnap.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
+        return FutureBuilder<UserProfile>(
+          future: UserProfileService.instance.ensureProfileForUser(user: user),
+          builder: (context, profileSnap) {
+            if (profileSnap.connectionState == ConnectionState.waiting) {
+              return const _GateLoading();
+            }
+
+            if (profileSnap.hasError) {
+              return _GateError(message: 'Erreur profil: ${profileSnap.error}');
+            }
+
+            final profile = profileSnap.data;
+            if (profile == null) {
+              return const _GateError(message: 'Profil user pa disponib.');
+            }
+
+            if (!profile.isActive) {
+              return _InactiveUser(profile: profile);
+            }
+
+            if (profile.isOwner) {
+              return OwnerDashboard(
+                enterpriseId: profile.enterpriseId,
+                enterpriseName: profile.enterpriseName,
+                displayName: profile.displayName,
+                email: profile.email,
+                userId: profile.userId,
               );
             }
 
-            if (userSnap.hasError) {
-              return Scaffold(
-                body: Center(
-                  child: Text('Erreur profil user: ${userSnap.error}'),
-                ),
-              );
-            }
-
-            final data = userSnap.data;
-
-            if (data == null || data.isEmpty) {
-              return Scaffold(
-                body: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'Dokiman users/{uid} pa egziste.',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      ElevatedButton(
-                        onPressed: () async {
-                          await FirebaseAuth.instance.signOut();
-                        },
-                        child: const Text('Retounen sou login'),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            final role = (data['role'] ?? '').toString().trim();
-
-            if (role == 'owner') {
-              return const OwnerDashboard();
-            }
-
-            if (role == 'administrator') {
+            if (profile.isAdmin) {
               return const AdminDashboard();
             }
 
-            if (role == 'agent') {
+            if (profile.isAgent) {
               return const AgentDashboard();
             }
 
-            return Scaffold(
-              body: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Role pa valid: "$role"',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton(
-                      onPressed: () async {
-                        await FirebaseAuth.instance.signOut();
-                      },
-                      child: const Text('Dekonekte'),
-                    ),
-                  ],
-                ),
-              ),
-            );
+            return const HomePage();
           },
         );
       },
+    );
+  }
+}
+
+class _GateLoading extends StatelessWidget {
+  const _GateLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+class _GateError extends StatelessWidget {
+  const _GateError({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InactiveUser extends StatelessWidget {
+  const _InactiveUser({required this.profile});
+
+  final UserProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.block_outlined, size: 44),
+              const SizedBox(height: 16),
+              Text(
+                'Kont sa dezaktive.',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${profile.displayName}\n${profile.email}',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: () => FirebaseAuth.instance.signOut(),
+                icon: const Icon(Icons.logout),
+                label: const Text('Retounen sou login'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
