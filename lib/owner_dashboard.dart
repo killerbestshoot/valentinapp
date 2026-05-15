@@ -286,7 +286,7 @@ class _OwnerHeader extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 18),
-              _InfoLine(label: 'Role', value: 'owner'),
+              const _InfoLine(label: 'Role', value: 'owner'),
               _InfoLine(label: 'Enterprise', value: enterpriseName),
               _InfoLine(label: 'Enterprise ID', value: enterpriseId),
               _InfoLine(
