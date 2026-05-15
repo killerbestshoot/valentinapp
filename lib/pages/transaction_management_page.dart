@@ -62,7 +62,10 @@ class TransactionManagementPage extends StatelessWidget {
     required String status,
   }) async {
     try {
-      await FirebaseFirestore.instance.collection('transactions').doc(docId).update({
+      await FirebaseFirestore.instance
+          .collection('transactions')
+          .doc(docId)
+          .update({
         'status': status,
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -105,7 +108,10 @@ class TransactionManagementPage extends StatelessWidget {
     if (!ok) return;
 
     try {
-      await FirebaseFirestore.instance.collection('transactions').doc(docId).delete();
+      await FirebaseFirestore.instance
+          .collection('transactions')
+          .doc(docId)
+          .delete();
 
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -174,7 +180,7 @@ class TransactionManagementPage extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final d = docs[index];
                   final m = d.data();
-                  final tx = {
+                  final tx = <String, dynamic>{
                     'txId': d.id,
                     ...m,
                   };
@@ -239,7 +245,8 @@ class TransactionManagementPage extends StatelessWidget {
                               onPressed: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
-                                    builder: (_) => TransactionDetailsPage(tx: tx),
+                                    builder: (_) =>
+                                        TransactionDetailsPage(tx: tx),
                                   ),
                                 );
                               },
