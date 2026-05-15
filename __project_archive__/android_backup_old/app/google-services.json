@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "823919737947",
+    "project_id": "voupvapcash",
+    "storage_bucket": "voupvapcash.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:823919737947:android:4edc965d7ce1d9306ed37e",
+        "android_client_info": {
+          "package_name": "com.example.mon_premye_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDnqNBR7ta9Jgwn0Whd2q52AYPdC0FDQFI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:823919737947:android:982c91766e7275336ed37e",
+        "android_client_info": {
+          "package_name": "com.exemple.mon_premye_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDnqNBR7ta9Jgwn0Whd2q52AYPdC0FDQFI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

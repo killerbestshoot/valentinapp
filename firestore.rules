@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userRole() {
+      return signedIn() ? userDoc().data.role : null;
+    }
+
+    function isOwner() {
+      return userRole() == 'owner';
+    }
+
+    function isAdmin() {
+      return userRole() == 'administrator';
+    }
+
+    function isOwnerOrAdmin() {
+      return isOwner() || isAdmin();
+    }
+
+    match /balances/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /payout_logs/{id} {
+      allow read: if isOwnerOrAdmin();
+      allow write: if false;
+    }
+
+    match /commission_logs/{id} {
+      allow read: if isOwnerOrAdmin();
+      allow write: if false;
+    }
+
+    match /transactions/{id} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if isOwner();
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if isOwner();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

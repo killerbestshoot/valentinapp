@@ -1,0 +1,1 @@
+export 'pages/transaction_details_page.dart';

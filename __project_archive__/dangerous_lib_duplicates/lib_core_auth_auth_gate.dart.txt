@@ -1,0 +1,87 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
+import 'app_role.dart';
+
+// IMPORT paj ou deja genyen yo:
+import 'package:mon_premye_app/features/auth/presentation/pages/login_screen.dart';
+import 'package:mon_premye_app/features/home/presentation/pages/services_dashboard_screen.dart';
+
+// Si ou gen yon admin dashboard page deja, mete import li la:
+// import 'package:mon_premye_app/features/admin/presentation/pages/admin_dashboard_screen.dart';
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snap) {
+        final user = snap.data;
+
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+
+        // Pa konekte -> login
+        if (user == null) return const LoginScreen();
+
+        // Konekte -> li role + disabled nan Firestore
+        return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          future: FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get(),
+          builder: (context, s2) {
+            if (s2.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()));
+            }
+
+            final data = s2.data?.data();
+
+            // Si user pa egziste nan Firestore ankÃƒÆ’Ã‚Â², fÃƒÆ’Ã‚Â¨ li sÃƒÆ’Ã‚Â²ti (sekirite)
+            if (data == null) {
+              FirebaseAuth.instance.signOut();
+              return const LoginScreen();
+            }
+
+            final disabled = (data['disabled'] == true);
+            if (disabled) {
+              return Scaffold(
+                body: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Kont ou dezaktive.'),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        onPressed: () => FirebaseAuth.instance.signOut(),
+                        child: const Text('SÃƒÆ’Ã‚Â²ti'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            final role = appRoleFromString(data['role']?.toString());
+
+            // ADMIN -> (si ou gen paj admin, mete li la)
+            if (role == AppRole.admin) {
+              // return const AdminDashboardScreen();
+              return const ServicesDashboardScreen(); // tanporÃƒÆ’Ã‚Â¨ si admin paj poko la
+            }
+
+            // AGENT -> Dashboard sÃƒÆ’Ã‚Â¨vis yo
+            return const ServicesDashboardScreen();
+          },
+        );
+      },
+    );
+  }
+}
+

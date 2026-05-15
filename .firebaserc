@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "voupvapcash",
+    "production": "voupvapcash"
+  },
+  "targets": {},
+  "etags": {}
+}

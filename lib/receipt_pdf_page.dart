@@ -1,0 +1,1 @@
+export 'pages/receipt_pdf_page.dart';

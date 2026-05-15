@@ -1,0 +1,73 @@
+import "package:cloud_firestore/cloud_firestore.dart";
+import "package:firebase_auth/firebase_auth.dart";
+import "package:flutter/material.dart";
+import "owner_dashboard_page.dart";
+
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  Future<String> _getRole() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return "";
+
+    final db = FirebaseFirestore.instance;
+
+    try {
+      final userDoc = await db.collection("users").doc(user.uid).get();
+      final userData = userDoc.data();
+      final userRole =
+          (userData?["role"] ?? "").toString().trim().toLowerCase();
+      if (userRole.isNotEmpty) return userRole;
+    } catch (_) {}
+
+    try {
+      final entSnap = await db
+          .collection("enterprise_users")
+          .where("uid", isEqualTo: user.uid)
+          .where("isActive", isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (entSnap.docs.isNotEmpty) {
+        final entRole = (entSnap.docs.first.data()["role"] ?? "")
+            .toString()
+            .trim()
+            .toLowerCase();
+        if (entRole.isNotEmpty) return entRole;
+      }
+    } catch (_) {}
+
+    return "";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String>(
+      future: _getRole(),
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final role = (snap.data ?? "").trim().toLowerCase();
+
+        if (role == "owner" || role == "administrator" || role == "admin") {
+          return const OwnerDashboardPage();
+        }
+
+        if (role == "agent") {
+          return const OwnerDashboardPage();
+        }
+
+        return Scaffold(
+          appBar: AppBar(title: const Text("Home")),
+          body: Center(
+            child: Text("Role pa rekonèt: $role"),
+          ),
+        );
+      },
+    );
+  }
+}
