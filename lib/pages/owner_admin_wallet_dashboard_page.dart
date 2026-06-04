@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/dashboard_ui.dart';
+
 class OwnerAdminWalletDashboardPage extends StatefulWidget {
   const OwnerAdminWalletDashboardPage({super.key});
 
@@ -78,80 +80,38 @@ class _OwnerAdminWalletDashboardPageState
 
   Widget _statCard(String title, String value, IconData icon, Color color) {
     return Expanded(
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 30),
-              const SizedBox(height: 10),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ),
+      child: DashboardStatCard(
+        title: title,
+        value: value,
+        icon: icon,
+        color: color,
       ),
     );
   }
 
   Widget _line(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 150,
-            child: Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-          Expanded(
-            child: Text(value.isEmpty ? '-' : value),
-          ),
-        ],
-      ),
-    );
+    return DashboardInfoRow(label: label, value: value);
   }
 
   Widget _sectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 10),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+      child: DashboardSectionTitle(title: title),
     );
   }
 
   Widget _smallEmpty(String text) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text(text),
-      ),
-    );
+    return DashboardPanel(child: Text(text));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: DashboardColors.surface,
       appBar: AppBar(
+        backgroundColor: DashboardColors.surface,
+        foregroundColor: DashboardColors.ink,
+        elevation: 0,
         title: const Text('Wallet Dashboard'),
       ),
       body: FutureBuilder<Map<String, dynamic>>(
@@ -392,249 +352,297 @@ class _OwnerAdminWalletDashboardPageState
 
                           final latestTransfers = transferDocs.take(5).toList();
 
-                          return ListView(
-                            padding: const EdgeInsets.all(12),
-                            children: [
-                              Card(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                          return Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 1180),
+                              child: ListView(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                                children: [
+                                  DashboardHero(
+                                    icon: Icons.account_balance_wallet_outlined,
+                                    title: enterpriseName,
+                                    subtitle:
+                                        'Role: $role | EnterpriseId: $enterpriseId',
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
                                     children: [
-                                      Text(
-                                        enterpriseName,
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                                      _statCard(
+                                        'Wallets',
+                                        '$totalWallets',
+                                        Icons.account_balance_wallet,
+                                        Colors.blue,
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text('Role: $role'),
-                                      Text('EnterpriseId: $enterpriseId'),
+                                      const SizedBox(width: 10),
+                                      _statCard(
+                                        'Total Balance',
+                                        _fmtMoney(totalWalletBalance),
+                                        Icons.savings,
+                                        Colors.green,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      _statCard(
+                                        'Positive',
+                                        '$positiveWallets',
+                                        Icons.trending_up,
+                                        Colors.orange,
+                                      ),
                                     ],
                                   ),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  _statCard(
-                                    'Wallets',
-                                    '$totalWallets',
-                                    Icons.account_balance_wallet,
-                                    Colors.blue,
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      _statCard(
+                                        'Topup Count',
+                                        '$totalTopupCount',
+                                        Icons.add_card,
+                                        Colors.teal,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      _statCard(
+                                        'Transfer Count',
+                                        '$totalTransferCount',
+                                        Icons.swap_horiz,
+                                        Colors.deepPurple,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      _statCard(
+                                        'Zero Wallets',
+                                        '$zeroWallets',
+                                        Icons.remove_circle_outline,
+                                        Colors.grey,
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 10),
-                                  _statCard(
-                                    'Total Balance',
-                                    _fmtMoney(totalWalletBalance),
-                                    Icons.savings,
-                                    Colors.green,
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      _statCard(
+                                        'Topup Total',
+                                        _fmtMoney(totalTopup),
+                                        Icons.arrow_downward,
+                                        Colors.green,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      _statCard(
+                                        'Transfer In',
+                                        _fmtMoney(totalTransferIn),
+                                        Icons.call_received,
+                                        Colors.green,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      _statCard(
+                                        'Transfer Out',
+                                        _fmtMoney(totalTransferOut),
+                                        Icons.call_made,
+                                        Colors.red,
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 10),
-                                  _statCard(
-                                    'Positive',
-                                    '$positiveWallets',
-                                    Icons.trending_up,
-                                    Colors.orange,
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      _statCard(
+                                        'Withdraw Pending',
+                                        '$pendingWithdraws',
+                                        Icons.pending_actions,
+                                        Colors.orange,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      _statCard(
+                                        'Withdraw Approved',
+                                        '$approvedWithdraws',
+                                        Icons.check_circle,
+                                        Colors.green,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      _statCard(
+                                        'Withdraw Rejected',
+                                        '$rejectedWithdraws',
+                                        Icons.cancel,
+                                        Colors.red,
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  _statCard(
-                                    'Topup Count',
-                                    '$totalTopupCount',
-                                    Icons.add_card,
-                                    Colors.teal,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  _statCard(
-                                    'Transfer Count',
-                                    '$totalTransferCount',
-                                    Icons.swap_horiz,
-                                    Colors.deepPurple,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  _statCard(
-                                    'Zero Wallets',
-                                    '$zeroWallets',
-                                    Icons.remove_circle_outline,
-                                    Colors.grey,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  _statCard(
-                                    'Topup Total',
-                                    _fmtMoney(totalTopup),
-                                    Icons.arrow_downward,
-                                    Colors.green,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  _statCard(
-                                    'Transfer In',
-                                    _fmtMoney(totalTransferIn),
-                                    Icons.call_received,
-                                    Colors.green,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  _statCard(
-                                    'Transfer Out',
-                                    _fmtMoney(totalTransferOut),
-                                    Icons.call_made,
-                                    Colors.red,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  _statCard(
-                                    'Withdraw Pending',
-                                    '$pendingWithdraws',
-                                    Icons.pending_actions,
-                                    Colors.orange,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  _statCard(
-                                    'Withdraw Approved',
-                                    '$approvedWithdraws',
-                                    Icons.check_circle,
-                                    Colors.green,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  _statCard(
-                                    'Withdraw Rejected',
-                                    '$rejectedWithdraws',
-                                    Icons.cancel,
-                                    Colors.red,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Card(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Text(
-                                    'Pending Withdraw Amount: ${_fmtMoney(pendingWithdrawAmount)} USD',
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
+                                  const SizedBox(height: 10),
+                                  DashboardPanel(
+                                    child: Text(
+                                      'Pending Withdraw Amount: ${_fmtMoney(pendingWithdrawAmount)} USD',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w900,
+                                        color: DashboardColors.ink,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              _sectionTitle('Top Wallets'),
-                              if (topWallets.isEmpty)
-                                _smallEmpty('Pa gen wallet ank')
-                              else
-                                ...topWallets.map((doc) {
-                                  final d = doc.data();
-                                  return Card(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(14),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          _line('UID', (d['uid'] ?? '').toString()),
-                                          _line('Email', (d['email'] ?? '').toString()),
-                                          _line('Role', (d['role'] ?? '').toString()),
-                                          _line(
-                                            'Balance',
-                                            '${_fmtMoney(_toDouble(d['balance']))} USD',
+                                  _sectionTitle('Top Wallets'),
+                                  if (topWallets.isEmpty)
+                                    _smallEmpty('Pa gen wallet ank')
+                                  else
+                                    ...topWallets.map((doc) {
+                                      final d = doc.data();
+                                      return Card(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(14),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              _line('UID',
+                                                  (d['uid'] ?? '').toString()),
+                                              _line(
+                                                  'Email',
+                                                  (d['email'] ?? '')
+                                                      .toString()),
+                                              _line('Role',
+                                                  (d['role'] ?? '').toString()),
+                                              _line(
+                                                'Balance',
+                                                '${_fmtMoney(_toDouble(d['balance']))} USD',
+                                              ),
+                                              _line(
+                                                'Updated At',
+                                                _fmtDate(d['updatedAt']),
+                                              ),
+                                            ],
                                           ),
-                                          _line(
-                                            'Updated At',
-                                            _fmtDate(d['updatedAt']),
+                                        ),
+                                      );
+                                    }),
+                                  _sectionTitle('Dnye Topup Yo'),
+                                  if (lastTopups.isEmpty)
+                                    _smallEmpty('Pa gen topup ank')
+                                  else
+                                    ...lastTopups.map((doc) {
+                                      final d = doc.data();
+                                      return Card(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(14),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              _line(
+                                                  'Staff',
+                                                  (d['staffName'] ?? '')
+                                                      .toString()),
+                                              _line(
+                                                  'Role',
+                                                  (d['staffRole'] ?? '')
+                                                      .toString()),
+                                              _line(
+                                                  'Amount',
+                                                  _fmtMoney(
+                                                      _toDouble(d['amount']))),
+                                              _line(
+                                                  'Before',
+                                                  _fmtMoney(_toDouble(
+                                                      d['balanceBefore']))),
+                                              _line(
+                                                  'After',
+                                                  _fmtMoney(_toDouble(
+                                                      d['balanceAfter']))),
+                                              _line(
+                                                  'By',
+                                                  (d['reviewedByName'] ?? '')
+                                                      .toString()),
+                                              _line(
+                                                  'Note',
+                                                  (d['reviewNotes'] ?? '')
+                                                      .toString()),
+                                              _line('Created At',
+                                                  _fmtDate(d['createdAt'])),
+                                            ],
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }),
-                              _sectionTitle('Dnye Topup Yo'),
-                              if (lastTopups.isEmpty)
-                                _smallEmpty('Pa gen topup ank')
-                              else
-                                ...lastTopups.map((doc) {
-                                  final d = doc.data();
-                                  return Card(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(14),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          _line('Staff', (d['staffName'] ?? '').toString()),
-                                          _line('Role', (d['staffRole'] ?? '').toString()),
-                                          _line('Amount', _fmtMoney(_toDouble(d['amount']))),
-                                          _line('Before', _fmtMoney(_toDouble(d['balanceBefore']))),
-                                          _line('After', _fmtMoney(_toDouble(d['balanceAfter']))),
-                                          _line('By', (d['reviewedByName'] ?? '').toString()),
-                                          _line('Note', (d['reviewNotes'] ?? '').toString()),
-                                          _line('Created At', _fmtDate(d['createdAt'])),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }),
-                              _sectionTitle('Dnye Transfer Yo'),
-                              if (latestTransfers.isEmpty)
-                                _smallEmpty('Pa gen transfer ank')
-                              else
-                                ...latestTransfers.map((doc) {
-                                  final d = doc.data();
-                                  return Card(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(14),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          _line('Transfer ID', (d['transferId'] ?? '').toString()),
-                                          _line('From', (d['fromName'] ?? '').toString()),
-                                          _line('From Role', (d['fromRole'] ?? '').toString()),
-                                          _line('To', (d['toName'] ?? '').toString()),
-                                          _line('To Role', (d['toRole'] ?? '').toString()),
-                                          _line('Amount', _fmtMoney(_toDouble(d['amount']))),
-                                          _line('Note', (d['note'] ?? '').toString()),
-                                          _line('Created At', _fmtDate(d['createdAt'])),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }),
-                              _sectionTitle('Dnye Withdraw Yo'),
-                              if (latestWithdraws.isEmpty)
-                                _smallEmpty('Pa gen withdraw ank')
-                              else
-                                ...latestWithdraws.take(5).map((doc) {
-                                  final d = doc.data();
-                                  return Card(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(14),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          _line('UID', (d['uid'] ?? '').toString()),
-                                          _line('Email', (d['email'] ?? '').toString()),
-                                          _line('Role', (d['role'] ?? '').toString()),
-                                          _line('Amount', _fmtMoney(_toDouble(d['amount']))),
-                                          _line('Status', (d['status'] ?? '').toString()),
-                                          _line('Created At', _fmtDate(d['createdAt'])),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }),
-                            ],
+                                        ),
+                                      );
+                                    }),
+                                  _sectionTitle('Dnye Transfer Yo'),
+                                  if (latestTransfers.isEmpty)
+                                    _smallEmpty('Pa gen transfer ank')
+                                  else
+                                    ...latestTransfers.map((doc) {
+                                      final d = doc.data();
+                                      return Card(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(14),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              _line(
+                                                  'Transfer ID',
+                                                  (d['transferId'] ?? '')
+                                                      .toString()),
+                                              _line(
+                                                  'From',
+                                                  (d['fromName'] ?? '')
+                                                      .toString()),
+                                              _line(
+                                                  'From Role',
+                                                  (d['fromRole'] ?? '')
+                                                      .toString()),
+                                              _line(
+                                                  'To',
+                                                  (d['toName'] ?? '')
+                                                      .toString()),
+                                              _line(
+                                                  'To Role',
+                                                  (d['toRole'] ?? '')
+                                                      .toString()),
+                                              _line(
+                                                  'Amount',
+                                                  _fmtMoney(
+                                                      _toDouble(d['amount']))),
+                                              _line('Note',
+                                                  (d['note'] ?? '').toString()),
+                                              _line('Created At',
+                                                  _fmtDate(d['createdAt'])),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                  _sectionTitle('Dnye Withdraw Yo'),
+                                  if (latestWithdraws.isEmpty)
+                                    _smallEmpty('Pa gen withdraw ank')
+                                  else
+                                    ...latestWithdraws.take(5).map((doc) {
+                                      final d = doc.data();
+                                      return Card(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(14),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              _line('UID',
+                                                  (d['uid'] ?? '').toString()),
+                                              _line(
+                                                  'Email',
+                                                  (d['email'] ?? '')
+                                                      .toString()),
+                                              _line('Role',
+                                                  (d['role'] ?? '').toString()),
+                                              _line(
+                                                  'Amount',
+                                                  _fmtMoney(
+                                                      _toDouble(d['amount']))),
+                                              _line(
+                                                  'Status',
+                                                  (d['status'] ?? '')
+                                                      .toString()),
+                                              _line('Created At',
+                                                  _fmtDate(d['createdAt'])),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                ],
+                              ),
+                            ),
                           );
                         },
                       );

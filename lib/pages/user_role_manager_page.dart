@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/uuid_v4.dart';
+import '../widgets/dashboard_ui.dart';
 
 class UserRoleManagerPage extends StatefulWidget {
   const UserRoleManagerPage({super.key});
@@ -45,16 +46,16 @@ class _UserRoleManagerPageState extends State<UserRoleManagerPage> {
       filled: true,
       fillColor: Colors.white,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: DashboardColors.border),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: DashboardColors.border),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: Color(0xFF111827), width: 1.3),
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: DashboardColors.brand, width: 1.3),
       ),
     );
   }
@@ -240,442 +241,447 @@ class _UserRoleManagerPageState extends State<UserRoleManagerPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
-      appBar: AppBar(
-        title: const Text(
-          'Users & Roles',
-          style: TextStyle(fontWeight: FontWeight.w800),
+    return DashboardPage(
+      title: 'Users & roles',
+      children: [
+        const DashboardHero(
+          icon: Icons.admin_panel_settings_outlined,
+          title: 'Users & roles',
+          subtitle: 'Create users, assign roles, and control access.',
         ),
-      ),
-      body: FutureBuilder<String>(
-        future: _getEnterpriseId(),
-        builder: (context, enterpriseSnap) {
-          if (enterpriseSnap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+        const SizedBox(height: 18),
+        FutureBuilder<String>(
+          future: _getEnterpriseId(),
+          builder: (context, enterpriseSnap) {
+            if (enterpriseSnap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          if (enterpriseSnap.hasError || !enterpriseSnap.hasData) {
-            return Center(
-              child: Text('Erreur enterprise: ${enterpriseSnap.error}'),
-            );
-          }
+            if (enterpriseSnap.hasError || !enterpriseSnap.hasData) {
+              return Center(
+                child: Text('Erreur enterprise: ${enterpriseSnap.error}'),
+              );
+            }
 
-          final enterpriseId = enterpriseSnap.data!;
+            final enterpriseId = enterpriseSnap.data!;
 
-          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection('users')
-                .where('enterpriseId', isEqualTo: enterpriseId)
-                .snapshots(),
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .where('enterpriseId', isEqualTo: enterpriseId)
+                  .snapshots(),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-              final allDocs = [...(snap.data?.docs ?? [])];
-              allDocs.sort((a, b) {
-                final an = _text(a.data()['displayName'], '').toLowerCase();
-                final bn = _text(b.data()['displayName'], '').toLowerCase();
-                return an.compareTo(bn);
-              });
+                final allDocs = [...(snap.data?.docs ?? [])];
+                allDocs.sort((a, b) {
+                  final an = _text(a.data()['displayName'], '').toLowerCase();
+                  final bn = _text(b.data()['displayName'], '').toLowerCase();
+                  return an.compareTo(bn);
+                });
 
-              final docs = allDocs.where((d) {
-                final m = d.data();
-                final q = _search.trim().toLowerCase();
-                if (q.isEmpty) return true;
-                return _text(m['displayName'], '').toLowerCase().contains(q) ||
-                    _text(m['email'], '').toLowerCase().contains(q) ||
-                    _text(m['role'], '').toLowerCase().contains(q);
-              }).toList();
+                final docs = allDocs.where((d) {
+                  final m = d.data();
+                  final q = _search.trim().toLowerCase();
+                  if (q.isEmpty) return true;
+                  return _text(m['displayName'], '')
+                          .toLowerCase()
+                          .contains(q) ||
+                      _text(m['email'], '').toLowerCase().contains(q) ||
+                      _text(m['role'], '').toLowerCase().contains(q);
+                }).toList();
 
-              final total = allDocs.length;
-              final active =
-                  allDocs.where((d) => d.data()['isActive'] != false).length;
-              final agents = allDocs
-                  .where((d) => _text(d.data()['role'], '') == 'agent')
-                  .length;
-              final admins = allDocs
-                  .where((d) => _text(d.data()['role'], '') == 'administrator')
-                  .length;
+                final total = allDocs.length;
+                final active =
+                    allDocs.where((d) => d.data()['isActive'] != false).length;
+                final agents = allDocs
+                    .where((d) => _text(d.data()['role'], '') == 'agent')
+                    .length;
+                final admins = allDocs
+                    .where(
+                        (d) => _text(d.data()['role'], '') == 'administrator')
+                    .length;
 
-              return ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: const Color(0xFFE5E7EB)),
-                    ),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Ajoute nouvo user',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF111827),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          TextFormField(
-                            controller: _displayNameCtrl,
-                            decoration: _decor(
-                              label: 'Non konpl',
-                              icon: Icons.person_outline,
-                            ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Mete non user la.';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 14),
-                          TextFormField(
-                            controller: _emailCtrl,
-                            keyboardType: TextInputType.emailAddress,
-                            decoration: _decor(
-                              label: 'Iml',
-                              icon: Icons.email_outlined,
-                            ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Mete iml la.';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 14),
-                          TextFormField(
-                            controller: _passwordCtrl,
-                            obscureText: true,
-                            decoration: _decor(
-                              label: 'Modpas',
-                              icon: Icons.lock_outline,
-                            ),
-                            validator: (value) {
-                              if (value == null || value.trim().length < 6) {
-                                return 'Modpas la dwe gen omwen 6 karakt.';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 14),
-                          DropdownButtonFormField<String>(
-                            initialValue: _selectedRole,
-                            decoration: _decor(
-                              label: 'Role',
-                              icon: Icons.badge_outlined,
-                            ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'owner',
-                                child: Text('owner'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'administrator',
-                                child: Text('administrator'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'agent',
-                                child: Text('agent'),
-                              ),
-                            ],
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedRole = value ?? 'agent';
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 54,
-                            child: ElevatedButton.icon(
-                              onPressed: _saving ? null : _createUser,
-                              icon: const Icon(Icons.person_add_alt_1_outlined),
-                              label: Text(
-                                _saving ? 'Ap kreye...' : 'Ajoute user',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: const Color(0xFFE5E7EB)),
-                          ),
-                          child: Column(
-                            children: [
-                              const Icon(Icons.groups_outlined),
-                              const SizedBox(height: 8),
-                              const Text('Total'),
-                              const SizedBox(height: 4),
-                              Text(
-                                '$total',
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: const Color(0xFFE5E7EB)),
-                          ),
-                          child: Column(
-                            children: [
-                              const Icon(Icons.verified_user_outlined),
-                              const SizedBox(height: 8),
-                              const Text('Aktif'),
-                              const SizedBox(height: 4),
-                              Text(
-                                '$active',
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: const Color(0xFFE5E7EB)),
-                          ),
-                          child: Column(
-                            children: [
-                              const Icon(Icons.admin_panel_settings_outlined),
-                              const SizedBox(height: 8),
-                              const Text('Admins'),
-                              const SizedBox(height: 4),
-                              Text(
-                                '$admins',
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: const Color(0xFFE5E7EB)),
-                          ),
-                          child: Column(
-                            children: [
-                              const Icon(Icons.support_agent_outlined),
-                              const SizedBox(height: 8),
-                              const Text('Agents'),
-                              const SizedBox(height: 4),
-                              Text(
-                                '$agents',
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    decoration: _decor(
-                      label: 'Chche user',
-                      icon: Icons.search,
-                    ),
-                    onChanged: (value) {
-                      setState(() {
-                        _search = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  if (docs.isEmpty)
+                return Column(
+                  children: [
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: DashboardColors.border),
                       ),
-                      child: const Text('Pa gen user pou montre kounye a.'),
-                    )
-                  else
-                    ...docs.map((d) {
-                      final m = d.data();
-                      final uid = d.id;
-                      final displayName = _text(m['displayName']);
-                      final email = _text(m['email']);
-                      final role = _text(m['role']);
-                      final isActive = m['isActive'] != false;
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: const Color(0xFFE5E7EB)),
-                        ),
+                      child: Form(
+                        key: _formKey,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                const CircleAvatar(
-                                  backgroundColor: Color(0xFFF3F4F6),
-                                  child: Icon(
-                                    Icons.person_outline,
-                                    color: Color(0xFF111827),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        displayName,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w800,
-                                          color: Color(0xFF111827),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        email,
-                                        style: const TextStyle(
-                                          color: Color(0xFF6B7280),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: isActive
-                                        ? const Color(0xFFD1FAE5)
-                                        : const Color(0xFFF3F4F6),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    isActive ? 'Aktif' : 'Inaktif',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF111827),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            const Text(
+                              'Ajoute nouvo user',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: DashboardColors.ink,
+                              ),
                             ),
-                            const SizedBox(height: 12),
-                            Text('Role: $role'),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                OutlinedButton(
-                                  onPressed: () => _updateRole(
-                                    uid: uid,
-                                    newRole: 'agent',
-                                  ),
-                                  child: const Text('Mete agent'),
+                            const SizedBox(height: 14),
+                            TextFormField(
+                              controller: _displayNameCtrl,
+                              decoration: _decor(
+                                label: 'Non konpl',
+                                icon: Icons.person_outline,
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Mete non user la.';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 14),
+                            TextFormField(
+                              controller: _emailCtrl,
+                              keyboardType: TextInputType.emailAddress,
+                              decoration: _decor(
+                                label: 'Iml',
+                                icon: Icons.email_outlined,
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Mete iml la.';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 14),
+                            TextFormField(
+                              controller: _passwordCtrl,
+                              obscureText: true,
+                              decoration: _decor(
+                                label: 'Modpas',
+                                icon: Icons.lock_outline,
+                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().length < 6) {
+                                  return 'Modpas la dwe gen omwen 6 karakt.';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 14),
+                            DropdownButtonFormField<String>(
+                              initialValue: _selectedRole,
+                              decoration: _decor(
+                                label: 'Role',
+                                icon: Icons.badge_outlined,
+                              ),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'owner',
+                                  child: Text('owner'),
                                 ),
-                                OutlinedButton(
-                                  onPressed: () => _updateRole(
-                                    uid: uid,
-                                    newRole: 'administrator',
-                                  ),
-                                  child: const Text('Mete admin'),
+                                DropdownMenuItem(
+                                  value: 'administrator',
+                                  child: Text('administrator'),
                                 ),
-                                OutlinedButton(
-                                  onPressed: () => _updateRole(
-                                    uid: uid,
-                                    newRole: 'owner',
-                                  ),
-                                  child: const Text('Mete owner'),
-                                ),
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: isActive
-                                        ? Colors.redAccent
-                                        : const Color(0xFF111827),
-                                    foregroundColor: Colors.white,
-                                  ),
-                                  onPressed: () => _toggleUser(
-                                    uid: uid,
-                                    currentValue: isActive,
-                                  ),
-                                  child: Text(
-                                    isActive ? 'Dezaktive' : 'Aktive',
-                                  ),
+                                DropdownMenuItem(
+                                  value: 'agent',
+                                  child: Text('agent'),
                                 ),
                               ],
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedRole = value ?? 'agent';
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 54,
+                              child: ElevatedButton.icon(
+                                onPressed: _saving ? null : _createUser,
+                                icon:
+                                    const Icon(Icons.person_add_alt_1_outlined),
+                                label: Text(
+                                  _saving ? 'Ap kreye...' : 'Ajoute user',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ),
                             ),
                           ],
                         ),
-                      );
-                    }),
-                  const SizedBox(height: 24),
-                ],
-              );
-            },
-          );
-        },
-      ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: DashboardColors.border),
+                            ),
+                            child: Column(
+                              children: [
+                                const Icon(Icons.groups_outlined),
+                                const SizedBox(height: 8),
+                                const Text('Total'),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '$total',
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: DashboardColors.border),
+                            ),
+                            child: Column(
+                              children: [
+                                const Icon(Icons.verified_user_outlined),
+                                const SizedBox(height: 8),
+                                const Text('Aktif'),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '$active',
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: DashboardColors.border),
+                            ),
+                            child: Column(
+                              children: [
+                                const Icon(Icons.admin_panel_settings_outlined),
+                                const SizedBox(height: 8),
+                                const Text('Admins'),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '$admins',
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: DashboardColors.border),
+                            ),
+                            child: Column(
+                              children: [
+                                const Icon(Icons.support_agent_outlined),
+                                const SizedBox(height: 8),
+                                const Text('Agents'),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '$agents',
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      decoration: _decor(
+                        label: 'Chche user',
+                        icon: Icons.search,
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          _search = value;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    if (docs.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: DashboardColors.border),
+                        ),
+                        child: const Text('Pa gen user pou montre kounye a.'),
+                      )
+                    else
+                      ...docs.map((d) {
+                        final m = d.data();
+                        final uid = d.id;
+                        final displayName = _text(m['displayName']);
+                        final email = _text(m['email']);
+                        final role = _text(m['role']);
+                        final isActive = m['isActive'] != false;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: DashboardColors.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const CircleAvatar(
+                                    backgroundColor: Color(0xFFF3F4F6),
+                                    child: Icon(
+                                      Icons.person_outline,
+                                      color: DashboardColors.brand,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          displayName,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w800,
+                                            color: DashboardColors.ink,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          email,
+                                          style: const TextStyle(
+                                            color: DashboardColors.muted,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isActive
+                                          ? const Color(0xFFD1FAE5)
+                                          : const Color(0xFFF3F4F6),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      isActive ? 'Aktif' : 'Inaktif',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: DashboardColors.ink,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Text('Role: $role'),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  OutlinedButton(
+                                    onPressed: () => _updateRole(
+                                      uid: uid,
+                                      newRole: 'agent',
+                                    ),
+                                    child: const Text('Mete agent'),
+                                  ),
+                                  OutlinedButton(
+                                    onPressed: () => _updateRole(
+                                      uid: uid,
+                                      newRole: 'administrator',
+                                    ),
+                                    child: const Text('Mete admin'),
+                                  ),
+                                  OutlinedButton(
+                                    onPressed: () => _updateRole(
+                                      uid: uid,
+                                      newRole: 'owner',
+                                    ),
+                                    child: const Text('Mete owner'),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: isActive
+                                          ? Colors.redAccent
+                                          : DashboardColors.brand,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    onPressed: () => _toggleUser(
+                                      uid: uid,
+                                      currentValue: isActive,
+                                    ),
+                                    child: Text(
+                                      isActive ? 'Dezaktive' : 'Aktive',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    const SizedBox(height: 24),
+                  ],
+                );
+              },
+            );
+          },
+        ),
+      ],
     );
   }
 }

@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/dashboard_ui.dart';
+
 class TopupPage extends StatefulWidget {
   const TopupPage({super.key});
 
@@ -44,7 +46,9 @@ class _TopupPageState extends State<TopupPage> {
       final userData = userDoc.data() ?? {};
 
       final enterpriseId = (userData['enterpriseId'] ?? '').toString();
-      final staffName = (userData['name'] ?? userData['fullName'] ?? user.email ?? '').toString();
+      final staffName =
+          (userData['name'] ?? userData['fullName'] ?? user.email ?? '')
+              .toString();
       final staffRole = (userData['role'] ?? 'agent').toString();
 
       if (enterpriseId.isEmpty) {
@@ -58,22 +62,26 @@ class _TopupPageState extends State<TopupPage> {
       await fs.runTransaction((tx) async {
         final balSnap = await tx.get(balanceRef);
         final oldData = balSnap.data() ?? {};
-        final oldTopup = double.tryParse((oldData['topupBalance'] ?? oldData['topup'] ?? 0).toString()) ?? 0;
+        final oldTopup = double.tryParse(
+                (oldData['topupBalance'] ?? oldData['topup'] ?? 0)
+                    .toString()) ??
+            0;
         final newTopup = oldTopup + amount;
 
-        tx.set(balanceRef, {
-          'enterpriseId': enterpriseId,
-          'uid': user.uid,
-          'staffUid': user.uid,
-          'staffName': staffName,
-          'staffRole': staffRole,
-
-          'topupBalance': FieldValue.increment(amount),
-          'topup': FieldValue.increment(amount),
-          'topupAmount': FieldValue.increment(amount),
-
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+        tx.set(
+            balanceRef,
+            {
+              'enterpriseId': enterpriseId,
+              'uid': user.uid,
+              'staffUid': user.uid,
+              'staffName': staffName,
+              'staffRole': staffRole,
+              'topupBalance': FieldValue.increment(amount),
+              'topup': FieldValue.increment(amount),
+              'topupAmount': FieldValue.increment(amount),
+              'updatedAt': FieldValue.serverTimestamp(),
+            },
+            SetOptions(merge: true));
 
         tx.set(logRef, {
           'enterpriseId': enterpriseId,
@@ -81,13 +89,11 @@ class _TopupPageState extends State<TopupPage> {
           'staffUid': user.uid,
           'staffName': staffName,
           'staffRole': staffRole,
-
           'amount': amount,
           'currency': 'USD',
           'type': 'topup_recharge',
           'balanceBefore': oldTopup,
           'balanceAfter': newTopup,
-
           'createdAt': FieldValue.serverTimestamp(),
         });
       });
@@ -115,34 +121,39 @@ class _TopupPageState extends State<TopupPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FB),
-      appBar: AppBar(
-        title: const Text('Rechaje Topup'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFFF6F7FB),
-        elevation: 0,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          children: [
-            TextField(
-              controller: _amountCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Montan',
-                hintText: 'Egzanp: 1000',
-                prefixIcon: Icon(Icons.attach_money),
-                border: OutlineInputBorder(),
+    return DashboardPage(
+      title: 'Rechaje Topup',
+      children: [
+        const DashboardHero(
+          icon: Icons.add_card_outlined,
+          title: 'Rechaje Topup',
+          subtitle: 'Ajoute balans topup sou kont aktif la.',
+        ),
+        const SizedBox(height: 18),
+        DashboardPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _amountCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Montan',
+                  hintText: 'Egzanp: 1000',
+                  prefixIcon: Icon(Icons.attach_money),
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: ElevatedButton.icon(
+              const SizedBox(height: 18),
+              FilledButton.icon(
                 onPressed: _loading ? null : _save,
+                style: FilledButton.styleFrom(
+                  backgroundColor: DashboardColors.brand,
+                  minimumSize: const Size.fromHeight(52),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
                 icon: _loading
                     ? const SizedBox(
                         width: 18,
@@ -150,12 +161,13 @@ class _TopupPageState extends State<TopupPage> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.add_card),
-                label: Text(_loading ? 'Ap ajoute...' : 'Ajoute sou kont Topup'),
+                label:
+                    Text(_loading ? 'Ap ajoute...' : 'Ajoute sou kont Topup'),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

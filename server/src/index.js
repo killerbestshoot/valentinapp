@@ -15,9 +15,9 @@ app.get("/", (req, res) => {
 
 app.use("/api/otp", otpRoutes);
 
-// 🔴 PORT FORCÉ ICI (PA DEPANN DE .env)
-const PORT = 4700;
+const PORT = Number(process.env.PORT || 4700);
+const HOST = process.env.HOST || "127.0.0.1";
 
-app.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`Server running on http://${HOST}:${PORT}`);
 });

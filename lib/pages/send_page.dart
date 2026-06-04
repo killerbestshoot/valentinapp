@@ -6,6 +6,7 @@ import '../services/commission_service.dart';
 import '../services/client_risk_service.dart';
 import '../services/enterprise_status_service.dart';
 import '../services/user_status_service.dart';
+import '../widgets/dashboard_ui.dart';
 
 class SendPage extends StatefulWidget {
   const SendPage({super.key});
@@ -52,8 +53,7 @@ class _SendPageState extends State<SendPage> {
 
   Future<void> _refreshRisk() async {
     final beneficiaryPhone = _beneficiaryPhoneCtrl.text.trim();
-    final beneficiary =
-        await ClientRiskService.getClientFlag(beneficiaryPhone);
+    final beneficiary = await ClientRiskService.getClientFlag(beneficiaryPhone);
 
     if (!mounted) return;
     setState(() {
@@ -79,6 +79,7 @@ class _SendPageState extends State<SendPage> {
         await ClientRiskService.getClientFlag(beneficiaryPhone);
     final beneficiaryStatus =
         (beneficiaryFlag['status'] ?? 'normal').toString();
+    if (!mounted) return;
 
     if (beneficiaryStatus == 'blacklist') {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -111,7 +112,8 @@ class _SendPageState extends State<SendPage> {
       final enterpriseName =
           (userData['enterpriseName'] ?? 'VOUPVAPCASH').toString();
       final staffName =
-          (userData['displayName'] ?? userData['fullName'] ?? 'Agent').toString();
+          (userData['displayName'] ?? userData['fullName'] ?? 'Agent')
+              .toString();
 
       final enterpriseActive =
           await EnterpriseStatusService.isEnterpriseActive(enterpriseId);
@@ -121,7 +123,8 @@ class _SendPageState extends State<SendPage> {
 
       final now = DateTime.now();
       final txId = 'SEND_${now.millisecondsSinceEpoch}';
-    final docRef = await FirebaseFirestore.instance.collection('transactions').add({
+      final docRef =
+          await FirebaseFirestore.instance.collection('transactions').add({
         'txId': txId,
         'transactionId': txId,
         'enterpriseId': enterpriseId,
@@ -173,7 +176,20 @@ class _SendPageState extends State<SendPage> {
   InputDecoration deco(String label) {
     return InputDecoration(
       labelText: label,
-      border: const OutlineInputBorder(),
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: DashboardColors.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: DashboardColors.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: DashboardColors.brand, width: 1.4),
+      ),
     );
   }
 
@@ -182,9 +198,9 @@ class _SendPageState extends State<SendPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: _riskColor(_beneficiaryRisk).withOpacity(0.08),
+        color: _riskColor(_beneficiaryRisk).withValues(alpha: 0.08),
         border: Border.all(color: _riskColor(_beneficiaryRisk)),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         _beneficiaryRiskNote.isEmpty
@@ -200,41 +216,51 @@ class _SendPageState extends State<SendPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Send')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TextField(
-              controller: _beneficiaryPhoneCtrl,
-              decoration: deco('Beneficiary Phone'),
-              onChanged: (_) => _refreshRisk(),
-            ),
-            const SizedBox(height: 8),
-            riskBox(),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _amountCtrl,
-              keyboardType: TextInputType.number,
-              decoration: deco('Amount'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _noteCtrl,
-              decoration: deco('Note'),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _send,
-                child: Text(_loading ? 'Sending...' : 'Send'),
-              ),
-            ),
-          ],
+    return DashboardPage(
+      title: 'Send transfer',
+      maxWidth: 760,
+      children: [
+        const DashboardHero(
+          icon: Icons.send_outlined,
+          title: 'Send money',
+          subtitle:
+              'Create a secure agent transfer and apply commission rules.',
         ),
-      ),
+        const SizedBox(height: 18),
+        DashboardPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _beneficiaryPhoneCtrl,
+                decoration: deco('Beneficiary Phone'),
+                onChanged: (_) => _refreshRisk(),
+              ),
+              const SizedBox(height: 8),
+              riskBox(),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _amountCtrl,
+                keyboardType: TextInputType.number,
+                decoration: deco('Amount'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _noteCtrl,
+                decoration: deco('Note'),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _send,
+                  child: Text(_loading ? 'Sending...' : 'Send transfer'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

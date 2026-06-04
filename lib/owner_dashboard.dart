@@ -19,6 +19,15 @@ import 'pages/wallet_history_page.dart';
 import 'pages/wallet_topup_approval_page.dart';
 import 'widgets/logout_action.dart';
 
+class _OwnerUi {
+  static const ink = Color(0xFF172116);
+  static const muted = Color(0xFF667365);
+  static const surface = Color(0xFFF4F8F1);
+  static const brand = Color(0xFF123D2B);
+  static const border = Color(0xFFDDE8D8);
+  static const soft = Color(0xFFF2F8EE);
+}
+
 class OwnerDashboard extends StatelessWidget {
   const OwnerDashboard({
     super.key,
@@ -167,17 +176,24 @@ class OwnerDashboard extends StatelessWidget {
     final resolvedEnterpriseName = _resolvedEnterpriseName;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F7),
+      backgroundColor: _OwnerUi.surface,
       appBar: AppBar(
-        title: const Text('Owner Dashboard'),
+        backgroundColor: _OwnerUi.surface,
+        elevation: 0,
+        foregroundColor: _OwnerUi.ink,
+        titleSpacing: 24,
+        title: const Text(
+          'VOUPVAPCASH Owner',
+          style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0),
+        ),
         actions: const [LogoutAction()],
       ),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1180),
+            constraints: const BoxConstraints(maxWidth: 1280),
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
               children: [
                 _OwnerHeader(
                   enterpriseId: resolvedEnterpriseId,
@@ -186,11 +202,11 @@ class OwnerDashboard extends StatelessWidget {
                   email: email,
                   userId: userId,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
                 _MetricGrid(enterpriseId: resolvedEnterpriseId),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
                 _SectionHeader(
-                  title: 'Quick Actions',
+                  title: 'Owner command center',
                   action: IconButton(
                     tooltip: 'Open transactions',
                     onPressed: () => _open(
@@ -201,7 +217,7 @@ class OwnerDashboard extends StatelessWidget {
                   ),
                 ),
                 _ActionGrid(actions: _actions(context)),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
                 _RecentTransactionsPanel(
                   enterpriseId: resolvedEnterpriseId,
                   onOpenReceipt: (transactionId) {
@@ -241,87 +257,175 @@ class _OwnerHeader extends StatelessWidget {
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 820;
 
-        final profileCard = _InfoPanel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE7F6E9),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.admin_panel_settings_outlined,
-                      color: Color(0xFF1F7A3A),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          displayName.trim().isEmpty ? 'Owner' : displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    color: const Color(0xFF102A1A),
-                                  ),
-                        ),
-                        Text(
-                          email.trim().isEmpty ? 'owner session' : email,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Color(0xFF647067)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              const _InfoLine(label: 'Role', value: 'owner'),
-              _InfoLine(label: 'Enterprise', value: enterpriseName),
-              _InfoLine(label: 'Enterprise ID', value: enterpriseId),
-              _InfoLine(
-                label: 'User ID',
-                value: userId.trim().isEmpty ? 'UUID pending' : userId,
-              ),
-            ],
+        return Container(
+          padding: EdgeInsets.all(wide ? 28 : 20),
+          decoration: BoxDecoration(
+            color: _OwnerUi.brand,
+            borderRadius: BorderRadius.circular(8),
           ),
-        );
-
-        final balanceCard = _OwnerBalanceSummary(
-          enterpriseId: enterpriseId,
-          enterpriseName: enterpriseName,
-        );
-
-        if (!wide) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              profileCard,
-              const SizedBox(height: 12),
-              balanceCard,
-            ],
-          );
-        }
-
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: profileCard),
-            const SizedBox(width: 12),
-            Expanded(child: balanceCard),
-          ],
+          child: wide
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 6,
+                      child: _OwnerHeroCopy(
+                        enterpriseId: enterpriseId,
+                        enterpriseName: enterpriseName,
+                        displayName: displayName,
+                        email: email,
+                        userId: userId,
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    Expanded(
+                      flex: 4,
+                      child: _OwnerBalanceSummary(
+                        enterpriseId: enterpriseId,
+                        enterpriseName: enterpriseName,
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _OwnerHeroCopy(
+                      enterpriseId: enterpriseId,
+                      enterpriseName: enterpriseName,
+                      displayName: displayName,
+                      email: email,
+                      userId: userId,
+                    ),
+                    const SizedBox(height: 18),
+                    _OwnerBalanceSummary(
+                      enterpriseId: enterpriseId,
+                      enterpriseName: enterpriseName,
+                    ),
+                  ],
+                ),
         );
       },
+    );
+  }
+}
+
+class _OwnerHeroCopy extends StatelessWidget {
+  const _OwnerHeroCopy({
+    required this.enterpriseId,
+    required this.enterpriseName,
+    required this.displayName,
+    required this.email,
+    required this.userId,
+  });
+
+  final String enterpriseId;
+  final String enterpriseName;
+  final String displayName;
+  final String email;
+  final String userId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(
+            Icons.admin_panel_settings_outlined,
+            color: Colors.white,
+            size: 30,
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          enterpriseName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 34,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Owner control center for wallets, people, payouts, and operations.',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.78),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 20),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _HeroChip(
+              icon: Icons.person_outline,
+              text: displayName.trim().isEmpty ? 'Owner' : displayName,
+            ),
+            _HeroChip(
+              icon: Icons.mail_outline,
+              text: email.trim().isEmpty ? 'owner session' : email,
+            ),
+            _HeroChip(icon: Icons.business_outlined, text: enterpriseId),
+            _HeroChip(
+              icon: Icons.badge_outlined,
+              text: userId.trim().isEmpty ? 'UUID pending' : userId,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _HeroChip extends StatelessWidget {
+  const _HeroChip({
+    required this.icon,
+    required this.text,
+  });
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 280),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 16),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -363,7 +467,7 @@ class _OwnerBalanceSummary extends StatelessWidget {
                 children: [
                   const Icon(
                     Icons.account_balance_wallet_outlined,
-                    color: Color(0xFF1F7A3A),
+                    color: _OwnerUi.brand,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -371,6 +475,7 @@ class _OwnerBalanceSummary extends StatelessWidget {
                       'Owner Live Balance',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w800,
+                            color: _OwnerUi.ink,
                           ),
                     ),
                   ),
@@ -383,7 +488,7 @@ class _OwnerBalanceSummary extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.w900,
-                      color: const Color(0xFF102A1A),
+                      color: _OwnerUi.ink,
                     ),
               ),
               const SizedBox(height: 8),
@@ -391,7 +496,7 @@ class _OwnerBalanceSummary extends StatelessWidget {
                 enterpriseName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Color(0xFF647067)),
+                style: const TextStyle(color: _OwnerUi.muted),
               ),
               const SizedBox(height: 14),
               _InfoLine(label: 'Reserved', value: reserved.toStringAsFixed(2)),
@@ -524,7 +629,7 @@ class _CountMetricCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: color.withAlpha(31),
+                  color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: color),
@@ -540,8 +645,8 @@ class _CountMetricCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Color(0xFF647067),
-                        fontWeight: FontWeight.w600,
+                        color: _OwnerUi.muted,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -554,7 +659,7 @@ class _CountMetricCard extends StatelessWidget {
                                 fontWeight: FontWeight.w900,
                                 color: snapshot.hasError
                                     ? const Color(0xFFB91C1C)
-                                    : const Color(0xFF102A1A),
+                                    : _OwnerUi.ink,
                               ),
                     ),
                   ],
@@ -593,7 +698,7 @@ class _ActionGrid extends StatelessWidget {
             crossAxisCount: columns,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            mainAxisExtent: 136,
+            mainAxisExtent: 142,
           ),
           itemBuilder: (context, index) {
             return _ActionCard(action: actions[index]);
@@ -618,19 +723,19 @@ class _ActionCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         onTap: action.onTap,
         child: Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFFE2E8E4)),
+            border: Border.all(color: _OwnerUi.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
-                  color: action.color.withAlpha(31),
+                  color: action.color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(action.icon, color: action.color),
@@ -642,7 +747,7 @@ class _ActionCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF102A1A),
+                  color: _OwnerUi.ink,
                 ),
               ),
               const SizedBox(height: 3),
@@ -651,7 +756,7 @@ class _ActionCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Color(0xFF647067),
+                  color: _OwnerUi.muted,
                   fontSize: 12,
                 ),
               ),
@@ -701,8 +806,8 @@ class _RecentTransactionsPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHeader(title: 'Recent Transactions'),
-          const SizedBox(height: 10),
+          const _SectionHeader(title: 'Recent transactions'),
+          const SizedBox(height: 12),
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: FirebaseFirestore.instance
                 .collection('transactions')
@@ -748,28 +853,12 @@ class _RecentTransactionsPanel extends StatelessWidget {
                     'USD',
                   );
 
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const CircleAvatar(
-                      backgroundColor: Color(0xFFE7F6E9),
-                      foregroundColor: Color(0xFF1F7A3A),
-                      child: Icon(Icons.receipt_long_outlined),
-                    ),
-                    title: Text(
-                      service,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Text(
-                      '$customer | $status | ${_fmtDate(data['createdAt'])}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: Text(
-                      '${amount.toStringAsFixed(2)} $currency',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
+                  return _OwnerTransactionRow(
+                    service: service,
+                    customer: customer,
+                    status: status,
+                    date: _fmtDate(data['createdAt']),
+                    amount: '${amount.toStringAsFixed(2)} $currency',
                     onTap: () => onOpenReceipt(doc.id),
                   );
                 }).toList(),
@@ -800,12 +889,128 @@ class _SectionHeader extends StatelessWidget {
             title,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: const Color(0xFF102A1A),
+                  color: _OwnerUi.ink,
                 ),
           ),
         ),
         if (action != null) action!,
       ],
+    );
+  }
+}
+
+class _OwnerTransactionRow extends StatelessWidget {
+  const _OwnerTransactionRow({
+    required this.service,
+    required this.customer,
+    required this.status,
+    required this.date,
+    required this.amount,
+    required this.onTap,
+  });
+
+  final String service;
+  final String customer;
+  final String status;
+  final String date;
+  final String amount;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = status.trim().toLowerCase();
+    final delivered = normalized == 'delivered' ||
+        normalized == 'livre' ||
+        normalized == 'livrée';
+    final statusColor =
+        delivered ? const Color(0xFF2E7D32) : const Color(0xFFF57F17);
+    final statusFill =
+        delivered ? const Color(0xFFE8F5E9) : const Color(0xFFFFF8E1);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: _OwnerUi.soft,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.receipt_long_outlined,
+                color: _OwnerUi.brand,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        service,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _OwnerUi.ink,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusFill,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          status,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$customer | $date',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _OwnerUi.muted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              amount,
+              style: const TextStyle(
+                color: _OwnerUi.brand,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_right, color: _OwnerUi.muted),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -822,7 +1027,7 @@ class _InfoPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE2E8E4)),
+        border: Border.all(color: _OwnerUi.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x0F111827),
@@ -857,7 +1062,7 @@ class _InfoLine extends StatelessWidget {
             child: Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF647067),
+                color: _OwnerUi.muted,
                 fontWeight: FontWeight.w600,
               ),
             ),

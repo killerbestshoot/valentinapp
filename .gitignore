@@ -36,6 +36,7 @@ migrate_working_dir/
 # Node dependencies
 node_modules/
 **/node_modules/
+server/data/
 
 # Local environment, secrets, and diagnostics
 .env

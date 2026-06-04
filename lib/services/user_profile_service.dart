@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'local_profile_store.dart';
 import 'uuid_v4.dart';
 
 class UserProfile {
@@ -91,9 +92,94 @@ class UserProfileService {
     String defaultRole = 'client',
     String? displayName,
   }) async {
+    try {
+      return await _ensureFirestoreProfileForUser(
+        user: user,
+        defaultRole: defaultRole,
+        displayName: displayName,
+      );
+    } on FirebaseException catch (e) {
+      if (e.code != 'permission-denied') rethrow;
+
+      return _ensureLocalProfileForUser(
+        user: user,
+        defaultRole: defaultRole,
+        displayName: displayName,
+      );
+    }
+  }
+
+  Future<UserProfile> _ensureFirestoreProfileForUser({
+    required User user,
+    required String defaultRole,
+    String? displayName,
+  }) async {
     final ref = userDoc(user.uid);
     final snap = await ref.get();
     final data = snap.data() ?? <String, dynamic>{};
+    final payload = _buildProfilePayload(
+      user: user,
+      data: data,
+      defaultRole: defaultRole,
+      displayName: displayName,
+    );
+
+    final firestorePayload = <String, dynamic>{
+      ...payload,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    if (!snap.exists || data['createdAt'] == null) {
+      firestorePayload['createdAt'] = FieldValue.serverTimestamp();
+    }
+
+    await ref.set(firestorePayload, SetOptions(merge: true));
+
+    final freshSnap = await ref.get();
+    return UserProfile.fromMap(
+      authUid: user.uid,
+      data: freshSnap.data() ?? payload,
+      authUser: user,
+    );
+  }
+
+  Future<UserProfile> _ensureLocalProfileForUser({
+    required User user,
+    required String defaultRole,
+    String? displayName,
+  }) async {
+    final stored = await LocalProfileStore.instance.load(user.uid);
+    final data = stored ?? <String, dynamic>{};
+    final payload = _buildProfilePayload(
+      user: user,
+      data: data,
+      defaultRole: defaultRole,
+      displayName: displayName,
+    );
+    final now = DateTime.now().toIso8601String();
+
+    final localPayload = <String, dynamic>{
+      ...payload,
+      'createdAt': data['createdAt'] ?? now,
+      'updatedAt': now,
+      'source': 'local',
+    };
+
+    await LocalProfileStore.instance.save(user.uid, localPayload);
+
+    return UserProfile.fromMap(
+      authUid: user.uid,
+      data: localPayload,
+      authUser: user,
+    );
+  }
+
+  Map<String, dynamic> _buildProfilePayload({
+    required User user,
+    required Map<String, dynamic> data,
+    required String defaultRole,
+    String? displayName,
+  }) {
     final existingUserId = (data['userId'] ?? '').toString().trim();
     final userId =
         UuidV4.isValid(existingUserId) ? existingUserId : UuidV4.generate();
@@ -104,7 +190,7 @@ class UserProfileService {
         : displayName!.trim();
     final resolvedRole = (data['role'] ?? defaultRole).toString().trim();
 
-    final payload = <String, dynamic>{
+    return <String, dynamic>{
       'uid': user.uid,
       'authUid': user.uid,
       'userId': userId,
@@ -113,20 +199,6 @@ class UserProfileService {
       'role': resolvedRole.isEmpty ? defaultRole : resolvedRole,
       'isActive': data['isActive'] is bool ? data['isActive'] : true,
       'active': data['active'] is bool ? data['active'] : true,
-      'updatedAt': FieldValue.serverTimestamp(),
     };
-
-    if (!snap.exists || data['createdAt'] == null) {
-      payload['createdAt'] = FieldValue.serverTimestamp();
-    }
-
-    await ref.set(payload, SetOptions(merge: true));
-
-    final freshSnap = await ref.get();
-    return UserProfile.fromMap(
-      authUid: user.uid,
-      data: freshSnap.data() ?? payload,
-      authUser: user,
-    );
   }
 }

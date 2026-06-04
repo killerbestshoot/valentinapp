@@ -25,6 +25,7 @@ class _RunPlatformSetupPageState extends State<RunPlatformSetupPage> {
   static const String ownerEmail = 'owner@test.com';
   static const String adminEmail = 'admin@test.com';
   static const String agentEmail = 'agent@test.com';
+  static const String testPassword = '123456';
 
   Future<void> _runSetup() async {
     if (_busy) return;
@@ -91,7 +92,10 @@ class _RunPlatformSetupPageState extends State<RunPlatformSetupPage> {
           'createdAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
-        await fs.collection('enterprise_users').doc('${enterpriseId}_$uid').set({
+        await fs
+            .collection('enterprise_users')
+            .doc('${enterpriseId}_$uid')
+            .set({
           'enterpriseUserId': '${enterpriseId}_$uid',
           'enterpriseId': enterpriseId,
           'uid': uid,
@@ -258,6 +262,8 @@ class _RunPlatformSetupPageState extends State<RunPlatformSetupPage> {
                   children: [
                     _row('Enterprise', '$enterpriseName ($enterpriseId)'),
                     _row('Owner UID', ownerUid),
+                    _row('Owner email', ownerEmail),
+                    _row('Owner test password', testPassword),
                     _row('Admin UID', adminUid),
                     _row('Agent UID', agentUid),
                     _row('Owner role', 'owner'),

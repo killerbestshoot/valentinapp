@@ -2,6 +2,10 @@ const nodemailer = require("nodemailer");
 require("dotenv").config();
 
 function createTransporter() {
+  if (process.env.NODE_ENV !== "production" && process.env.OTP_EMAIL_MODE !== "smtp") {
+    return null;
+  }
+
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
     throw new Error("SMTP_USER/SMTP_PASS manke nan .env");
   }
@@ -17,6 +21,10 @@ function createTransporter() {
 
 async function sendOtpEmail(toEmail, otp) {
   const transporter = createTransporter();
+  if (!transporter) {
+    console.log(`Dev OTP for ${toEmail}: ${otp}`);
+    return;
+  }
 
   const subject = "VOUPVAPCASH - Kòd OTP ou";
   const text = `Men kòd OTP ou: ${otp}\nLi valab pou 5 minit.`;

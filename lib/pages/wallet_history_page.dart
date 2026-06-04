@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/dashboard_ui.dart';
+
 class WalletHistoryPage extends StatelessWidget {
   const WalletHistoryPage({super.key});
 
@@ -22,81 +24,121 @@ class WalletHistoryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Wallet History')),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('wallet_history')
-            .where('enterpriseId', isEqualTo: enterpriseId)
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text('Erreur Firestore: ${snapshot.error}'),
-              ),
-            );
-          }
+    return DashboardPage(
+      title: 'Wallet History',
+      children: [
+        const DashboardHero(
+          icon: Icons.history_outlined,
+          title: 'Wallet history',
+          subtitle: 'Track topups, transfers, and balance movement.',
+        ),
+        const SizedBox(height: 18),
+        DashboardPanel(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('wallet_history')
+                .where('enterpriseId', isEqualTo: enterpriseId)
+                .orderBy('createdAt', descending: true)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Text('Erreur Firestore: ${snapshot.error}');
+              }
 
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          final docs = snapshot.data!.docs;
+              final docs = snapshot.data!.docs;
 
-          if (docs.isEmpty) {
-            return const Center(
-              child: Text('Pa gen history pou kounye a'),
-            );
-          }
+              if (docs.isEmpty) {
+                return const Text('Pa gen history pou kounye a');
+              }
 
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: docs.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              final data = docs[index].data();
-              final type = (data['type'] ?? '').toString();
-              final targetName = (data['targetName'] ?? '').toString();
-              final targetRole = (data['targetRole'] ?? '').toString();
-              final amount = _asDouble(data['amount']);
-              final before = _asDouble(data['balanceBefore']);
-              final after = _asDouble(data['balanceAfter']);
-              final requestedByName = (data['requestedByName'] ?? '').toString();
-              final requestedByRole = (data['requestedByRole'] ?? '').toString();
-              final date = _fmtTs(data['createdAt']);
+              return Column(
+                children: docs.map((doc) {
+                  final data = doc.data();
+                  final type = (data['type'] ?? '').toString();
+                  final targetName = (data['targetName'] ?? '').toString();
+                  final targetRole = (data['targetRole'] ?? '').toString();
+                  final amount = _asDouble(data['amount']);
+                  final before = _asDouble(data['balanceBefore']);
+                  final after = _asDouble(data['balanceAfter']);
+                  final requestedByName =
+                      (data['requestedByName'] ?? '').toString();
+                  final requestedByRole =
+                      (data['requestedByRole'] ?? '').toString();
+                  final date = _fmtTs(data['createdAt']);
 
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '$type - $targetName',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: DashboardColors.soft,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.account_balance_wallet_outlined,
+                            color: DashboardColors.brand,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text('Role: $targetRole'),
-                      Text('Amount: ${amount.toStringAsFixed(2)} USD'),
-                      Text('Before: ${before.toStringAsFixed(2)} USD'),
-                      Text('After: ${after.toStringAsFixed(2)} USD'),
-                      Text('Requested by: $requestedByName'),
-                      Text('Requested by role: $requestedByRole'),
-                      Text('Date: $date'),
-                    ],
-                  ),
-                ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '$type - $targetName',
+                                style: const TextStyle(
+                                  color: DashboardColors.ink,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '$targetRole | Requested by $requestedByName ($requestedByRole)',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: DashboardColors.muted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Before ${before.toStringAsFixed(2)} USD -> After ${after.toStringAsFixed(2)} USD | $date',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: DashboardColors.muted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          '${amount.toStringAsFixed(2)} USD',
+                          style: const TextStyle(
+                            color: DashboardColors.brand,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
               );
             },
-          );
-        },
-      ),
+          ),
+        ),
+      ],
     );
   }
 }

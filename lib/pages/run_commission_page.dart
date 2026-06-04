@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+
 import '../services/commission_service.dart';
+import '../widgets/dashboard_ui.dart';
 
 class RunCommissionPage extends StatefulWidget {
   const RunCommissionPage({super.key});
@@ -38,54 +40,50 @@ class _RunCommissionPageState extends State<RunCommissionPage> {
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    return Scaffold(
-      appBar: AppBar(title: const Text('Run Commission')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('SESSION UID: $uid'),
+
+    return DashboardPage(
+      title: 'Run Commission',
+      children: [
+        const DashboardHero(
+          icon: Icons.percent_outlined,
+          title: 'Run Commission',
+          subtitle: 'Apply commission automation to a selected transaction.',
+        ),
+        const SizedBox(height: 18),
+        DashboardPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('SESSION UID: $uid'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _txCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Transaction Firestore doc id',
+                  border: OutlineInputBorder(),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _txCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Transaction Firestore doc id',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
+              const SizedBox(height: 12),
+              FilledButton.icon(
                 onPressed: _apply,
-                child: const Text('Apply Commission Now'),
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Apply Commission Now'),
               ),
-            ),
-            const SizedBox(height: 12),
-            if (_msg.isNotEmpty)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(_msg),
-              ),
-            const SizedBox(height: 12),
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Recent Transactions',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              if (_msg.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(_msg),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        DashboardPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const DashboardSectionTitle(title: 'Recent Transactions'),
+              const SizedBox(height: 12),
+              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: FirebaseFirestore.instance
                     .collection('transactions')
                     .orderBy('createdAt', descending: true)
@@ -95,40 +93,37 @@ class _RunCommissionPageState extends State<RunCommissionPage> {
                   if (!snap.hasData) {
                     return const Center(child: CircularProgressIndicator());
                   }
+
                   final docs = snap.data!.docs;
-                  return ListView.builder(
-                    itemCount: docs.length,
-                    itemBuilder: (context, i) {
-                      final d = docs[i];
+                  return Column(
+                    children: docs.map((d) {
                       final m = d.data();
-                      return Card(
-                        child: ListTile(
-                          title: Text((m['txId'] ?? d.id).toString()),
-                          subtitle: Text(
-                            'service: ${(m['serviceName'] ?? '')} | '
-                            'role: ${(m['staffRole'] ?? '')} | '
-                            'amount: ${(m['paymentAmount'] ?? '')} | '
-                            'applied: ${(m['commissionApplied'] ?? false)}'
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.copy),
-                            onPressed: () {
-                              _txCtrl.text = d.id;
-                              setState(() {
-                                _msg = 'Doc id chwazi: ${d.id}';
-                              });
-                            },
-                          ),
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.receipt_long_outlined),
+                        title: Text((m['txId'] ?? d.id).toString()),
+                        subtitle: Text(
+                          'service: ${(m['serviceName'] ?? '')} | '
+                          'role: ${(m['staffRole'] ?? '')} | '
+                          'amount: ${(m['paymentAmount'] ?? '')} | '
+                          'applied: ${(m['commissionApplied'] ?? false)}',
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.copy),
+                          onPressed: () {
+                            _txCtrl.text = d.id;
+                            setState(() => _msg = 'Doc id chwazi: ${d.id}');
+                          },
                         ),
                       );
-                    },
+                    }).toList(),
                   );
                 },
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

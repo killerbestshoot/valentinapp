@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/dashboard_ui.dart';
 import 'transaction_details_page.dart';
 
 class TransactionManagementPage extends StatelessWidget {
@@ -125,171 +126,180 @@ class TransactionManagementPage extends StatelessWidget {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
-      appBar: AppBar(
-        title: const Text(
-          'Transaction Management',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-      ),
-      body: FutureBuilder<String>(
-        future: _enterpriseId(),
-        builder: (context, enterpriseSnap) {
-          if (enterpriseSnap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+  Widget _txCard(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> d,
+  ) {
+    final m = d.data();
+    final tx = <String, dynamic>{
+      'txId': d.id,
+      ...m,
+    };
 
-          if (enterpriseSnap.hasError || !enterpriseSnap.hasData) {
-            return Center(
-              child: Text('Erreur enterprise: ${enterpriseSnap.error}'),
-            );
-          }
+    final serviceName = _text(m['serviceName'], 'Service');
+    final customerPhone = _text(m['customerPhone']);
+    final amount = _money(m['paymentAmount']);
+    final currency = _text(m['paymentCurrency'], 'USD');
+    final status = _text(m['status'], 'unknown');
+    final createdAt = _date(m['createdAt']);
 
-          final enterpriseId = enterpriseSnap.data!;
-
-          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection('transactions')
-                .where('enterpriseId', isEqualTo: enterpriseId)
-                .snapshots(),
-            builder: (context, txSnap) {
-              if (txSnap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              final docs = [...(txSnap.data?.docs ?? [])];
-              docs.sort((a, b) {
-                final da = _toDate(a.data()['createdAt']);
-                final db = _toDate(b.data()['createdAt']);
-                return db.compareTo(da);
-              });
-
-              if (docs.isEmpty) {
-                return const Center(
-                  child: Text('Pa gen tranzaksyon pou jere kounye a.'),
-                );
-              }
-
-              return ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: docs.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final d = docs[index];
-                  final m = d.data();
-                  final tx = <String, dynamic>{
-                    'txId': d.id,
-                    ...m,
-                  };
-
-                  final serviceName = _text(m['serviceName'], 'Service');
-                  final customerPhone = _text(m['customerPhone']);
-                  final amount = _money(m['paymentAmount']);
-                  final currency = _text(m['paymentCurrency'], 'USD');
-                  final status = _text(m['status'], 'unknown');
-                  final createdAt = _date(m['createdAt']);
-
-                  return Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFE5E7EB)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const CircleAvatar(
-                              backgroundColor: Color(0xFFF3F4F6),
-                              child: Icon(
-                                Icons.receipt_long_outlined,
-                                color: Color(0xFF111827),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                serviceName,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFF111827),
-                                ),
-                              ),
-                            ),
-                            Text(
-                              '$amount $currency',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Text('Tel: $customerPhone'),
-                        const SizedBox(height: 4),
-                        Text('Status: $status'),
-                        const SizedBox(height: 4),
-                        Text('Dat: $createdAt'),
-                        const SizedBox(height: 14),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            OutlinedButton(
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        TransactionDetailsPage(tx: tx),
-                                  ),
-                                );
-                              },
-                              child: const Text('Detay'),
-                            ),
-                            OutlinedButton(
-                              onPressed: () => _updateStatus(
-                                context: context,
-                                docId: d.id,
-                                status: 'delivered',
-                              ),
-                              child: const Text('Delivered'),
-                            ),
-                            OutlinedButton(
-                              onPressed: () => _updateStatus(
-                                context: context,
-                                docId: d.id,
-                                status: 'pending',
-                              ),
-                              child: const Text('Pending'),
-                            ),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.redAccent,
-                                foregroundColor: Colors.white,
-                              ),
-                              onPressed: () => _deleteTx(
-                                context: context,
-                                docId: d.id,
-                              ),
-                              child: const Text('Efase'),
-                            ),
-                          ],
-                        ),
-                      ],
+    return DashboardPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: DashboardColors.soft,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.receipt_long_outlined,
+                  color: DashboardColors.brand,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  serviceName,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: DashboardColors.ink,
+                  ),
+                ),
+              ),
+              Text(
+                '$amount $currency',
+                style: const TextStyle(
+                  color: DashboardColors.ink,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          DashboardInfoRow(label: 'Phone', value: customerPhone),
+          DashboardInfoRow(label: 'Status', value: status),
+          DashboardInfoRow(label: 'Date', value: createdAt),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => TransactionDetailsPage(tx: tx),
                     ),
                   );
                 },
-              );
-            },
-          );
-        },
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Detay'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _updateStatus(
+                  context: context,
+                  docId: d.id,
+                  status: 'delivered',
+                ),
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('Delivered'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _updateStatus(
+                  context: context,
+                  docId: d.id,
+                  status: 'pending',
+                ),
+                icon: const Icon(Icons.pending_actions),
+                label: const Text('Pending'),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFB91C1C),
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => _deleteTx(
+                  context: context,
+                  docId: d.id,
+                ),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Efase'),
+              ),
+            ],
+          ),
+        ],
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DashboardPage(
+      title: 'Transaction management',
+      children: [
+        const DashboardHero(
+          icon: Icons.manage_search_outlined,
+          title: 'Transaction management',
+          subtitle: 'Review, update, and remove enterprise transactions.',
+        ),
+        const SizedBox(height: 18),
+        FutureBuilder<String>(
+          future: _enterpriseId(),
+          builder: (context, enterpriseSnap) {
+            if (enterpriseSnap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (enterpriseSnap.hasError || !enterpriseSnap.hasData) {
+              return Center(
+                child: Text('Erreur enterprise: ${enterpriseSnap.error}'),
+              );
+            }
+
+            final enterpriseId = enterpriseSnap.data!;
+
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection('transactions')
+                  .where('enterpriseId', isEqualTo: enterpriseId)
+                  .snapshots(),
+              builder: (context, txSnap) {
+                if (txSnap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final docs = [...(txSnap.data?.docs ?? [])];
+                docs.sort((a, b) {
+                  final da = _toDate(a.data()['createdAt']);
+                  final db = _toDate(b.data()['createdAt']);
+                  return db.compareTo(da);
+                });
+
+                if (docs.isEmpty) {
+                  return const DashboardPanel(
+                    child: Text('Pa gen tranzaksyon pou jere kounye a.'),
+                  );
+                }
+
+                return Column(
+                  children: [
+                    for (final d in docs) ...[
+                      _txCard(context, d),
+                      const SizedBox(height: 12),
+                    ],
+                  ],
+                );
+              },
+            );
+          },
+        ),
+      ],
     );
   }
 }

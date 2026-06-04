@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/dashboard_ui.dart';
+
 class PayoutPage extends StatefulWidget {
   const PayoutPage({super.key});
 
@@ -48,9 +50,8 @@ class _PayoutPageState extends State<PayoutPage> {
     final data = selectedUser.data();
     final uid = (data['uid'] ?? selectedUser.id).toString();
     final role = (data['role'] ?? 'agent').toString();
-    final balance = (data['balance'] is num)
-        ? (data['balance'] as num).toDouble()
-        : 0.0;
+    final balance =
+        (data['balance'] is num) ? (data['balance'] as num).toDouble() : 0.0;
 
     if (amount > balance) {
       setState(() => statusText = 'Balance ensifizan');
@@ -63,9 +64,8 @@ class _PayoutPageState extends State<PayoutPage> {
     });
 
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('payout_requests')
-          .add({
+      final doc =
+          await FirebaseFirestore.instance.collection('payout_requests').add({
         'enterpriseId': enterpriseId,
         'uid': uid,
         'targetUid': uid,
@@ -111,93 +111,97 @@ class _PayoutPageState extends State<PayoutPage> {
         .where('enterpriseId', isEqualTo: enterpriseId)
         .snapshots();
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Payout')),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: usersStream,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text('Erreur Firestore: ${snapshot.error}'),
-              ),
-            );
-          }
+    return DashboardPage(
+      title: 'Payout',
+      children: [
+        const DashboardHero(
+          icon: Icons.payments_outlined,
+          title: 'Payout',
+          subtitle: 'Create payout requests from available wallet balances.',
+        ),
+        const SizedBox(height: 18),
+        DashboardPanel(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: usersStream,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Text('Erreur Firestore: ${snapshot.error}');
+              }
 
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          final users = snapshot.data!.docs;
-          if (users.isEmpty) {
-            return const Center(child: Text('Pa gen balance docs'));
-          }
+              final users = snapshot.data!.docs;
+              if (users.isEmpty) {
+                return const Center(child: Text('Pa gen balance docs'));
+              }
 
-          selectedUserId ??= users.first.id;
+              selectedUserId ??= users.first.id;
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: selectedUserId,
-                decoration: const InputDecoration(
-                  labelText: 'Chwazi user',
-                  border: OutlineInputBorder(),
-                ),
-                items: users.map((u) {
-                  final data = u.data();
-                  final uid = (data['uid'] ?? u.id).toString();
-                  final role = (data['role'] ?? 'agent').toString();
-                  final balance = (data['balance'] is num)
-                      ? (data['balance'] as num).toDouble()
-                      : 0.0;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedUserId,
+                    decoration: const InputDecoration(
+                      labelText: 'Chwazi user',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: users.map((u) {
+                      final data = u.data();
+                      final uid = (data['uid'] ?? u.id).toString();
+                      final role = (data['role'] ?? 'agent').toString();
+                      final balance = (data['balance'] is num)
+                          ? (data['balance'] as num).toDouble()
+                          : 0.0;
 
-                  return DropdownMenuItem<String>(
-                    value: u.id,
-                    child: Text('$uid ($role) - ${balance.toStringAsFixed(2)} USD'),
-                  );
-                }).toList(),
-                onChanged: saving
-                    ? null
-                    : (value) {
-                        setState(() {
-                          selectedUserId = value;
-                        });
-                      },
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: amountCtrl,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: 'Amount',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: saving ? null : () => submitRequest(users),
-                  child: Text(saving ? 'Sending...' : 'Send Payout Request'),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.blueGrey.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.black12),
-                ),
-                child: Text(statusText),
-              ),
-            ],
-          );
-        },
-      ),
+                      return DropdownMenuItem<String>(
+                        value: u.id,
+                        child: Text(
+                            '$uid ($role) - ${balance.toStringAsFixed(2)} USD'),
+                      );
+                    }).toList(),
+                    onChanged: saving
+                        ? null
+                        : (value) {
+                            setState(() {
+                              selectedUserId = value;
+                            });
+                          },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: amountCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Amount',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: saving ? null : () => submitRequest(users),
+                    icon: const Icon(Icons.send_outlined),
+                    label: Text(saving ? 'Sending...' : 'Send Payout Request'),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: DashboardColors.soft,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: DashboardColors.border),
+                    ),
+                    child: Text(statusText),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

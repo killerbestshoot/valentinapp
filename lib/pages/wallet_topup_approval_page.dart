@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/dashboard_ui.dart';
+
 class WalletTopupApprovalPage extends StatefulWidget {
   const WalletTopupApprovalPage({super.key});
 
@@ -59,12 +61,9 @@ class _WalletTopupApprovalPageState extends State<WalletTopupApprovalPage> {
             (reqData['targetRole'] ?? 'agent').toString().toLowerCase();
         final liveTargetName =
             (reqData['targetName'] ?? liveTargetUid).toString();
-        final requestedBy =
-            (reqData['requestedBy'] ?? '').toString();
-        final requestedByName =
-            (reqData['requestedByName'] ?? '').toString();
-        final requestedByRole =
-            (reqData['requestedByRole'] ?? '').toString();
+        final requestedBy = (reqData['requestedBy'] ?? '').toString();
+        final requestedByName = (reqData['requestedByName'] ?? '').toString();
+        final requestedByRole = (reqData['requestedByRole'] ?? '').toString();
 
         if (liveAmount <= 0) {
           throw Exception('Amount pa valab');
@@ -81,7 +80,8 @@ class _WalletTopupApprovalPageState extends State<WalletTopupApprovalPage> {
         final balRef = db.collection('balances').doc(liveBalanceDocId);
         final balSnap = await tx.get(balRef);
 
-        final before = balSnap.exists ? _asDouble(balSnap.data()?['balance']) : 0;
+        final before =
+            balSnap.exists ? _asDouble(balSnap.data()?['balance']) : 0;
         final after = before + liveAmount;
 
         tx.set(
@@ -189,6 +189,63 @@ class _WalletTopupApprovalPageState extends State<WalletTopupApprovalPage> {
     }
   }
 
+  Widget _requestCard(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? {};
+    final loading = _loadingIds.contains(doc.id);
+
+    final amount = _asDouble(data['amount']);
+    final currency = (data['currency'] ?? 'USD').toString();
+    final targetName =
+        (data['targetName'] ?? data['targetUid'] ?? data['uid'] ?? '')
+            .toString();
+    final targetRole = (data['targetRole'] ?? '').toString();
+    final requestedByName = (data['requestedByName'] ?? '').toString();
+    final requestedByRole = (data['requestedByRole'] ?? '').toString();
+    final createdAt = _fmt(data['createdAt']);
+
+    return DashboardPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$targetName - ${amount.toStringAsFixed(2)} $currency',
+            style: const TextStyle(
+              color: DashboardColors.ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 12),
+          DashboardInfoRow(label: 'Role', value: targetRole),
+          DashboardInfoRow(label: 'Requested by', value: requestedByName),
+          DashboardInfoRow(label: 'By role', value: requestedByRole),
+          DashboardInfoRow(label: 'Date', value: createdAt),
+          DashboardInfoRow(label: 'Request ID', value: doc.id),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: loading ? null : () => _approve(doc),
+                  icon: const Icon(Icons.check),
+                  label: Text(loading ? 'Loading...' : 'Approve'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: loading ? null : () => _reject(doc),
+                  icon: const Icon(Icons.close),
+                  label: const Text('Reject'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final stream = FirebaseFirestore.instance
@@ -198,100 +255,47 @@ class _WalletTopupApprovalPageState extends State<WalletTopupApprovalPage> {
         .orderBy('createdAt', descending: true)
         .snapshots();
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Wallet Topup Approval')),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: stream,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
+    return DashboardPage(
+      title: 'Topup approval',
+      children: [
+        const DashboardHero(
+          icon: Icons.fact_check_outlined,
+          title: 'Wallet topup approval',
+          subtitle: 'Review pending balance requests before funds move.',
+        ),
+        const SizedBox(height: 18),
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: stream,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return DashboardPanel(
                 child: Text('Erreur Firestore: ${snapshot.error}'),
-              ),
-            );
-          }
-
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final docs = snapshot.data!.docs;
-
-          if (docs.isEmpty) {
-            return const Center(
-              child: Text('Pa gen topup request pending'),
-            );
-          }
-
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: docs.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              final doc = docs[index];
-              final data = doc.data();
-              final loading = _loadingIds.contains(doc.id);
-
-              final amount = _asDouble(data['amount']);
-              final currency = (data['currency'] ?? 'USD').toString();
-              final targetName =
-                  (data['targetName'] ?? data['targetUid'] ?? data['uid'] ?? '')
-                      .toString();
-              final targetRole = (data['targetRole'] ?? '').toString();
-              final requestedByName =
-                  (data['requestedByName'] ?? '').toString();
-              final requestedByRole =
-                  (data['requestedByRole'] ?? '').toString();
-              final createdAt = _fmt(data['createdAt']);
-
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '$targetName - ${amount.toStringAsFixed(2)} $currency',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text('Role: $targetRole'),
-                      Text('Requested by: $requestedByName'),
-                      Text('Requested by role: $requestedByRole'),
-                      Text('Date: $createdAt'),
-                      Text('Request ID: ${doc.id}'),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: loading ? null : () => _approve(doc),
-                              icon: const Icon(Icons.check),
-                              label: Text(loading ? 'Loading...' : 'Approve'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: loading ? null : () => _reject(doc),
-                              icon: const Icon(Icons.close),
-                              label: const Text('Reject'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
               );
-            },
-          );
-        },
-      ),
+            }
+
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final docs = snapshot.data!.docs;
+
+            if (docs.isEmpty) {
+              return const DashboardPanel(
+                child: Text('Pa gen topup request pending'),
+              );
+            }
+
+            return Column(
+              children: [
+                for (final doc in docs) ...[
+                  _requestCard(doc),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 }
