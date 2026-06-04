@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mon_premye_app/features/auth/presentation/pages/welcome_screen.dart';
 import 'package:mon_premye_app/features/auth/presentation/pages/login_screen.dart';
 import 'package:mon_premye_app/features/auth/presentation/pages/register_screen.dart';
-import 'package:mon_premye_app/features/home/presentation/pages/dashboard_screen.dart';
+import 'package:mon_premye_app/features/dashboard/presentation/pages/dashboard_screen.dart';
 import 'package:mon_premye_app/features/services/presentation/pages/countries_screen.dart';
 import 'package:mon_premye_app/features/transactions/presentation/pages/new_transaction_screen.dart';
 import 'package:mon_premye_app/features/transactions/presentation/pages/transactions_list_screen.dart';

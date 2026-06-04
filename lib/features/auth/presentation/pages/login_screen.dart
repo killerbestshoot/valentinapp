@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../domain/login_use_case.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,6 +13,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _pass = TextEditingController();
+  final LoginUseCase _loginUseCase = LoginUseCase();
   bool _loading = false;
 
   @override
@@ -36,17 +38,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _loading = true);
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: pass,
-      );
-
+      await _loginUseCase.execute(email: email, password: pass);
       if (!mounted) return;
       context.go('/dashboard');
-    } on FirebaseAuthException catch (e) {
-      _toast(_niceAuthError(e));
-    } catch (_) {
-      _toast('Gen yon er. Eseye ank.');
+    } catch (error) {
+      _toast(error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
