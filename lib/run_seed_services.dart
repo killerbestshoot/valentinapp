@@ -1,1 +1,1 @@
-export 'pages/run_seed_services.dart';
+export 'scripts/run_seed_services.dart';
