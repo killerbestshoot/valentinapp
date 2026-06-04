@@ -1,1 +1,1 @@
-export 'pages/create_transaction_page.dart';
+export 'features/transactions/presentation/pages/create_transaction_page.dart';
