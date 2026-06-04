@@ -1,30 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/get_transactions_use_case.dart';
+import '../../models/transaction_model.dart';
+
 class MyTransactionsPage extends StatelessWidget {
   const MyTransactionsPage({super.key});
 
+  static const _emptyState = Center(
+    child: Text(
+      'Pa gen tranzaksyon pou kounye a.',
+      style: TextStyle(fontSize: 16),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
-    final transactions = <Map<String, String>>[
-      {
-        'title': 'TX001',
-        'by': 'staffexcelsior3@gmail.com',
-        'amount': '500',
-        'status': 'success',
-      },
-      {
-        'title': 'TX002',
-        'by': 'kervensulysse106@gmail.com',
-        'amount': '700',
-        'status': 'pending',
-      },
-      {
-        'title': 'TX003',
-        'by': 'client@voupvapcash.com',
-        'amount': '300',
-        'status': 'submitted',
-      },
-    ];
+    final useCase = GetTransactionsUseCase();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3F5FB),
@@ -34,27 +25,44 @@ class MyTransactionsPage extends StatelessWidget {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: transactions.isEmpty
-          ? const Center(
-              child: Text(
-                'Pa gen tranzaksyon pou kounye a.',
-                style: TextStyle(fontSize: 16),
+      body: StreamBuilder<List<TransactionModel>>(
+        stream: useCase.execute(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('Echèk chaje tranzaksyon yo: ${snapshot.error}'),
               ),
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: transactions.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final tx = transactions[index];
-                return _TransactionCard(
-                  txId: tx['title'] ?? '',
-                  by: tx['by'] ?? '',
-                  amount: tx['amount'] ?? '0',
-                  status: tx['status'] ?? 'unknown',
-                );
-              },
-            ),
+            );
+          }
+
+          final transactions = snapshot.data ?? [];
+          if (transactions.isEmpty) {
+            return _emptyState;
+          }
+
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: transactions.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final tx = transactions[index];
+              return _TransactionCard(
+                txId: tx.id,
+                by: tx.clientName,
+                amount: tx.amount.toStringAsFixed(2),
+                status: tx.status,
+                service: tx.service,
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
@@ -64,12 +72,14 @@ class _TransactionCard extends StatelessWidget {
   final String by;
   final String amount;
   final String status;
+  final String service;
 
   const _TransactionCard({
     required this.txId,
     required this.by,
     required this.amount,
     required this.status,
+    this.service = '',
   });
 
   Color _statusColor(String value) {
@@ -139,6 +149,12 @@ class _TransactionCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
+                if (service.isNotEmpty)
+                  Text(
+                    'Service: $service',
+                    style: const TextStyle(fontSize: 14, color: Colors.black87),
+                  ),
+                if (service.isNotEmpty) const SizedBox(height: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
