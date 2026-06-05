@@ -124,4 +124,3 @@ class ClientPortalPage extends StatelessWidget {
     );
   }
 }
-

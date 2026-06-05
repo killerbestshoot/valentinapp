@@ -42,14 +42,15 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       context.go('/dashboard');
     } catch (error) {
-      _toast(error.toString());
+      _toast(_niceAuthError(error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  String _niceAuthError(FirebaseAuthException e) {
-    switch (e.code) {
+  String _niceAuthError(Object error) {
+    final code = _firebaseErrorCode(error);
+    switch (code) {
       case 'user-not-found':
         return 'Email sa pa egziste.';
       case 'wrong-password':
@@ -61,8 +62,14 @@ class _LoginScreenState extends State<LoginScreen> {
       case 'network-request-failed':
         return 'Pa gen entnt / rezo a gen pwoblm.';
       default:
-        return e.message ?? 'Login echwe.';
+        return error.toString().replaceFirst('Bad state: ', '');
     }
+  }
+
+  String? _firebaseErrorCode(Object error) {
+    final text = error.toString();
+    final match = RegExp(r'firebase_auth/([a-z0-9-]+)').firstMatch(text);
+    return match?.group(1);
   }
 
   void _toast(String msg) {
@@ -129,4 +136,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-

@@ -29,4 +29,3 @@ class AdminSeedScreen extends StatelessWidget {
     );
   }
 }
-

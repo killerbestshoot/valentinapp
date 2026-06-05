@@ -25,15 +25,15 @@ class TransactionModel {
       DocumentSnapshot<Map<String, dynamic>> snapshot) {
     final data = snapshot.data() ?? <String, dynamic>{};
     final createdAtValue = data['createdAt'];
-    final createdAt = createdAtValue is Timestamp
-        ? createdAtValue.toDate()
-        : DateTime.now();
+    final createdAt =
+        createdAtValue is Timestamp ? createdAtValue.toDate() : DateTime.now();
 
     return TransactionModel(
       id: snapshot.id,
       clientName: (data['clientName'] ?? '').toString(),
       phone: (data['phone'] ?? '').toString(),
-      amount: (data['amount'] is num ? (data['amount'] as num).toDouble() : 0.0),
+      amount:
+          (data['amount'] is num ? (data['amount'] as num).toDouble() : 0.0),
       country: (data['country'] ?? '').toString(),
       service: (data['service'] ?? '').toString(),
       status: (data['status'] ?? '').toString(),

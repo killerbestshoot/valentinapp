@@ -6,7 +6,8 @@ import '../models/service_model.dart';
 
 class FirestoreServiceRepository implements ServiceRepository {
   FirestoreServiceRepository._();
-  static final FirestoreServiceRepository instance = FirestoreServiceRepository._();
+  static final FirestoreServiceRepository instance =
+      FirestoreServiceRepository._();
 
   final FirebaseFirestore _firestore = FirebasePersistence.instance.firestore;
 
@@ -29,7 +30,7 @@ class FirestoreServiceRepository implements ServiceRepository {
     }
   }
 
-  static const List<ServiceModel> _fallbackServices = [
+  static final List<ServiceModel> _fallbackServices = [
     ServiceModel(
       id: 'moncash_ht',
       name: 'MonCash',

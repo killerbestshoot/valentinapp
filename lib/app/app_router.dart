@@ -1,15 +1,18 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:mon_premye_app/features/auth/presentation/pages/welcome_screen.dart';
-import 'package:mon_premye_app/features/auth/presentation/pages/login_screen.dart';
-import 'package:mon_premye_app/features/auth/presentation/pages/register_screen.dart';
-import 'package:mon_premye_app/features/dashboard/presentation/pages/dashboard_screen.dart';
+import 'package:mon_premye_app/core/models/app_role.dart';
+import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
+import 'package:mon_premye_app/features/auth/domain/auth_repository.dart';
+import 'package:mon_premye_app/features/owner/legacy/owner_dashboard.dart';
 import 'package:mon_premye_app/features/services/presentation/pages/countries_screen.dart';
 import 'package:mon_premye_app/features/transactions/presentation/pages/new_transaction_screen.dart';
 import 'package:mon_premye_app/features/transactions/presentation/pages/transactions_list_screen.dart';
+import 'package:mon_premye_app/pages/dashboard/agent_dashboard.dart';
+import 'package:mon_premye_app/pages/dashboard/home_page.dart';
+import 'package:mon_premye_app/pages/auth/login_page.dart';
 
 class GoRouterRefreshStream extends ChangeNotifier {
   GoRouterRefreshStream(Stream<dynamic> stream) {
@@ -24,14 +27,36 @@ class GoRouterRefreshStream extends ChangeNotifier {
   }
 }
 
-GoRouter buildRouter() {
-  final auth = FirebaseAuth.instance;
+GoRouter buildRouter({
+  AuthRepository? authRepository,
+  Widget? adminDashboard,
+  Widget? ownerDashboard,
+  Widget? agentDashboard,
+}) {
+  final auth = authRepository ?? AuthRepositoryProvider.instance;
 
   bool isProtected(String loc) {
     return loc == '/dashboard' ||
+        loc == '/owner' ||
+        loc == '/admin' ||
         loc == '/countries' ||
         loc == '/tx/new' ||
         loc == '/tx/list';
+  }
+
+  String homeForCurrentUser() {
+    final user = auth.currentUser;
+    switch (user?.role) {
+      case null:
+        return '/';
+      case AppRole.owner:
+        return '/owner';
+      case AppRole.admin:
+        return '/admin';
+      case AppRole.agent:
+      case AppRole.client:
+        return '/dashboard';
+    }
   }
 
   return GoRouter(
@@ -43,19 +68,34 @@ GoRouter buildRouter() {
 
       if (!loggedIn && isProtected(loc)) return '/';
       if (loggedIn && (loc == '/' || loc == '/login' || loc == '/register')) {
-        return '/dashboard';
+        return homeForCurrentUser();
       }
       return null;
     },
     routes: [
-      GoRoute(path: '/', builder: (context, state) => const WelcomeScreen()),
-      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+      GoRoute(
+          path: '/',
+          builder: (context, state) =>
+              LoginPage(authRepository: authRepository)),
+      GoRoute(
+          path: '/login',
+          builder: (context, state) =>
+              LoginPage(authRepository: authRepository)),
       GoRoute(
           path: '/register',
-          builder: (context, state) => const RegisterScreen()),
+          builder: (context, state) =>
+              LoginPage(authRepository: authRepository)),
       GoRoute(
           path: '/dashboard',
-          builder: (context, state) => const DashboardScreen()),
+          builder: (context, state) =>
+              agentDashboard ?? const AgentDashboard()),
+      GoRoute(
+          path: '/owner',
+          builder: (context, state) =>
+              ownerDashboard ?? const OwnerDashboard()),
+      GoRoute(
+          path: '/admin',
+          builder: (context, state) => adminDashboard ?? const HomePage()),
       GoRoute(
           path: '/countries',
           builder: (context, state) => const CountriesScreen()),

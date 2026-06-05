@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'package:mon_premye_app/services/shared/app_ids.dart';
+
 class TransactionService {
   TransactionService._();
   static final TransactionService instance = TransactionService._();
@@ -26,8 +28,13 @@ class TransactionService {
     String? note,
   }) async {
     final u = _user;
+    final id = AppIds.transaction(
+      seed: '${u.uid}:$type:${DateTime.now().toIso8601String()}',
+    );
 
-    final doc = await _col.add({
+    await _col.doc(id).set({
+      'txId': id,
+      'transactionId': id,
       'uid': u.uid,
       'email': u.email,
       'type': type,
@@ -40,7 +47,7 @@ class TransactionService {
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
-    return doc.id;
+    return id;
   }
 
   /// Soumt draft la (chanje status)

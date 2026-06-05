@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'package:mon_premye_app/services/shared/app_ids.dart';
+
 class TransactionService {
   TransactionService._();
   static final TransactionService instance = TransactionService._();
@@ -16,7 +18,7 @@ class TransactionService {
     if (u == null) {
       throw Exception('User not logged in');
     }
-  
+
     return u.uid;
   }
 
@@ -28,7 +30,12 @@ class TransactionService {
     String? note,
   }) async {
     final now = Timestamp.now();
-    await _txCol.add({
+    final txId = AppIds.transaction(
+      seed: '$_uid:$provider:${DateTime.now().toIso8601String()}',
+    );
+    await _txCol.doc(txId).set({
+      'txId': txId,
+      'transactionId': txId,
       'amount': amount,
       'senderName': senderName.trim(),
       'receiverName': receiverName.trim(),

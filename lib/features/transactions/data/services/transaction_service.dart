@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'package:mon_premye_app/services/shared/app_ids.dart';
+
 class TransactionService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -13,7 +15,13 @@ class TransactionService {
     required String country,
     required String service,
   }) async {
-    await _transactions.add({
+    final txId = AppIds.transaction(
+      seed: '$clientName:$phone:$service:${DateTime.now().toIso8601String()}',
+    );
+
+    await _transactions.doc(txId).set({
+      'txId': txId,
+      'transactionId': txId,
       'clientName': clientName,
       'phone': phone,
       'amount': amount,

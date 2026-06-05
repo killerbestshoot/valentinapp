@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../config/firebase_refs.dart';
 import '../models/role.dart';
-import '../../services/uuid_v4.dart';
+import 'package:mon_premye_app/services/shared/app_ids.dart';
 
 class UserService {
   UserService._();
@@ -27,7 +27,7 @@ class UserService {
     batch.set(userDoc, {
       'uid': uid,
       'authUid': uid,
-      'userId': UuidV4.generate(),
+      'userId': AppIds.userForRole(defaultRole.value, seed: uid),
       'email': email,
       'role': defaultRole.value,
       'createdAt': FieldValue.serverTimestamp(),

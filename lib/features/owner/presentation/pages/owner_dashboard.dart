@@ -1,6 +1,6 @@
 import "package:flutter/material.dart";
-import "package:mon_premye_app/pages/commission_history_page.dart";
-import "package:mon_premye_app/pages/run_commission_page.dart";
+import "package:mon_premye_app/pages/commission/commission_history_page.dart";
+import "package:mon_premye_app/pages/commission/run_commission_page.dart";
 
 class OwnerDashboard extends StatelessWidget {
   const OwnerDashboard({super.key});

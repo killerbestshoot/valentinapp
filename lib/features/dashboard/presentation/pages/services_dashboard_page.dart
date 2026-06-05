@@ -4,7 +4,7 @@ import '../../../../core/config/app_brand.dart';
 import '../../../../core/models/app_role.dart';
 import '../../../../core/session/app_session.dart';
 import '../../../auth/presentation/pages/auth_entry_page.dart';
-import 'package:mon_premye_app/pages/clients_page.dart';
+import 'package:mon_premye_app/pages/clients/clients_page.dart';
 import '../../../reports/presentation/pages/reports_page.dart';
 import '../../../settings/presentation/pages/settings_page.dart';
 import '../../../transactions/presentation/pages/my_transactions_page.dart';
@@ -271,8 +271,3 @@ class _Spacer16 extends StatelessWidget {
     return const SizedBox(height: 16);
   }
 }
-
-
-
-
-

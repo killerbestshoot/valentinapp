@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/services/shared/app_ids.dart';
+
 class CreateTransactionScreen extends StatefulWidget {
   const CreateTransactionScreen({super.key});
 
@@ -78,10 +80,16 @@ class _CreateTransactionScreenState extends State<CreateTransactionScreen> {
 
     try {
       final enterpriseId = await _getEnterpriseId();
+      final txId = AppIds.transaction(
+        seed: '$enterpriseId:${user.uid}:${DateTime.now().toIso8601String()}',
+      );
 
-      final txRef = await FirebaseFirestore.instance
+      await FirebaseFirestore.instance
           .collection('transactions')
-          .add({
+          .doc(txId)
+          .set({
+        'txId': txId,
+        'transactionId': txId,
         'clientName': clientName,
         'paymentAmount': paymentAmount,
         'fee': fee,
@@ -94,10 +102,6 @@ class _CreateTransactionScreenState extends State<CreateTransactionScreen> {
         'commissionApplied': false,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      await txRef.update({
-        'txId': txRef.id,
       });
 
 // auto commission retire; itilize Run Commission page ak Firestore doc id.
@@ -147,7 +151,8 @@ class _CreateTransactionScreenState extends State<CreateTransactionScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: amountCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
                 labelText: 'Payment Amount',
                 border: OutlineInputBorder(),
@@ -156,7 +161,8 @@ class _CreateTransactionScreenState extends State<CreateTransactionScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: feeCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
                 labelText: 'Fee',
                 border: OutlineInputBorder(),

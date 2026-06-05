@@ -151,4 +151,3 @@ class _OtpSmsLoginScreenState extends State<OtpSmsLoginScreen> {
     );
   }
 }
-

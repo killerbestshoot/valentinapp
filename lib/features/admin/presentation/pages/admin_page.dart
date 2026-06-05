@@ -59,4 +59,3 @@ class AdminPage extends StatelessWidget {
     );
   }
 }
-

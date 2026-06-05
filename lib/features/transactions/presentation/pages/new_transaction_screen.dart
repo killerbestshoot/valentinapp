@@ -80,8 +80,9 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         SnackBar(content: Text('Echèk kreye tranzaksyon: $error')),
       );
     } finally {
-      if (!mounted) return;
-      setState(() => _saving = false);
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -122,7 +123,8 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
               TextFormField(
                 controller: _amountController,
                 decoration: const InputDecoration(labelText: 'Amount'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 validator: (value) {
                   final amount = double.tryParse(value ?? '');
                   if (amount == null || amount <= 0) {

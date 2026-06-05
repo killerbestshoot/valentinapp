@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/services/shared/app_ids.dart';
+
 Future<void> submitPayoutRequest({
   required BuildContext context,
   required double amount,
@@ -26,7 +28,16 @@ Future<void> submitPayoutRequest({
   }
 
   try {
-    await FirebaseFirestore.instance.collection('payout_requests').add({
+    final requestId = AppIds.payoutRequest(
+      seed: '$enterpriseId:${user.uid}:$serviceId:${DateTime.now()}',
+    );
+
+    await FirebaseFirestore.instance
+        .collection('payout_requests')
+        .doc(requestId)
+        .set({
+      'requestId': requestId,
+      'payoutId': requestId,
       'uid': user.uid,
       'enterpriseId': enterpriseId,
       'serviceId': serviceId,

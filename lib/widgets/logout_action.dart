@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
-import '../services/auth_service.dart';
+import '../features/auth/data/auth_repository_provider.dart';
 
 class LogoutAction extends StatelessWidget {
   const LogoutAction({super.key});
 
   Future<void> _logout(BuildContext context) async {
-    await AuthService.instance.signOut();
+    final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
+
+    await AuthRepositoryProvider.instance.signOut();
+
     if (context.mounted) {
-      Navigator.of(context, rootNavigator: true).popUntil((route) {
-        return route.isFirst;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
+      router.go('/login');
+      messenger.showSnackBar(
         const SnackBar(content: Text('Ou dekonekte.')),
       );
     }

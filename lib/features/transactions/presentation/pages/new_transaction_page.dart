@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/config/app_brand.dart';
 import '../../../../core/session/app_session.dart';
+import 'package:mon_premye_app/services/shared/app_ids.dart';
 
 class NewTransactionPage extends StatefulWidget {
   const NewTransactionPage({super.key});
@@ -34,8 +35,17 @@ class _NewTransactionPageState extends State<NewTransactionPage> {
 
     try {
       final amount = double.tryParse(_amountController.text.trim()) ?? 0;
+      final txId = AppIds.transaction(
+        seed:
+            '${AppSession.enterpriseId}:${AppSession.currentUserId}:${DateTime.now().toIso8601String()}',
+      );
 
-      await FirebaseFirestore.instance.collection('transactions').add({
+      await FirebaseFirestore.instance
+          .collection('transactions')
+          .doc(txId)
+          .set({
+        'txId': txId,
+        'transactionId': txId,
         'clientName': _clientController.text.trim(),
         'phone': _phoneController.text.trim(),
         'amount': amount,
@@ -146,7 +156,8 @@ class _NewTransactionPageState extends State<NewTransactionPage> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(
                   labelText: 'Montan',
                   border: UnderlineInputBorder(),
@@ -220,4 +231,3 @@ class _NewTransactionPageState extends State<NewTransactionPage> {
     );
   }
 }
-

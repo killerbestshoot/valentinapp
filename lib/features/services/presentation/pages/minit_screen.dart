@@ -11,4 +11,3 @@ class MinitScreen extends StatelessWidget {
     );
   }
 }
-

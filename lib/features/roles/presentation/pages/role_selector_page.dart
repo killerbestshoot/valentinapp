@@ -114,4 +114,3 @@ class RoleSelectorPage extends StatelessWidget {
     );
   }
 }
-

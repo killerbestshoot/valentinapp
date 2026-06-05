@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../../pages/recent_transactions_page.dart' as modern;
+import 'package:mon_premye_app/pages/transactions/recent_transactions_page.dart'
+    as modern;
 
 class RecentTransactionsPage extends StatelessWidget {
   const RecentTransactionsPage({super.key});

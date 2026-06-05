@@ -11,4 +11,3 @@ class TransactionsHistoryScreen extends StatelessWidget {
     );
   }
 }
-

@@ -11,4 +11,3 @@ class OtpLoginScreen extends StatelessWidget {
     );
   }
 }
-

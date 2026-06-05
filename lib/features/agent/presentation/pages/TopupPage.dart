@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../pages/topup_page.dart' as modern;
+import 'package:mon_premye_app/pages/wallet/topup_page.dart' as modern;
 
 class TopupPage extends StatelessWidget {
   const TopupPage({super.key});

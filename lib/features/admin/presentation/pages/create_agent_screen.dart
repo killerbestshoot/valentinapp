@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/services/shared/app_ids.dart';
+
 class CreateAgentScreen extends StatefulWidget {
   const CreateAgentScreen({super.key});
 
@@ -62,9 +64,12 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
       );
 
       final uid = cred.user!.uid;
+      final agentId = AppIds.agent(seed: uid);
 
       await FirebaseFirestore.instance.collection('agents').doc(uid).set({
         'uid': uid,
+        'agentId': agentId,
+        'userId': agentId,
         'name': name,
         'email': email,
         'role': 'agent',
@@ -130,4 +135,3 @@ class _CreateAgentScreenState extends State<CreateAgentScreen> {
     );
   }
 }
-

@@ -70,14 +70,11 @@ class OwnerBalanceCard extends StatelessWidget {
                 const SizedBox(height: 10),
 
                 // DEBUG (IMPORTANT )
-                if (!snap.hasData)
-                  const Text(" Loading Firestore..."),
+                if (!snap.hasData) const Text(" Loading Firestore..."),
 
-                if (snap.hasError)
-                  Text(" Error: ${snap.error}"),
+                if (snap.hasError) Text(" Error: ${snap.error}"),
 
-                if (data == null)
-                  Text(" Doc pa jwenn: balances/$docId"),
+                if (data == null) Text(" Doc pa jwenn: balances/$docId"),
               ],
             ),
           ),

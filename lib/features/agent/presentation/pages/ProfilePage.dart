@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../pages/settings_page.dart' as modern;
+import 'package:mon_premye_app/pages/settings/settings_page.dart' as modern;
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});

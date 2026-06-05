@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/services/shared/app_ids.dart';
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -48,7 +50,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() => _loading = true);
     try {
-      final ref = await _db.collection('transactions').add({
+      final txId = AppIds.transaction(
+        seed: '${u.uid}:debug:${DateTime.now().toIso8601String()}',
+      );
+      await _db.collection('transactions').doc(txId).set({
+        'txId': txId,
+        'transactionId': txId,
         'uid': u.uid,
         'amount': 100,
         'status': 'created',
@@ -56,8 +63,8 @@ class _HomeScreenState extends State<HomeScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      _lastTxId = ref.id;
-      _setLog('transactions/${ref.id} kreye: OK');
+      _lastTxId = txId;
+      _setLog('transactions/$txId kreye: OK');
     } on FirebaseException catch (e) {
       _setLog('Firestore tx create error: ${e.code} ${e.message}');
     } finally {
@@ -165,4 +172,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-

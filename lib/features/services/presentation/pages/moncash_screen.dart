@@ -11,4 +11,3 @@ class MonCashScreen extends StatelessWidget {
     );
   }
 }
-

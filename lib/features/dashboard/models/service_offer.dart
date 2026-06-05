@@ -5,5 +5,6 @@ class ServiceOffer {
   final String title;
   final IconData icon;
 
-  const ServiceOffer({required this.id, required this.title, required this.icon});
+  const ServiceOffer(
+      {required this.id, required this.title, required this.icon});
 }

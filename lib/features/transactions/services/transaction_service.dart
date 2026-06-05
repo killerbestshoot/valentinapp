@@ -1,3 +1,5 @@
+import 'package:mon_premye_app/services/shared/app_ids.dart';
+
 class TransactionService {
   TransactionService._();
   static final TransactionService instance = TransactionService._();
@@ -11,8 +13,13 @@ class TransactionService {
     required String receiver,
     required double amount,
   }) {
+    final id = AppIds.transaction(
+      seed: '$sender:$receiver:${DateTime.now().toIso8601String()}',
+    );
     transactions.add({
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      'id': id,
+      'txId': id,
+      'transactionId': id,
       'sender': sender,
       'receiver': receiver,
       'amount': amount,

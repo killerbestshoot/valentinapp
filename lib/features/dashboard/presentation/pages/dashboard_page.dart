@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../transactions/presentation/pages/new_transaction_page.dart';
 import '../../../transactions/presentation/pages/my_transactions_page.dart';
-import 'package:mon_premye_app/pages/clients_page.dart';
+import 'package:mon_premye_app/pages/clients/clients_page.dart';
 import '../../../reports/presentation/pages/reports_page.dart';
 import '../../../settings/presentation/pages/settings_page.dart';
 
@@ -104,8 +104,3 @@ class DashboardPage extends StatelessWidget {
     );
   }
 }
-
-
-
-
-

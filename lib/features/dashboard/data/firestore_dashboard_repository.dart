@@ -8,7 +8,8 @@ import '../models/service_offer.dart';
 
 class FirestoreDashboardRepository implements DashboardRepository {
   FirestoreDashboardRepository._();
-  static final FirestoreDashboardRepository instance = FirestoreDashboardRepository._();
+  static final FirestoreDashboardRepository instance =
+      FirestoreDashboardRepository._();
 
   final FirebaseFirestore _firestore = FirebasePersistence.instance.firestore;
 

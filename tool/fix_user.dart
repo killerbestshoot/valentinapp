@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:mon_premye_app/firebase_options.dart';
+import 'package:mon_premye_app/core/firebase/firebase_options.dart';
 
 Future<void> main() async {
   await Firebase.initializeApp(

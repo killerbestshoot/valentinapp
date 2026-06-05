@@ -54,4 +54,3 @@ class PappadapScreen extends StatelessWidget {
     );
   }
 }
-

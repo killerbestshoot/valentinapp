@@ -66,8 +66,10 @@ class _AuthEntryPageState extends State<AuthEntryPage> {
 
     final role = AppRoleX.fromString((data['role'] ?? 'agent').toString());
     final displayName = (data['displayName'] ?? 'Itilizat').toString();
-    final enterpriseName = (data['enterpriseName'] ?? AppBrand.defaultEnterpriseName).toString();
-    final enterpriseId = (data['enterpriseId'] ?? AppBrand.defaultEnterpriseId).toString();
+    final enterpriseName =
+        (data['enterpriseName'] ?? AppBrand.defaultEnterpriseName).toString();
+    final enterpriseId =
+        (data['enterpriseId'] ?? AppBrand.defaultEnterpriseId).toString();
 
     AppSession.apply(
       userId: firebaseUser.uid,
@@ -240,7 +242,9 @@ class _AuthEntryPageState extends State<AuthEntryPage> {
                             setState(() => _hidePassword = !_hidePassword);
                           },
                           icon: Icon(
-                            _hidePassword ? Icons.visibility : Icons.visibility_off,
+                            _hidePassword
+                                ? Icons.visibility
+                                : Icons.visibility_off,
                           ),
                         ),
                       ),
@@ -282,4 +286,3 @@ class _AuthEntryPageState extends State<AuthEntryPage> {
     );
   }
 }
-

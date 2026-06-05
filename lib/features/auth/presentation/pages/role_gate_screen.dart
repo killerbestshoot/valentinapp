@@ -66,4 +66,3 @@ class _RoleGateScreenState extends State<RoleGateScreen> {
     );
   }
 }
-

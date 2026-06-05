@@ -1,4 +1,4 @@
-import 'package:mon_premye_app/services/auth_service.dart';
+import 'package:mon_premye_app/services/auth/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -58,4 +58,3 @@ class AuthGatePage extends StatelessWidget {
     );
   }
 }
-

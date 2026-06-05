@@ -41,4 +41,3 @@ class AccessDeniedPage extends StatelessWidget {
     );
   }
 }
-

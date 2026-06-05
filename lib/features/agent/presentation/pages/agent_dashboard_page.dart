@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../pages/agent_dashboard.dart' as modern;
+import 'package:mon_premye_app/pages/dashboard/agent_dashboard.dart' as modern;
 
 class AgentDashboardPage extends StatelessWidget {
   const AgentDashboardPage({super.key});

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../domain/login_use_case.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -12,6 +13,7 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final _email = TextEditingController();
   final _pass = TextEditingController();
+  final LoginUseCase _loginUseCase = LoginUseCase();
   bool _loading = false;
 
   @override
@@ -36,24 +38,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     setState(() => _loading = true);
     try {
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
-        password: pass,
-      );
+      await _loginUseCase.signUp(email: email, password: pass);
 
       if (!mounted) return;
       context.go('/dashboard');
-    } on FirebaseAuthException catch (e) {
-      _toast(_niceAuthError(e));
-    } catch (_) {
-      _toast('Gen yon er. Eseye ank.');
+    } catch (error) {
+      _toast(_niceAuthError(error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  String _niceAuthError(FirebaseAuthException e) {
-    switch (e.code) {
+  String _niceAuthError(Object error) {
+    final code = _firebaseErrorCode(error);
+    switch (code) {
       case 'email-already-in-use':
         return 'Email sa deja itilize.';
       case 'invalid-email':
@@ -63,8 +61,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       case 'network-request-failed':
         return 'Pa gen entnt / rezo a gen pwoblm.';
       default:
-        return e.message ?? 'Kreyasyon kont echwe.';
+        return error.toString().replaceFirst('Bad state: ', '');
     }
+  }
+
+  String? _firebaseErrorCode(Object error) {
+    final text = error.toString();
+    final match = RegExp(r'firebase_auth/([a-z0-9-]+)').firstMatch(text);
+    return match?.group(1);
   }
 
   void _toast(String msg) {
@@ -131,4 +135,3 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 }
-

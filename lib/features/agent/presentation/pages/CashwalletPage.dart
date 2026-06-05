@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../pages/send_page.dart' as modern;
+import 'package:mon_premye_app/pages/transactions/send_page.dart' as modern;
 
 class CashwalletPage extends StatelessWidget {
   const CashwalletPage({super.key});

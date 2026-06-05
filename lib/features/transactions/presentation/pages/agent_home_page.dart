@@ -11,4 +11,3 @@ class AgentHomePage extends StatelessWidget {
     );
   }
 }
-

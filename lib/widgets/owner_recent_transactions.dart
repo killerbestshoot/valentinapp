@@ -62,7 +62,8 @@ class OwnerRecentTransactions extends StatelessWidget {
                 return Card(
                   child: ListTile(
                     leading: const Icon(Icons.receipt_long_outlined),
-                    title: Text((data['serviceName'] ?? 'Transaction').toString()),
+                    title:
+                        Text((data['serviceName'] ?? 'Transaction').toString()),
                     subtitle: Text((data['status'] ?? '').toString()),
                     trailing: Text(
                       _amount(data),

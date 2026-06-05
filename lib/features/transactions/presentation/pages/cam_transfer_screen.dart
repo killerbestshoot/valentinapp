@@ -11,4 +11,3 @@ class CamTransferScreen extends StatelessWidget {
     );
   }
 }
-

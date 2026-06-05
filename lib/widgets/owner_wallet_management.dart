@@ -1,11 +1,11 @@
 import "package:flutter/material.dart";
-import "package:mon_premye_app/pages/auth_debug_page.dart";
-import "package:mon_premye_app/pages/commission_history_page.dart";
-import "package:mon_premye_app/pages/payout_approval_page.dart";
-import "package:mon_premye_app/pages/payout_page.dart";
-import "package:mon_premye_app/pages/run_commission_page.dart";
-import "package:mon_premye_app/pages/wallet_dashboard_page.dart";
-import "package:mon_premye_app/pages/wallet_topup_approval_page.dart";
+import "package:mon_premye_app/pages/auth/auth_debug_page.dart";
+import "package:mon_premye_app/pages/commission/commission_history_page.dart";
+import "package:mon_premye_app/pages/payout/payout_approval_page.dart";
+import "package:mon_premye_app/pages/payout/payout_page.dart";
+import "package:mon_premye_app/pages/commission/run_commission_page.dart";
+import "package:mon_premye_app/pages/wallet/wallet_dashboard_page.dart";
+import "package:mon_premye_app/pages/wallet/wallet_topup_approval_page.dart";
 
 class OwnerWalletManagement extends StatelessWidget {
   const OwnerWalletManagement({super.key});

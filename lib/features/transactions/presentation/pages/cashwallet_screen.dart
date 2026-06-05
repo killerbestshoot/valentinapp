@@ -11,4 +11,3 @@ class CashWalletScreen extends StatelessWidget {
     );
   }
 }
-

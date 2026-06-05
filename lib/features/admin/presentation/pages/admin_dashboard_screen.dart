@@ -46,4 +46,3 @@ class AdminDashboardScreen extends StatelessWidget {
     );
   }
 }
-

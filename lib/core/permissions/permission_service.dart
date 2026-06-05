@@ -13,6 +13,7 @@ class PermissionService {
       case AppRole.admin:
         return {
           AppPermission.viewDashboard,
+          AppPermission.createTransaction,
           AppPermission.viewTransactions,
           AppPermission.editTransaction,
           AppPermission.viewReports,

@@ -40,8 +40,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _error = error.toString();
       });
     } finally {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -125,7 +126,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard')), 
+      appBar: AppBar(title: const Text('Dashboard')),
       body: _buildBody(),
     );
   }

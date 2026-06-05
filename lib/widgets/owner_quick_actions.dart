@@ -1,10 +1,10 @@
 import "package:flutter/material.dart";
-import "package:mon_premye_app/pages/agents_page.dart";
-import "package:mon_premye_app/pages/new_transaction_page.dart";
-import "package:mon_premye_app/pages/payout_page.dart";
-import "package:mon_premye_app/pages/send_page.dart";
-import "package:mon_premye_app/pages/settings_page.dart";
-import "package:mon_premye_app/pages/topup_page.dart";
+import "package:mon_premye_app/pages/agent/agents_page.dart";
+import "package:mon_premye_app/pages/transactions/new_transaction_page.dart";
+import "package:mon_premye_app/pages/payout/payout_page.dart";
+import "package:mon_premye_app/pages/transactions/send_page.dart";
+import "package:mon_premye_app/pages/settings/settings_page.dart";
+import "package:mon_premye_app/pages/wallet/topup_page.dart";
 
 class OwnerQuickActions extends StatelessWidget {
   const OwnerQuickActions({super.key});

@@ -37,4 +37,3 @@ class ManageCustomersPage extends StatelessWidget {
     );
   }
 }
-

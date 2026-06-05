@@ -18,4 +18,3 @@ class MonCashPage extends StatelessWidget {
     );
   }
 }
-

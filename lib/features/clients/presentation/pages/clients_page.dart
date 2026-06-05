@@ -130,9 +130,9 @@ class _ClientsPageState extends State<ClientsPage> {
                             context,
                             MaterialPageRoute(
                               builder: (_) => const MyTransactionsPage(
-                                // // phoneFilter: phone,
-                                // // clientName: name,
-                              ),
+                                  // // phoneFilter: phone,
+                                  // // clientName: name,
+                                  ),
                             ),
                           );
                         },
@@ -148,5 +148,3 @@ class _ClientsPageState extends State<ClientsPage> {
     );
   }
 }
-
-

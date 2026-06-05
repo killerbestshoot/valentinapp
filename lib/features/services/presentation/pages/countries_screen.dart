@@ -66,4 +66,3 @@ class _CountriesScreenState extends State<CountriesScreen> {
     );
   }
 }
-

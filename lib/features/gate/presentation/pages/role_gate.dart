@@ -10,4 +10,3 @@ class RoleGate extends StatelessWidget {
     );
   }
 }
-

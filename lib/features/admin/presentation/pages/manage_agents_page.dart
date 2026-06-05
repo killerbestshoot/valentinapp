@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/services/shared/app_ids.dart';
+
 class ManageAgentsPage extends StatefulWidget {
   const ManageAgentsPage({super.key});
 
@@ -33,7 +35,12 @@ class _ManageAgentsPageState extends State<ManageAgentsPage> {
               setDialogState(() => loading = true);
 
               try {
-                await _db.collection('agents').add({
+                final agentId = AppIds.agent(
+                  seed: '${emailCtrl.text.trim()}:${DateTime.now()}',
+                );
+                await _db.collection('agents').doc(agentId).set({
+                  'agentId': agentId,
+                  'userId': agentId,
                   'email': emailCtrl.text.trim(),
                   'name': nameCtrl.text.trim(),
                   'role': 'agent',
@@ -197,4 +204,3 @@ class _ManageAgentsPageState extends State<ManageAgentsPage> {
     );
   }
 }
-
