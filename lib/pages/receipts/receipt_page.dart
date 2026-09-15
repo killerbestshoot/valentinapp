@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
+
+import 'package:mon_premye_app/core/network/api_client.dart';
+import 'package:mon_premye_app/features/transactions/data/transaction_api.dart';
 
 class ReceiptPage extends StatelessWidget {
   final String transactionId;
@@ -10,14 +12,9 @@ class ReceiptPage extends StatelessWidget {
     required this.transactionId,
   });
 
-  String _s(dynamic v) => (v ?? '').toString();
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final ref = FirebaseFirestore.instance
-        .collection('transactions')
-        .doc(transactionId);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F8F1),
@@ -31,22 +28,25 @@ class ReceiptPage extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
       ),
-      body: FutureBuilder<DocumentSnapshot>(
-        future: ref.get(),
+      body: FutureBuilder<TransactionRecord?>(
+        future: TransactionApi.instance.find(transactionId),
         builder: (context, snap) {
           if (snap.hasError) {
+            final error = snap.error;
             return _StateMessage(
               icon: Icons.error_outline,
               title: 'Erreur',
-              message: '${snap.error}',
+              message: error is ApiException ? error.message : '$error',
             );
           }
 
-          if (!snap.hasData) {
+          if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          if (!snap.data!.exists) {
+          final tx = snap.data;
+
+          if (tx == null) {
             return const _StateMessage(
               icon: Icons.receipt_long_outlined,
               title: 'Transaction pa jwenn',
@@ -54,15 +54,14 @@ class ReceiptPage extends StatelessWidget {
             );
           }
 
-          final m = snap.data!.data() as Map<String, dynamic>;
-
-          final service = _s(m['serviceName']);
-          final name = _s(m['customerName']);
-          final phone = _s(m['customerPhone']);
-          final amount = _s(m['paymentAmount']);
-          final currency = _s(m['paymentCurrency']);
-          final status = _s(m['status']);
-          final customerName = name.trim().isEmpty ? 'Non pa disponib' : name;
+          final service = tx.serviceName;
+          final phone = tx.customerPhone;
+          final amount = tx.amount.toStringAsFixed(2);
+          final currency = tx.currency;
+          final status = tx.status;
+          final customerName = tx.customerName.trim().isEmpty
+              ? 'Non pa disponib'
+              : tx.customerName;
 
           return SafeArea(
             child: LayoutBuilder(

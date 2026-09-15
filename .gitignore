@@ -41,6 +41,8 @@ server/data/
 # Local environment, secrets, and diagnostics
 .env
 *.env
+# ... men modèl san sekrè yo dwe suiv depo a
+!*.env.example
 *.hprof
 **/serviceAccount*.json
 tools/private/

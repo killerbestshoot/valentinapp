@@ -1,23 +1,19 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:mon_premye_app/core/network/api_client.dart';
+import 'package:mon_premye_app/features/wallet/data/wallet_api.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mon_premye_app/core/config/app_environment.dart';
 import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
 import 'package:mon_premye_app/widgets/dashboard_ui.dart';
 import 'package:mon_premye_app/pages/transactions/create_transaction_page.dart';
-import 'package:mon_premye_app/pages/transactions/recent_transactions_page.dart';
-import 'package:mon_premye_app/pages/transactions/send_page.dart';
+import 'package:mon_premye_app/features/payments/presentation/pages/send_money_page.dart';
+import 'package:mon_premye_app/pages/payout/payouts_page.dart';
 import 'package:mon_premye_app/pages/settings/settings_page.dart';
-import 'package:mon_premye_app/pages/wallet/topup_page.dart';
+import 'package:mon_premye_app/pages/transactions/transaction_management_page.dart';
+import 'package:mon_premye_app/pages/wallet/wallet_history_page.dart';
 
 class AgentDashboard extends StatelessWidget {
   const AgentDashboard({super.key});
-
-  double _d(dynamic v) {
-    if (v is num) return v.toDouble();
-    return double.tryParse(v?.toString() ?? '0') ?? 0;
-  }
 
   void _open(BuildContext context, Widget page) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => page));
@@ -36,40 +32,48 @@ class AgentDashboard extends StatelessWidget {
       );
     }
 
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-
-    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
-      builder: (context, userSnap) {
-        if (!userSnap.hasData) {
+    // Non, antrepriz ak sòld vini nan yon sèl rekèt sou serveur a.
+    return FutureBuilder<WalletSummary>(
+      future: WalletApi.instance.mine(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             backgroundColor: DashboardColors.surface,
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        final user = userSnap.data?.data() ?? {};
-        final enterpriseId = (user['enterpriseId'] ?? '').toString();
-        final name =
-            (user['displayName'] ?? user['fullName'] ?? 'Agent').toString();
-        final enterprise = (user['enterpriseName'] ?? 'VOUPVAPCASH').toString();
+        final profile = AuthRepositoryProvider.instance.currentUser;
+        final wallet = snap.data;
 
-        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('balances')
-              .doc('${enterpriseId}_$uid')
-              .snapshots(),
-          builder: (context, balSnap) {
-            final balance = _d(balSnap.data?.data()?['balance']);
+        if (snap.hasError) {
+          final error = snap.error;
+          return Scaffold(
+            backgroundColor: DashboardColors.surface,
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  error is ApiException ? error.message : '$error',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Color(0xFFB91C1C)),
+                ),
+              ),
+            ),
+          );
+        }
 
-            return _AgentDashboardContent(
-              name: name,
-              enterprise: enterprise,
-              balance: balance,
-              onOpen: (page) => _open(context, page),
-              onLogout: () => FirebaseAuth.instance.signOut(),
-            );
-          },
+        return _AgentDashboardContent(
+          name: profile?.displayName.isNotEmpty == true
+              ? profile!.displayName
+              : (profile?.email ?? 'Agent'),
+          enterprise: profile?.enterpriseName.isNotEmpty == true
+              ? profile!.enterpriseName
+              : 'VOUPVAPCASH',
+          balance: wallet?.balance ?? 0,
+          currency: wallet?.currency ?? 'USD',
+          onOpen: (page) => _open(context, page),
+          onLogout: () => AuthRepositoryProvider.instance.signOut(),
         );
       },
     );
@@ -81,6 +85,7 @@ class _AgentDashboardContent extends StatelessWidget {
     required this.name,
     required this.enterprise,
     required this.balance,
+    this.currency = 'USD',
     required this.onOpen,
     required this.onLogout,
   });
@@ -88,6 +93,9 @@ class _AgentDashboardContent extends StatelessWidget {
   final String name;
   final String enterprise;
   final double balance;
+
+  /// Deviz wallet la — pa toujou USD.
+  final String currency;
   final ValueChanged<Widget> onOpen;
   final VoidCallback onLogout;
 
@@ -108,10 +116,10 @@ class _AgentDashboardContent extends StatelessWidget {
           icon: Icons.person_pin_circle_outlined,
           title: name,
           subtitle: '$enterprise | Agent operations',
-          trailing: _AgentBalanceCard(balance: balance),
+          trailing: _AgentBalanceCard(balance: balance, currency: currency),
         ),
         const SizedBox(height: 18),
-        _AgentMetrics(balance: balance),
+        _AgentMetrics(balance: balance, currency: currency),
         const SizedBox(height: 18),
         const DashboardPanel(
           child: Column(
@@ -140,9 +148,10 @@ class _AgentDashboardContent extends StatelessWidget {
 }
 
 class _AgentBalanceCard extends StatelessWidget {
-  const _AgentBalanceCard({required this.balance});
+  const _AgentBalanceCard({required this.balance, required this.currency});
 
   final double balance;
+  final String currency;
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +174,7 @@ class _AgentBalanceCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '${balance.toStringAsFixed(2)} USD',
+            '${balance.toStringAsFixed(2)} $currency',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 26,
@@ -179,13 +188,55 @@ class _AgentBalanceCard extends StatelessWidget {
   }
 }
 
-class _AgentMetrics extends StatelessWidget {
-  const _AgentMetrics({required this.balance});
+/// Metrik ajan an: TOUT soti nan rejis la, nan deviz wallet la.
+///
+/// Anvan, "Topup 2000 USD" ak "COM 450 USD" te konstant ki ekri an di,
+/// afiche bò kote vrè sòld la. Ajan an t ap li twa chif, de ladan yo te envante.
+/// Epi sòld la te toujou make "USD", menm pou yon wallet HTG oswa MXN.
+class _AgentMetrics extends StatefulWidget {
+  const _AgentMetrics({required this.balance, required this.currency});
 
   final double balance;
+  final String currency;
+
+  @override
+  State<_AgentMetrics> createState() => _AgentMetricsState();
+}
+
+class _AgentMetricsState extends State<_AgentMetrics> {
+  double _commissions = 0;
+  double _topups = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final uid = AuthRepositoryProvider.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
+
+    try {
+      final entries = await WalletApi.instance.ledger(uid, limit: 200);
+      if (!mounted) return;
+
+      double sum(bool Function(LedgerEntry e) test) =>
+          entries.where(test).fold(0, (total, e) => total + e.amount);
+
+      setState(() {
+        _commissions = sum((e) => e.isCredit && e.type == 'commission_agent');
+        _topups = sum((e) => e.isCredit && e.type.startsWith('wallet_topup'));
+      });
+    } on ApiException {
+      // Metrik segondè: si yo pa chaje, sòld la (ki pi enpòtan) rete vizib.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    String fmt(double value) => '${value.toStringAsFixed(2)} ${widget.currency}';
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = constraints.maxWidth >= 760 ? 3 : 1;
@@ -197,9 +248,9 @@ class _AgentMetrics extends StatelessWidget {
           physics: const NeverScrollableScrollPhysics(),
           childAspectRatio: constraints.maxWidth >= 760 ? 2.8 : 4,
           children: [
-            _Metric(label: 'Solde', value: '${balance.toStringAsFixed(2)} USD'),
-            const _Metric(label: 'Topup', value: '2000 USD'),
-            const _Metric(label: 'COM', value: '450 USD'),
+            _Metric(label: 'Sòld', value: fmt(widget.balance)),
+            _Metric(label: 'Rechaj resevwa', value: fmt(_topups)),
+            _Metric(label: 'Komisyon', value: fmt(_commissions)),
           ],
         );
       },
@@ -273,10 +324,11 @@ class _ServiceChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ActionChip(
+    // `Chip` e pa `ActionChip`: se yon etikèt enfòmatif. Anvan, `onPressed: () {}`
+    // te fè l anime lè ou tape l, san li pa fè anyen.
+    return Chip(
       avatar: const Icon(Icons.check_circle_outline, size: 18),
       label: Text(label),
-      onPressed: () {},
       backgroundColor: DashboardColors.soft,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     );
@@ -302,35 +354,30 @@ class _AgentActions extends StatelessWidget {
           ),
           DashboardActionTile(
             icon: Icons.phone_android_outlined,
-            title: 'Topup',
-            subtitle: 'Rechaje kont topup',
-            onTap: () => onOpen(const TopupPage()),
+            title: 'Istorik wallet',
+            subtitle: 'Rechaj, komisyon ak transfè',
+            onTap: () => onOpen(const WalletHistoryPage()),
             color: const Color(0xFF6A1B9A),
           ),
           DashboardActionTile(
             icon: Icons.send_outlined,
             title: 'Send',
             subtitle: 'Voye lajan pou kliyan',
-            onTap: () => onOpen(const SendPage()),
+            onTap: () => onOpen(const SendMoneyPage()),
             color: const Color(0xFF1565C0),
           ),
           DashboardActionTile(
-            icon: Icons.credit_card,
-            title: 'Card recharge',
-            subtitle: 'Fonksyon ap vini',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('Fonksyon kredi/debit card ap vini.')),
-              );
-            },
+            icon: Icons.payments_outlined,
+            title: 'Payout',
+            subtitle: 'Mande pou yo peye sòld ou',
+            onTap: () => onOpen(const PayoutsPage()),
             color: const Color(0xFFF57F17),
           ),
           DashboardActionTile(
             icon: Icons.receipt_long_outlined,
             title: 'Fich transactions',
             subtitle: 'Retrouve tout fich yo',
-            onTap: () => onOpen(const RecentTransactionsPage()),
+            onTap: () => onOpen(const TransactionManagementPage()),
             color: const Color(0xFF334155),
           ),
           DashboardActionTile(

@@ -1,3 +1,4 @@
+import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -170,33 +171,38 @@ class _LoginPageState extends State<LoginPage> {
     return null;
   }
 
+  /// Tradui erè serveur a an mesaj pou itilizatè a.
+  ///
+  /// Anvan, fonksyon sa a t ap chèche kòd `firebase_auth/...` nan tèks erè a.
+  /// Depi backend la se SQLite, kòd sa yo pa janm rive: tout erè te tonbe nan
+  /// branch `default` la, ki te montre erè brit la bay itilizatè a.
   String _authErrorMessage(Object error) {
-    final code = _firebaseErrorCode(error);
-    switch (code) {
-      case 'email-already-in-use':
-        return 'Email sa a deja gen yon kont.';
-      case 'invalid-email':
-        return 'Email la pa valid.';
-      case 'user-not-found':
-      case 'invalid-credential':
-        return 'Kont sa pa jwenn oswa enfomasyon yo pa bon.';
-      case 'wrong-password':
-        return 'Modpas la pa bon.';
-      case 'weak-password':
-        return 'Modpas la two feb.';
-      case 'too-many-requests':
-        return 'Twop tantativ. Tann yon ti moman epi eseye anko.';
-      case 'network-request-failed':
-        return 'Rezo a pa disponib. Verifye koneksyon an.';
-      default:
-        return error.toString().replaceFirst('Bad state: ', '');
+    if (error is ApiException) {
+      switch (error.code) {
+        case 'invalid_credentials':
+          return 'Imel oswa modpas pa bon.';
+        case 'account_disabled':
+          return 'Kont sa a dezaktive. Kontakte administratè a.';
+        case 'too_many_attempts':
+          return error.message;
+        case 'email_taken':
+          return 'Imel sa a deja gen yon kont.';
+        case 'invalid_email':
+          return 'Imel la pa valid.';
+        case 'weak_password':
+          return error.message;
+        case 'already_bootstrapped':
+          // "Kreye kont" mache sèlman pou premye owner an. Apre sa, se yon
+          // administratè ki kreye kont staff yo.
+          return 'Kreyasyon kont fèmen. Mande yon administratè pou l kreye kont ou.';
+        case 'network_error':
+          return error.message;
+        default:
+          return error.message;
+      }
     }
-  }
 
-  String? _firebaseErrorCode(Object error) {
-    final text = error.toString();
-    final match = RegExp(r'firebase_auth/([a-z0-9-]+)').firstMatch(text);
-    return match?.group(1);
+    return 'Yon erè rive. Eseye ankò.';
   }
 
   void _showMessage(String message) {

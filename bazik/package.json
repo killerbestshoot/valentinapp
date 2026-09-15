@@ -1,0 +1,17 @@
+{
+  "name": "bazik",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VOUPVAPCASH <-> Bazik.io (MonCash / NatCash) gateway integration",
+  "main": "index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test --no-warnings=ExperimentalWarning \"test/*.test.js\"",
+    "seed": "node scripts/seed_dev_db.js",
+    "check": "node scripts/check_contract.js",
+    "send": "node scripts/send_transfer.js"
+  }
+}

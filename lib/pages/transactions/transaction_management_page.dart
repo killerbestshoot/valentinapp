@@ -1,105 +1,82 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/core/network/api_client.dart';
+import 'package:mon_premye_app/features/payments/presentation/widgets/bazik_delivery_dialog.dart';
+import 'package:mon_premye_app/features/transactions/data/transaction_api.dart';
 import 'package:mon_premye_app/widgets/dashboard_ui.dart';
-import 'package:mon_premye_app/pages/transactions/transaction_details_page.dart';
 
-class TransactionManagementPage extends StatelessWidget {
+/// Jesyon tranzaksyon yo: wè, livre, chanje estati, efase.
+///
+/// "Livre via Bazik" se vre livrezon an — se konfimasyon Bazik ki fè
+/// tranzaksyon an vin `delivered`, epi se sa ki deklanche komisyon yo.
+/// Bouton "Make manyèl" la rete pou ka livrezon an fèt an kach.
+class TransactionManagementPage extends StatefulWidget {
   const TransactionManagementPage({super.key});
 
-  String _text(dynamic value, [String fallback = '-']) {
-    final s = (value ?? '').toString().trim();
-    return s.isEmpty ? fallback : s;
+  @override
+  State<TransactionManagementPage> createState() =>
+      _TransactionManagementPageState();
+}
+
+class _TransactionManagementPageState extends State<TransactionManagementPage> {
+  late Future<List<TransactionRecord>> _future;
+  String _statusFilter = '';
+
+  static const _filters = ['', 'pending', 'delivered', 'failed'];
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
   }
 
-  double _toDouble(dynamic value) {
-    if (value is int) return value.toDouble();
-    if (value is double) return value;
-    if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString() ?? '0') ?? 0;
+  Future<List<TransactionRecord>> _load() {
+    return TransactionApi.instance.list(
+      limit: 50,
+      status: _statusFilter.isEmpty ? null : _statusFilter,
+    );
   }
 
-  DateTime _toDate(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    return DateTime.fromMillisecondsSinceEpoch(0);
+  void _reload() {
+    // Apre yon `await`, ekran an ka deja fèmen.
+    if (!mounted) return;
+    setState(() {
+      _future = _load();
+    });
   }
 
-  String _money(dynamic value) => _toDouble(value).toStringAsFixed(2);
-
-  String _date(dynamic value) {
-    final d = _toDate(value);
-    final mm = d.month.toString().padLeft(2, '0');
-    final dd = d.day.toString().padLeft(2, '0');
-    final hh = d.hour.toString().padLeft(2, '0');
-    final mi = d.minute.toString().padLeft(2, '0');
-    return '${d.year}-$mm-$dd $hh:$mi';
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<String> _enterpriseId() async {
-    final authUser = FirebaseAuth.instance.currentUser;
-    if (authUser == null) {
-      throw Exception('User pa konekte.');
-    }
-
-    final userSnap = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(authUser.uid)
-        .get();
-
-    final userData = userSnap.data() ?? <String, dynamic>{};
-    final enterpriseId = (userData['enterpriseId'] ?? '').toString();
-
-    if (enterpriseId.isEmpty) {
-      throw Exception('enterpriseId pa disponib.');
-    }
-
-    return enterpriseId;
-  }
-
-  Future<void> _updateStatus({
-    required BuildContext context,
-    required String docId,
-    required String status,
-  }) async {
+  Future<void> _setStatus(TransactionRecord tx, String status) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('transactions')
-          .doc(docId)
-          .update({
-        'status': status,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Status mete: $status')),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur status: $e')),
-      );
+      await TransactionApi.instance.updateStatus(tx.txId, status);
+      _toast('Estati mete: $status');
+      _reload();
+    } on ApiException catch (err) {
+      _toast(err.message);
     }
   }
 
-  Future<void> _deleteTx({
-    required BuildContext context,
-    required String docId,
-  }) async {
+  Future<void> _delete(TransactionRecord tx) async {
     final ok = await showDialog<bool>(
           context: context,
-          builder: (_) => AlertDialog(
-            title: const Text('Efase tranzaksyon'),
-            content: const Text('Eske ou vle efase tranzaksyon sa a?'),
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Efase tranzaksyon an?'),
+            content: Text('${tx.serviceName} — ${tx.customerName}'),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Non'),
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Anile'),
               ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Wi'),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFB91C1C),
+                ),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Efase'),
               ),
             ],
           ),
@@ -109,197 +86,230 @@ class TransactionManagementPage extends StatelessWidget {
     if (!ok) return;
 
     try {
-      await FirebaseFirestore.instance
-          .collection('transactions')
-          .doc(docId)
-          .delete();
-
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tranzaksyon efase.')),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur efase: $e')),
-      );
+      await TransactionApi.instance.remove(tx.txId);
+      _toast('Tranzaksyon efase.');
+      _reload();
+    } on ApiException catch (err) {
+      // Sèl owner ki ka efase: serveur a di sa klèman.
+      _toast(err.message);
     }
   }
 
-  Widget _txCard(
-    BuildContext context,
-    QueryDocumentSnapshot<Map<String, dynamic>> d,
-  ) {
-    final m = d.data();
-    final tx = <String, dynamic>{
-      'txId': d.id,
-      ...m,
-    };
+  Future<void> _deliver(TransactionRecord tx) async {
+    final sent = await BazikDeliveryDialog.show(
+      context,
+      txId: tx.txId,
+      amount: tx.amount,
+      currency: tx.currency,
+      phone: tx.customerPhone,
+      serviceName: tx.serviceName,
+      clientName: tx.customerName,
+    );
 
-    final serviceName = _text(m['serviceName'], 'Service');
-    final customerPhone = _text(m['customerPhone']);
-    final amount = _money(m['paymentAmount']);
-    final currency = _text(m['paymentCurrency'], 'USD');
-    final status = _text(m['status'], 'unknown');
-    final createdAt = _date(m['createdAt']);
+    if (sent) _reload();
+  }
 
-    return DashboardPanel(
+  @override
+  Widget build(BuildContext context) {
+    return DashboardPage(
+      title: 'Transactions',
+      children: [
+        const DashboardHero(
+          icon: Icons.receipt_long_outlined,
+          title: 'Tranzaksyon yo',
+          subtitle: 'Swiv, livre ak jere tranzaksyon antrepriz la.',
+        ),
+        const SizedBox(height: 18),
+        DashboardPanel(
+          child: Row(
+            children: [
+              const Text(
+                'Estati: ',
+                style: TextStyle(color: DashboardColors.muted),
+              ),
+              Expanded(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  value: _statusFilter,
+                  underline: const SizedBox.shrink(),
+                  items: _filters
+                      .map((value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(value.isEmpty ? 'Tout' : value),
+                          ))
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() => _statusFilter = value ?? '');
+                    _reload();
+                  },
+                ),
+              ),
+              IconButton(
+                tooltip: 'Rafrechi',
+                onPressed: _reload,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        DashboardPanel(
+          child: FutureBuilder<List<TransactionRecord>>(
+            future: _future,
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (snap.hasError) {
+                final error = snap.error;
+                return Text(
+                  error is ApiException ? error.message : '$error',
+                  style: const TextStyle(color: Color(0xFFB91C1C)),
+                );
+              }
+
+              final transactions = snap.data ?? const <TransactionRecord>[];
+              if (transactions.isEmpty) {
+                return const Text('Pa gen tranzaksyon.');
+              }
+
+              return Column(
+                children: transactions
+                    .map((tx) => _TransactionRow(
+                          tx: tx,
+                          onDeliver: () => _deliver(tx),
+                          onMarkDelivered: () => _setStatus(tx, 'delivered'),
+                          onMarkPending: () => _setStatus(tx, 'pending'),
+                          onDelete: () => _delete(tx),
+                        ))
+                    .toList(),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TransactionRow extends StatelessWidget {
+  const _TransactionRow({
+    required this.tx,
+    required this.onDeliver,
+    required this.onMarkDelivered,
+    required this.onMarkPending,
+    required this.onDelete,
+  });
+
+  final TransactionRecord tx;
+  final VoidCallback onDeliver;
+  final VoidCallback onMarkDelivered;
+  final VoidCallback onMarkPending;
+  final VoidCallback onDelete;
+
+  Color get _statusColor {
+    switch (tx.status) {
+      case 'delivered':
+        return const Color(0xFF15803D);
+      case 'failed':
+      case 'canceled':
+        return const Color(0xFFB91C1C);
+      default:
+        return const Color(0xFFB45309);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: DashboardColors.soft,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.receipt_long_outlined,
-                  color: DashboardColors.brand,
-                ),
-              ),
-              const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  serviceName,
+                  '${tx.serviceName} — ${tx.customerName}',
                   style: const TextStyle(
-                    fontSize: 16,
                     fontWeight: FontWeight.w900,
                     color: DashboardColors.ink,
                   ),
                 ),
               ),
               Text(
-                '$amount $currency',
+                '${tx.amount.toStringAsFixed(2)} ${tx.currency}',
                 style: const TextStyle(
-                  color: DashboardColors.ink,
                   fontWeight: FontWeight.w900,
+                  color: DashboardColors.brand,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          DashboardInfoRow(label: 'Phone', value: customerPhone),
-          DashboardInfoRow(label: 'Status', value: status),
-          DashboardInfoRow(label: 'Date', value: createdAt),
-          const SizedBox(height: 14),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  tx.status,
+                  style: TextStyle(
+                    color: _statusColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  tx.customerPhone,
+                  style: const TextStyle(
+                    color: DashboardColors.muted,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => TransactionDetailsPage(tx: tx),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.open_in_new),
-                label: const Text('Detay'),
+              FilledButton.icon(
+                onPressed: tx.isDelivered ? null : onDeliver,
+                icon: const Icon(Icons.send_outlined, size: 18),
+                label: const Text('Livre via Bazik'),
               ),
               OutlinedButton.icon(
-                onPressed: () => _updateStatus(
-                  context: context,
-                  docId: d.id,
-                  status: 'delivered',
-                ),
-                icon: const Icon(Icons.check_circle_outline),
-                label: const Text('Delivered'),
+                onPressed: onMarkDelivered,
+                icon: const Icon(Icons.check_circle_outline, size: 18),
+                label: const Text('Make manyèl'),
               ),
               OutlinedButton.icon(
-                onPressed: () => _updateStatus(
-                  context: context,
-                  docId: d.id,
-                  status: 'pending',
-                ),
-                icon: const Icon(Icons.pending_actions),
+                onPressed: onMarkPending,
+                icon: const Icon(Icons.pending_actions, size: 18),
                 label: const Text('Pending'),
               ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFB91C1C),
-                  foregroundColor: Colors.white,
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFB91C1C),
                 ),
-                onPressed: () => _deleteTx(
-                  context: context,
-                  docId: d.id,
-                ),
-                icon: const Icon(Icons.delete_outline),
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline, size: 18),
                 label: const Text('Efase'),
               ),
             ],
           ),
+          const Divider(height: 24),
         ],
       ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return DashboardPage(
-      title: 'Transaction management',
-      children: [
-        const DashboardHero(
-          icon: Icons.manage_search_outlined,
-          title: 'Transaction management',
-          subtitle: 'Review, update, and remove enterprise transactions.',
-        ),
-        const SizedBox(height: 18),
-        FutureBuilder<String>(
-          future: _enterpriseId(),
-          builder: (context, enterpriseSnap) {
-            if (enterpriseSnap.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            if (enterpriseSnap.hasError || !enterpriseSnap.hasData) {
-              return Center(
-                child: Text('Erreur enterprise: ${enterpriseSnap.error}'),
-              );
-            }
-
-            final enterpriseId = enterpriseSnap.data!;
-
-            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('transactions')
-                  .where('enterpriseId', isEqualTo: enterpriseId)
-                  .snapshots(),
-              builder: (context, txSnap) {
-                if (txSnap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final docs = [...(txSnap.data?.docs ?? [])];
-                docs.sort((a, b) {
-                  final da = _toDate(a.data()['createdAt']);
-                  final db = _toDate(b.data()['createdAt']);
-                  return db.compareTo(da);
-                });
-
-                if (docs.isEmpty) {
-                  return const DashboardPanel(
-                    child: Text('Pa gen tranzaksyon pou jere kounye a.'),
-                  );
-                }
-
-                return Column(
-                  children: [
-                    for (final d in docs) ...[
-                      _txCard(context, d),
-                      const SizedBox(height: 12),
-                    ],
-                  ],
-                );
-              },
-            );
-          },
-        ),
-      ],
     );
   }
 }

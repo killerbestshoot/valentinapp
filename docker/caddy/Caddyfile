@@ -1,0 +1,16 @@
+# HTTPS automatique (Let's Encrypt) devant l'app.
+# Activé par : docker compose --profile tls up -d
+#
+# Prérequis : le DNS de {$DOMAIN} pointe vers ce serveur, ports 80 et 443 ouverts.
+# Bazik exige une URL HTTPS publique pour le webhook : https://{$DOMAIN}/api/bazik/webhook
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	reverse_proxy web:8080
+}

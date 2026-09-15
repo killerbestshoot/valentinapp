@@ -1,12 +1,17 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mon_premye_app/core/config/app_environment.dart';
+import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
+import 'package:mon_premye_app/features/transactions/data/transaction_api.dart';
+import 'package:mon_premye_app/features/payments/presentation/widgets/gateway_status_card.dart';
 import 'package:mon_premye_app/pages/agent/agents_page.dart';
 import 'package:mon_premye_app/pages/transactions/create_transaction_page.dart';
-import 'package:mon_premye_app/pages/payout/payout_approval_page.dart';
+import 'package:mon_premye_app/pages/payout/payouts_page.dart';
+import 'package:mon_premye_app/pages/commission/commissions_page.dart';
+import 'package:mon_premye_app/pages/wallet/wallet_history_page.dart';
+import 'package:mon_premye_app/pages/system/system_health_page.dart';
+import 'package:mon_premye_app/pages/notifications/notifications_page.dart';
 import 'package:mon_premye_app/pages/receipts/receipt_page.dart';
 import 'package:mon_premye_app/pages/reports/reports_page.dart';
 import 'package:mon_premye_app/pages/services/service_catalog_page.dart';
@@ -14,7 +19,7 @@ import 'package:mon_premye_app/pages/settings/settings_page.dart';
 import 'package:mon_premye_app/pages/transactions/transaction_management_page.dart';
 import 'package:mon_premye_app/pages/wallet/wallet_topup_approval_page.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
   static const _ink = Color(0xFF172116);
@@ -22,7 +27,59 @@ class HomePage extends StatelessWidget {
   static const _surface = Color(0xFFF4F8F1);
   static const _brand = Color(0xFF123D2B);
 
-  String _s(dynamic v) => (v ?? '').toString().trim();
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  static const _ink = HomePage._ink;
+  static const _surface = HomePage._surface;
+
+  /// Yon sèl Future pataje ant tout moso ki bezwen estatistik yo.
+  /// Si nou te rele `_loadStats()` dirèk nan `build`, chak rebuild t ap
+  /// relanse tout rekèt agregasyon yo.
+  late Future<_DashboardStats> _statsFuture;
+  late Future<List<TransactionRecord>> _recentFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _statsFuture = _loadStats();
+    _recentFuture = _loadRecent();
+  }
+
+  /// Estatistik yo kouvri TOUT koleksyon an, pa sèlman 10 dènye yo.
+  ///
+  /// Anvan, `_DashboardStats.fromDocs(docs)` t ap kalkile sou menm lis `limit(10)`
+  /// ki alimante tablo a: "Transactions" te toujou montre maksimòm 10, e volim
+  /// nan se te volim 10 dènye tranzaksyon yo — pa total la.
+  Future<_DashboardStats> _loadStats() async {
+    final stats = await TransactionApi.instance.stats();
+
+    return _DashboardStats(
+      total: stats.total,
+      pending: stats.pending,
+      delivered: stats.delivered,
+      volumes: stats.volumes,
+    );
+  }
+
+  Future<List<TransactionRecord>> _loadRecent() {
+    return TransactionApi.instance.list(limit: 10);
+  }
+
+  void _refresh() {
+    setState(() {
+      _statsFuture = _loadStats();
+      _recentFuture = _loadRecent();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Estatistik yo rechaje.'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,12 +90,6 @@ class HomePage extends StatelessWidget {
         onLogout: () => _confirmLogout(context),
       );
     }
-
-    final stream = FirebaseFirestore.instance
-        .collection('transactions')
-        .orderBy('createdAt', descending: true)
-        .limit(10)
-        .snapshots();
 
     return Scaffold(
       backgroundColor: _surface,
@@ -54,7 +105,7 @@ class HomePage extends StatelessWidget {
         actions: [
           IconButton(
             tooltip: 'Rafrechi',
-            onPressed: () {},
+            onPressed: _refresh,
             icon: const Icon(Icons.refresh),
           ),
           IconButton(
@@ -65,14 +116,15 @@ class HomePage extends StatelessWidget {
           const SizedBox(width: 8),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: stream,
+      body: FutureBuilder<List<TransactionRecord>>(
+        future: _recentFuture,
         builder: (context, snap) {
           if (snap.hasError) {
+            final error = snap.error;
             return _StateMessage(
               icon: Icons.error_outline,
-              title: 'Erreur transactions',
-              message: '${snap.error}',
+              title: 'Nou pa ka chaje tranzaksyon yo',
+              message: error is ApiException ? error.message : '$error',
             );
           }
 
@@ -80,8 +132,7 @@ class HomePage extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final docs = snap.data!.docs;
-          final stats = _DashboardStats.fromDocs(docs);
+          final transactions = snap.data!;
 
           return LayoutBuilder(
             builder: (context, constraints) {
@@ -105,7 +156,20 @@ class HomePage extends StatelessWidget {
                     onOpen: (page) => _open(context, page),
                   ),
                   const SizedBox(height: 18),
-                  _StatsGrid(stats: stats, isWide: isWide),
+                  const GatewayStatusCard(),
+                  const SizedBox(height: 18),
+                  FutureBuilder<_DashboardStats>(
+                    future: _statsFuture,
+                    builder: (context, statsSnap) {
+                      return _StatsGrid(
+                        stats: statsSnap.data ?? _DashboardStats.empty,
+                        isWide: isWide,
+                        loading: statsSnap.connectionState ==
+                            ConnectionState.waiting,
+                        error: statsSnap.error?.toString(),
+                      );
+                    },
+                  ),
                   const SizedBox(height: 18),
                   isWide
                       ? Row(
@@ -114,31 +178,36 @@ class HomePage extends StatelessWidget {
                             Expanded(
                               flex: 7,
                               child: _TransactionsPanel(
-                                docs: docs,
-                                read: _s,
+                                transactions: transactions,
                                 onOpen: (id) => _openReceipt(context, id),
                               ),
                             ),
                             const SizedBox(width: 18),
                             Expanded(
                               flex: 3,
-                              child: _OperationsPanel(
-                                stats: stats,
-                                onCreate: () => _openCreateTransaction(context),
+                              child: FutureBuilder<_DashboardStats>(
+                                future: _statsFuture,
+                                builder: (context, snap) => _OperationsPanel(
+                                  stats: snap.data ?? _DashboardStats.empty,
+                                  onCreate: () =>
+                                      _openCreateTransaction(context),
+                                ),
                               ),
                             ),
                           ],
                         )
                       : Column(
                           children: [
-                            _OperationsPanel(
-                              stats: stats,
-                              onCreate: () => _openCreateTransaction(context),
+                            FutureBuilder<_DashboardStats>(
+                              future: _statsFuture,
+                              builder: (context, snap) => _OperationsPanel(
+                                stats: snap.data ?? _DashboardStats.empty,
+                                onCreate: () => _openCreateTransaction(context),
+                              ),
                             ),
                             const SizedBox(height: 18),
                             _TransactionsPanel(
-                              docs: docs,
-                              read: _s,
+                              transactions: transactions,
                               onOpen: (id) => _openReceipt(context, id),
                             ),
                           ],
@@ -194,11 +263,7 @@ class HomePage extends StatelessWidget {
     );
 
     if (shouldLogout == true) {
-      if (AppEnvironment.mockFirebase) {
-        await AuthRepositoryProvider.instance.signOut();
-      } else {
-        await FirebaseAuth.instance.signOut();
-      }
+      await AuthRepositoryProvider.instance.signOut();
     }
   }
 }
@@ -237,11 +302,11 @@ class _AdminCommandCenter extends StatelessWidget {
         page: TransactionManagementPage(),
       ),
       _AdminAction(
-        title: 'Payout Approval',
-        subtitle: 'Approve payout requests',
+        title: 'Payout',
+        subtitle: 'Apwouve epi voye payout yo',
         icon: Icons.task_alt_outlined,
         color: Color(0xFFB45309),
-        page: PayoutApprovalPage(),
+        page: PayoutsPage(),
       ),
       _AdminAction(
         title: 'Topup Approval',
@@ -263,6 +328,34 @@ class _AdminCommandCenter extends StatelessWidget {
         icon: Icons.bar_chart_outlined,
         color: Color(0xFF047857),
         page: ReportsPage(),
+      ),
+      _AdminAction(
+        title: 'Komisyon',
+        subtitle: 'Istorik ak total pa staff',
+        icon: Icons.percent,
+        color: Color(0xFF9333EA),
+        page: CommissionsPage(),
+      ),
+      _AdminAction(
+        title: 'Istorik wallet',
+        subtitle: 'Mouvman kòb ou',
+        icon: Icons.history,
+        color: Color(0xFF0369A1),
+        page: WalletHistoryPage(),
+      ),
+      _AdminAction(
+        title: 'Notifikasyon',
+        subtitle: 'Sa ki bezwen atansyon',
+        icon: Icons.notifications_outlined,
+        color: Color(0xFFDC2626),
+        page: NotificationsPage(),
+      ),
+      _AdminAction(
+        title: 'Sante sistèm',
+        subtitle: 'Baz done ak pasrèl',
+        icon: Icons.monitor_heart_outlined,
+        color: Color(0xFF15803D),
+        page: SystemHealthPage(),
       ),
       _AdminAction(
         title: 'Settings',
@@ -428,13 +521,7 @@ class _MockAdminDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const stats = _DashboardStats(
-      total: 0,
-      pending: 0,
-      delivered: 0,
-      volume: 0,
-      currency: 'USD',
-    );
+    const stats = _DashboardStats.empty;
 
     return Scaffold(
       backgroundColor: HomePage._surface,
@@ -666,36 +753,51 @@ class _StatsGrid extends StatelessWidget {
   const _StatsGrid({
     required this.stats,
     required this.isWide,
+    this.loading = false,
+    this.error,
   });
 
   final _DashboardStats stats;
   final bool isWide;
+  final bool loading;
+  final String? error;
 
   @override
   Widget build(BuildContext context) {
+    // Yon estatistik ki pa chaje pa dwe parèt kòm yon zewo: sa fè admin nan
+    // kwè pa gen tranzaksyon.
+    if (error != null) {
+      return _StateMessage(
+        icon: Icons.error_outline,
+        title: 'Nou pa ka chaje estatistik yo',
+        message: error!,
+      );
+    }
+
     final cards = [
       _MetricCard(
         icon: Icons.receipt_long_outlined,
         label: 'Transactions',
-        value: '${stats.total}',
+        value: loading ? '...' : '${stats.total}',
         accent: const Color(0xFF1565C0),
       ),
       _MetricCard(
         icon: Icons.schedule_outlined,
         label: 'Pending',
-        value: '${stats.pending}',
+        value: loading ? '...' : '${stats.pending}',
         accent: const Color(0xFFF57F17),
       ),
       _MetricCard(
         icon: Icons.check_circle_outline,
         label: 'Delivered',
-        value: '${stats.delivered}',
+        value: loading ? '...' : '${stats.delivered}',
         accent: const Color(0xFF2E7D32),
       ),
       _MetricCard(
         icon: Icons.account_balance_wallet_outlined,
         label: 'Volume',
-        value: stats.volumeLabel,
+        value: loading ? '...' : stats.primaryVolume,
+        footnote: loading ? '' : stats.secondaryVolume,
         accent: const Color(0xFF6A1B9A),
       ),
     ];
@@ -718,12 +820,16 @@ class _MetricCard extends StatelessWidget {
     required this.label,
     required this.value,
     required this.accent,
+    this.footnote = '',
   });
 
   final IconData icon;
   final String label;
   final String value;
   final Color accent;
+
+  /// Liy anba a: sèvi pou lòt deviz yo nan volim nan.
+  final String footnote;
 
   @override
   Widget build(BuildContext context) {
@@ -770,6 +876,16 @@ class _MetricCard extends StatelessWidget {
                     letterSpacing: 0,
                   ),
                 ),
+                if (footnote.isNotEmpty)
+                  Text(
+                    footnote,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: HomePage._muted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -781,13 +897,11 @@ class _MetricCard extends StatelessWidget {
 
 class _TransactionsPanel extends StatelessWidget {
   const _TransactionsPanel({
-    required this.docs,
-    required this.read,
+    required this.transactions,
     required this.onOpen,
   });
 
-  final List<QueryDocumentSnapshot<Object?>> docs;
-  final String Function(dynamic value) read;
+  final List<TransactionRecord> transactions;
   final ValueChanged<String> onOpen;
 
   @override
@@ -822,7 +936,7 @@ class _TransactionsPanel extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
-          if (docs.isEmpty)
+          if (transactions.isEmpty)
             const Padding(
               padding: EdgeInsets.all(28),
               child: Text(
@@ -832,26 +946,16 @@ class _TransactionsPanel extends StatelessWidget {
               ),
             )
           else
-            ...docs.map((doc) {
-              final data = doc.data();
-              final map =
-                  data is Map<String, dynamic> ? data : <String, dynamic>{};
-              final service = read(map['serviceName']);
-              final name = read(map['customerName']);
-              final phone = read(map['customerPhone']);
-              final amount = read(map['paymentAmount']);
-              final currency = read(map['paymentCurrency']);
-              final status = read(map['status']);
-
+            ...transactions.map((tx) {
               return _TransactionTile(
-                id: doc.id,
-                service: service,
-                customerName: name,
-                phone: phone,
-                amount: amount,
-                currency: currency,
-                status: status,
-                onTap: () => onOpen(doc.id),
+                id: tx.txId,
+                service: tx.serviceName,
+                customerName: tx.customerName,
+                phone: tx.customerPhone,
+                amount: tx.amount.toStringAsFixed(2),
+                currency: tx.currency,
+                status: tx.status,
+                onTap: () => onOpen(tx.txId),
               );
             }),
         ],
@@ -1105,60 +1209,59 @@ class _DashboardStats {
     required this.total,
     required this.pending,
     required this.delivered,
-    required this.volume,
-    required this.currency,
+    required this.volumes,
   });
 
   final int total;
   final int pending;
   final int delivered;
-  final double volume;
-  final String currency;
 
+  /// Volim pa deviz. Nou PA adisyone deviz diferan ansanm: 100 USD + 100 HTG
+  /// pa fè 200 nan anyen.
+  final Map<String, double> volumes;
+
+  static const empty = _DashboardStats(
+    total: 0,
+    pending: 0,
+    delivered: 0,
+    volumes: {},
+  );
+
+  static String _format(double value) {
+    return value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(2);
+  }
+
+  /// Egzanp: "22588 MXN" oswa "22588 MXN + 1450 USD".
   String get volumeLabel {
-    final value = volume == volume.roundToDouble()
-        ? volume.toStringAsFixed(0)
-        : volume.toStringAsFixed(2);
-    return currency.isEmpty ? value : '$value $currency';
+    if (volumes.isEmpty) return '0';
+
+    final entries = volumes.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return entries.map((e) => '${_format(e.value)} ${e.key}').join(' + ');
   }
 
-  factory _DashboardStats.fromDocs(List<QueryDocumentSnapshot<Object?>> docs) {
-    var pending = 0;
-    var delivered = 0;
-    var volume = 0.0;
-    var currency = '';
+  /// Pou UI a: lè gen plizyè deviz, nou montre premye a an gwo epi rès la anba.
+  String get primaryVolume {
+    if (volumes.isEmpty) return '0';
 
-    for (final doc in docs) {
-      final data = doc.data();
-      if (data is! Map<String, dynamic>) continue;
+    final entries = volumes.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
-      final status = (data['status'] ?? '').toString().trim().toLowerCase();
-      if (status == 'delivered' || status == 'livre' || status == 'livrée') {
-        delivered++;
-      } else {
-        pending++;
-      }
-
-      final rawAmount = data['paymentAmount'];
-      if (rawAmount is num) {
-        volume += rawAmount.toDouble();
-      } else {
-        volume += double.tryParse(rawAmount?.toString() ?? '') ?? 0;
-      }
-
-      if (currency.isEmpty) {
-        currency = (data['paymentCurrency'] ?? '').toString().trim();
-      }
-    }
-
-    return _DashboardStats(
-      total: docs.length,
-      pending: pending,
-      delivered: delivered,
-      volume: volume,
-      currency: currency,
-    );
+    return '${_format(entries.first.value)} ${entries.first.key}';
   }
+
+  String get secondaryVolume {
+    if (volumes.length < 2) return '';
+
+    final entries = volumes.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return entries.skip(1).map((e) => '${_format(e.value)} ${e.key}').join(' + ');
+  }
+
 }
 
 class _StateMessage extends StatelessWidget {

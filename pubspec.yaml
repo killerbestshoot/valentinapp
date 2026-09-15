@@ -15,12 +15,7 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
-  # Firebase (kite resolver chwazi bon vÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨syon ki mache ak Flutter ou a)
-  firebase_core: ^4.5.0
-  firebase_auth: ^6.2.0
-  cloud_firestore: ^6.1.3
   go_router: ^17.1.0
-  cloud_functions: ^6.1.0
   path_provider: ^2.1.5
   printing: ^5.14.3
   pdf: ^3.12.0
@@ -28,6 +23,7 @@ dependencies:
   qr_flutter: ^4.1.0
   crypto: ^3.0.7
   csv: ^8.0.0
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:

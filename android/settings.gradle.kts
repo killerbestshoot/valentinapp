@@ -21,7 +21,6 @@ plugins {
 
     //  THESE VERSIONS ARE REQUIRED or Gradle can't find com.android.application
     id("com.android.application") version "9.0.0" apply false
-    id("com.google.gms.google-services") version "4.3.15" apply false
 }
 
 include(":app")

@@ -310,12 +310,19 @@ class DashboardActionTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-  final VoidCallback onTap;
+
+  /// `null` = tuil la dezaktive (li pa reponn e li parèt grize).
+  ///
+  /// Anvan, paramèt sa a pa t ka `null`: ekran yo te mete `onTap: () {}` pou
+  /// "dezaktive" yon tuil. Tuil la te anime lè ou tape l, epi li pa t fè anyen.
+  final VoidCallback? onTap;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    return Opacity(
+      opacity: onTap == null ? 0.5 : 1,
+      child: Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
@@ -370,6 +377,7 @@ class DashboardActionTile extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }

@@ -1,15 +1,11 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:mon_premye_app/core/models/app_role.dart';
 import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
 import 'package:mon_premye_app/features/auth/domain/auth_repository.dart';
-import 'package:mon_premye_app/features/owner/legacy/owner_dashboard.dart';
-import 'package:mon_premye_app/features/services/presentation/pages/countries_screen.dart';
-import 'package:mon_premye_app/features/transactions/presentation/pages/new_transaction_screen.dart';
-import 'package:mon_premye_app/features/transactions/presentation/pages/transactions_list_screen.dart';
+import 'package:mon_premye_app/features/payments/presentation/pages/send_money_page.dart';
 import 'package:mon_premye_app/pages/dashboard/agent_dashboard.dart';
 import 'package:mon_premye_app/pages/dashboard/home_page.dart';
 import 'package:mon_premye_app/pages/auth/login_page.dart';
@@ -39,10 +35,18 @@ GoRouter buildRouter({
     return loc == '/dashboard' ||
         loc == '/owner' ||
         loc == '/admin' ||
-        loc == '/countries' ||
-        loc == '/tx/new' ||
-        loc == '/tx/list';
+        loc == '/send-money';
   }
+
+  /// Ki wòl ki gen dwa sou chak wout.
+  ///
+  /// Serveur a deja refize done yo, men san sa yon ajan ki tape `/admin` nan
+  /// bar adrès la ta ateri sou ekran admin nan — plen erè, e li ta wè estrikti
+  /// aplikasyon an. Wout la dwe refize l anvan.
+  const roleGuards = <String, Set<AppRole>>{
+    '/admin': {AppRole.owner, AppRole.admin},
+    '/owner': {AppRole.owner},
+  };
 
   String homeForCurrentUser() {
     final user = auth.currentUser;
@@ -67,9 +71,19 @@ GoRouter buildRouter({
       final loc = state.matchedLocation;
 
       if (!loggedIn && isProtected(loc)) return '/';
+
       if (loggedIn && (loc == '/' || loc == '/login' || loc == '/register')) {
         return homeForCurrentUser();
       }
+
+      // Wòl la pa ase wo pou wout sa a: nou voye moun nan lakay li.
+      final allowed = roleGuards[loc];
+      final role = auth.currentUser?.role;
+
+      if (loggedIn && allowed != null && !allowed.contains(role)) {
+        return homeForCurrentUser();
+      }
+
       return null;
     },
     routes: [
@@ -89,26 +103,28 @@ GoRouter buildRouter({
           path: '/dashboard',
           builder: (context, state) =>
               agentDashboard ?? const AgentDashboard()),
+      // Owner an sèvi ak menm tablo bò jesyon ak admin nan: tout tuil yo
+      // (payout, komisyon, sèvis, sante...) chita sou SQLite. Ansyen
+      // `OwnerDashboard` la te gen 21 tuil sou Firebase, mwatye ladan yo
+      // doub ekran ki deja migre.
       GoRoute(
           path: '/owner',
           builder: (context, state) =>
-              ownerDashboard ?? const OwnerDashboard()),
+              ownerDashboard ?? const HomePage()),
       GoRoute(
           path: '/admin',
           builder: (context, state) => adminDashboard ?? const HomePage()),
       GoRoute(
-          path: '/countries',
-          builder: (context, state) => const CountriesScreen()),
-      GoRoute(
-        path: '/tx/new',
+        path: '/send-money',
         builder: (context, state) {
-          final svc = state.uri.queryParameters['service'];
-          return NewTransactionScreen(initialService: svc);
+          // `tx` prezan lè nou livre yon tranzaksyon ki deja egziste.
+          final txId = state.uri.queryParameters['tx'] ?? '';
+          return SendMoneyPage(
+            kind: txId.isEmpty ? 'payout' : 'delivery',
+            txId: txId,
+          );
         },
       ),
-      GoRoute(
-          path: '/tx/list',
-          builder: (context, state) => const TransactionsListScreen()),
     ],
   );
 }

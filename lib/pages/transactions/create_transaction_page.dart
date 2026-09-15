@@ -1,7 +1,12 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
-import 'package:mon_premye_app/services/shared/app_ids.dart';
+import 'package:mon_premye_app/features/payments/domain/payment_models.dart';
+import 'package:mon_premye_app/features/payments/data/payment_gateway_provider.dart';
+import 'package:mon_premye_app/features/payments/domain/payment_gateway.dart';
+import 'package:mon_premye_app/features/payments/presentation/widgets/payment_error_view.dart';
+import 'package:mon_premye_app/features/transactions/data/transaction_api.dart';
 
 class CreateTransactionPage extends StatefulWidget {
   const CreateTransactionPage({super.key});
@@ -25,11 +30,31 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   String paymentCurrency = 'MXN';
   bool loading = false;
 
+  /// Devi a parèt pandan ajan an ap tape: li wè konbyen sa koute AVAN li
+  /// peze. Se pa yon kesyon — se enfòmasyon.
+  TransferQuote? _quote;
+  bool _quoting = false;
+  Timer? _quoteDebounce;
+
+  /// Rezilta dènye voye a.
+  Transfer? _sent;
+  PaymentException? _error;
+  String? _savedTxId;
+
+  PaymentGateway get _gateway => PaymentGatewayProvider.instance;
+
   final services = const ['MonCash', 'NatCash', 'Minit Haiti'];
   final currencies = const ['MXN', 'USD', 'DOP', 'CLP', 'BRL', 'HTG'];
 
   @override
+  void initState() {
+    super.initState();
+    amountCtrl.addListener(_scheduleQuote);
+  }
+
+  @override
   void dispose() {
+    _quoteDebounce?.cancel();
     nameCtrl.dispose();
     phoneCtrl.dispose();
     amountCtrl.dispose();
@@ -38,6 +63,50 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
 
   double _num(String v) => double.tryParse(v.replaceAll(',', '.').trim()) ?? 0;
 
+  /// Èske sèvis la ka livre pa Bazik? (WU ak CAM livre fizikman.)
+  bool get _isGatewayService =>
+      PaymentNetworkX.forServiceName(serviceName) != null;
+
+  /// Devi an dirèk, ak yon ti delè pou nou pa rele serveur a sou chak lèt.
+  void _scheduleQuote() {
+    _quoteDebounce?.cancel();
+    _quoteDebounce = Timer(const Duration(milliseconds: 400), _refreshQuote);
+  }
+
+  Future<void> _refreshQuote() async {
+    if (!_isGatewayService) {
+      if (mounted) setState(() => _quote = null);
+      return;
+    }
+
+    final amount = _num(amountCtrl.text);
+    if (amount <= 0) {
+      if (mounted) setState(() => _quote = null);
+      return;
+    }
+
+    setState(() => _quoting = true);
+
+    try {
+      final quote = await _gateway.quote(
+        amount: amount,
+        network: PaymentNetworkX.forServiceName(serviceName)!,
+        currency: paymentCurrency,
+      );
+      if (mounted) setState(() => _quote = quote);
+    } on PaymentException {
+      // Devi a se yon konfò: si li echwe, fòm nan rete itilizab.
+      if (mounted) setState(() => _quote = null);
+    } finally {
+      if (mounted) setState(() => _quoting = false);
+    }
+  }
+
+  /// Anrejistre EPI voye, san okenn kesyon.
+  ///
+  /// Lòd la enpòtan: tras la ekri anvan nou touche lajan. Si voye a echwe,
+  /// tranzaksyon an egziste toujou (an `pending`) e erè a parèt anba fòm nan —
+  /// men nou pa poze okenn kesyon ni mande okenn konfimasyon.
   Future<void> save() async {
     FocusScope.of(context).unfocus();
 
@@ -47,66 +116,69 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
     final phone = phoneCtrl.text.trim();
     final amount = _num(amountCtrl.text);
 
-    setState(() => loading = true);
+    setState(() {
+      loading = true;
+      _error = null;
+      _sent = null;
+      _savedTxId = null;
+    });
 
     try {
-      final txId = AppIds.transaction(
-        seed: '$serviceName:$phone:${DateTime.now().toIso8601String()}',
+      // Serveur a mete `enterpriseId` ak `staffUid` pou kont li, depi sesyon
+      // an — yon kliyan pa ka atribiye yon tranzaksyon bay yon lòt antrepriz.
+      final created = await TransactionApi.instance.create(
+        serviceName: serviceName,
+        customerName: name,
+        customerPhone: phone,
+        amount: amount,
+        currency: paymentCurrency,
       );
 
-      await FirebaseFirestore.instance
-          .collection('transactions')
-          .doc(txId)
-          .set({
-        'txId': txId,
-        'transactionId': txId,
-        'serviceName': serviceName,
-        'customerName': name,
-        'customerPhone': phone,
-        'paymentAmount': amount,
-        'paymentCurrency': paymentCurrency,
-        'status': 'pending',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      final txId = created.txId;
 
       if (!mounted) return;
+      setState(() => _savedTxId = txId);
 
-      await showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Transaction anrejistre'),
-          content: SelectableText('ID: $txId'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
+      // Sèvis ki pa pase sou Bazik (Minit, WU, CAM): yo livre yon lòt jan.
+      if (!_isGatewayService) {
+        _clearForm();
+        return;
+      }
+
+      // Voye tou swit. Menm tranzaksyon => menm seed => yon sèl transfè,
+      // menm si moun nan peze de fwa.
+      final transfer = await _gateway.send(
+        amount: amount,
+        network: PaymentNetworkX.forServiceName(serviceName)!,
+        phone: phone,
+        receiverName: name,
+        kind: 'delivery',
+        txId: txId,
+        currency: paymentCurrency,
+        idempotencySeed: 'tx:$txId',
+        note: 'Livrezon $serviceName',
       );
 
-      nameCtrl.clear();
-      phoneCtrl.clear();
-      amountCtrl.clear();
+      if (!mounted) return;
+      setState(() => _sent = transfer);
+
+      if (transfer.status != TransferStatus.failed) _clearForm();
+    } on PaymentException catch (err) {
+      if (mounted) setState(() => _error = err);
     } catch (e) {
-      if (!mounted) return;
-
-      await showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Erreur'),
-          content: SelectableText(e.toString()),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
+      if (mounted) {
+        setState(() => _error = PaymentException('unexpected', '$e'));
+      }
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  void _clearForm() {
+    nameCtrl.clear();
+    phoneCtrl.clear();
+    amountCtrl.clear();
+    setState(() => _quote = null);
   }
 
   @override
@@ -308,7 +380,10 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
                       .toList(),
                   onChanged: loading
                       ? null
-                      : (v) => setState(() => paymentCurrency = v ?? 'MXN'),
+                      : (v) {
+                          setState(() => paymentCurrency = v ?? 'MXN');
+                          _refreshQuote();
+                        },
                 ),
               ),
             ],
@@ -332,10 +407,33 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
                       color: Colors.white,
                     ),
                   )
-                : const Icon(Icons.save_outlined),
-            label:
-                Text(loading ? 'Ap anrejistre...' : 'Anrejistre transaction'),
+                : Icon(_isGatewayService
+                    ? Icons.send_outlined
+                    : Icons.save_outlined),
+            label: Text(
+              loading
+                  ? (_isGatewayService ? 'Ap voye...' : 'Ap anrejistre...')
+                  : (_isGatewayService
+                      ? 'Anrejistre epi voye'
+                      : 'Anrejistre transaction'),
+            ),
           ),
+          if (_quote != null || _quoting) ...[
+            const SizedBox(height: 16),
+            _QuotePanel(quote: _quote, loading: _quoting),
+          ],
+          if (_error != null) ...[
+            const SizedBox(height: 16),
+            PaymentErrorView(error: _error!, onRetry: save),
+          ],
+          if (_sent != null) ...[
+            const SizedBox(height: 16),
+            _SentPanel(transfer: _sent!),
+          ],
+          if (_sent == null && _error == null && _savedTxId != null) ...[
+            const SizedBox(height: 16),
+            _SavedPanel(txId: _savedTxId!),
+          ],
         ],
       ),
     );
@@ -569,6 +667,192 @@ class _SummaryLine extends StatelessWidget {
                 fontWeight: FontWeight.w800,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Konbyen sa koute — parèt pandan ajan an ap tape.
+///
+/// Se pa yon konfimasyon: ajan an wè chif yo anvan li peze, epi li peze yon
+/// sèl fwa. Nou pa poze okenn kesyon apre.
+class _QuotePanel extends StatelessWidget {
+  const _QuotePanel({required this.quote, required this.loading});
+
+  final TransferQuote? quote;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading || quote == null) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF4F8F1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFDDE8D8)),
+        ),
+        child: const Row(
+          children: [
+            SizedBox(
+              height: 16,
+              width: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 12),
+            Text('N ap kalkile frè yo...'),
+          ],
+        ),
+      );
+    }
+
+    final value = quote!;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFDDE8D8)),
+      ),
+      child: Column(
+        children: [
+          _QuoteLine(
+            label: 'Benefisyè a resevwa',
+            value: '${value.amountHtg.toStringAsFixed(2)} HTG',
+          ),
+          _QuoteLine(
+            label: 'Frè Bazik (${value.feePercent.toStringAsFixed(0)}%)',
+            value: '${value.feeHtg.toStringAsFixed(2)} HTG',
+          ),
+          const Divider(height: 18),
+          _QuoteLine(
+            label: 'Total nan wallet ou',
+            value: '${value.debit.toStringAsFixed(2)} ${value.currency}',
+            bold: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuoteLine extends StatelessWidget {
+  const _QuoteLine({
+    required this.label,
+    required this.value,
+    this.bold = false,
+  });
+
+  final String label;
+  final String value;
+  final bool bold;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
+      color: bold ? const Color(0xFF172116) : const Color(0xFF667365),
+      fontSize: bold ? 15 : 13,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [Text(label, style: style), Text(value, style: style)],
+      ),
+    );
+  }
+}
+
+/// Rezilta yon transfè ki pati.
+class _SentPanel extends StatelessWidget {
+  const _SentPanel({required this.transfer});
+
+  final Transfer transfer;
+
+  @override
+  Widget build(BuildContext context) {
+    final failed = transfer.status == TransferStatus.failed;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: failed ? scheme.errorContainer : scheme.primaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(failed ? Icons.cancel_outlined : Icons.check_circle_outline),
+              const SizedBox(width: 8),
+              Text(
+                failed ? 'Transfè a pa pase' : 'Lajan an pati',
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SelectableText('Referans: ${transfer.reference}'),
+          // Vid = transfè a pa janm rive sou Bazik.
+          SelectableText(
+            transfer.gatewayId.isEmpty
+                ? 'ID Bazik: — (pa rive sou Bazik)'
+                : 'ID Bazik: ${transfer.gatewayId}',
+          ),
+          if (failed && transfer.refunded)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text('Wallet ou ranbouse otomatikman.'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Sèvis ki pa pase sou Bazik: tranzaksyon an anrejistre, livrezon an fèt
+/// yon lòt jan (Western Union, CAM, Minit).
+class _SavedPanel extends StatelessWidget {
+  const _SavedPanel({required this.txId});
+
+  final String txId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.inventory_2_outlined),
+              SizedBox(width: 8),
+              Text(
+                'Tranzaksyon anrejistre',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SelectableText('ID: $txId'),
+          const SizedBox(height: 4),
+          const Text(
+            'Sèvis sa a pa pase sou Bazik: livrezon an fèt yon lòt jan.',
+            style: TextStyle(fontSize: 12),
           ),
         ],
       ),

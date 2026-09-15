@@ -1,0 +1,32 @@
+# Contexte de build commun aux images `api` et `web`.
+# Règle d'or : aucun secret ni aucune donnée ne doit entrer dans une image.
+
+**/.env
+**/*.env
+!**/*.env.example
+**/serviceAccount*.json
+server/data/
+bazik/data/
+**/backups/
+
+# Artefacts et dépendances locales (reconstruits dans l'image)
+**/node_modules/
+build/
+.dart_tool/
+.flutter-plugins-dependencies
+coverage/
+
+# Inutiles pour la livraison
+.git/
+.github/
+.idea/
+.vscode/
+android/
+ios/
+linux/
+macos/
+windows/
+tool/
+docker-compose*.yml
+**/*.log
+**/.DS_Store

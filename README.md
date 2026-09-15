@@ -1,83 +1,79 @@
 # VOUPVAPCASH
 
-VOUPVAPCASH is a mobile financial operations app for agents, administrators, and owners. The project supports role-based workflows, cash transfer services, transaction management, commission auditing, and enterprise control via Firebase.
-
-## App Goal
-
-The app is designed to:
-- let agents authenticate and access service dashboards
-- support MonCash, NatCash, Western Union, and CAM Transf service flows
-- track transactions per agent and enterprise
-- provide dashboards for owners, admins, and agents
-- use Firebase Authentication and Firestore for persistence
+Application de transfert d'argent pour agents, administrateurs et propriétaires
+d'entreprise en Haïti : envois MonCash / NatCash via Bazik, wallets multi-devises
+(HTG, USD, MXN…), commissions, retraits et supervision.
 
 ## Architecture
 
-The project is organized with a feature-driven S.O.L.I.D approach:
-
-- `lib/app/` - application entry, router, and shared app configuration
-- `lib/core/` - common persistence helpers and shared infrastructure
-- `lib/features/auth/` - authentication domain model, repository contract, Firebase/mock implementations, use cases, and login/register UI
-- `lib/features/admin/` - administrator screens and workflows
-- `lib/features/owner/` - owner screens and workflows
-- `lib/features/dashboard/` - agent/client dashboard data modeling, repository, use case, and UI
-- `lib/features/services/` - service-related pages and flows
-- `lib/features/transactions/` - transaction creation and listing screens
-
-The active application entrypoint is `lib/main.dart`, which loads `lib/app/app.dart` and `lib/app/app_router.dart`. New code should be added under `lib/features/<feature>/` and consumed through repository interfaces/use cases rather than importing Firebase directly from widgets.
-
-Some older duplicate screens still exist at the top of `lib/` and in `lib/pages/`. Treat those files as legacy migration candidates. Do not add new behavior there unless a feature migration explicitly requires it.
-
-## Implemented layers
-
-- `Model` - data classes such as `AuthUser`, `DashboardData`, and `ServiceOffer`
-- `Repository` - abstractions for auth, dashboard, and transactions
-- `Data source implementation` - Firebase repositories for production and mock repositories for local/dev tests
-- `Persistence` - `FirebasePersistence` for Firebase instance access
-- `Use Case` - business logic encapsulated in classes such as `LoginUseCase`, `GetDashboardDataUseCase`, and transaction use cases
-- `Presentation` - feature pages and widgets grouped by feature
-
-## Role Routing
-
-Authentication is role-aware through `AuthUser.role`.
-
-- owners route to `/owner`
-- admins route to `/admin`
-- agents and clients route to `/dashboard`
-
-For local development without Firebase, run with:
-
-```sh
-flutter run -d chrome --dart-define=MOCK_FIREBASE=true
+```
+Flutter (lib/)  ──HTTP + Bearer token──►  server/ (Express, port 4500)
+                                              │
+                                              ├── SQLite : server/data/app.db
+                                              ├── bazik/  → api.bazik.io
+                                              └── Hostinger → e-mails OTP
 ```
 
-Mock role shortcuts:
+- **Aucun Firebase.** Toutes les données vivent dans une seule base SQLite
+  côté serveur ; l'app ne garde qu'un jeton de session.
+- **Aucun secret dans l'app.** Les clés Bazik et SMTP sont dans `server/.env`
+  (ignoré par git — modèle : `server/.env.example`).
+- L'argent est stocké en centimes entiers ; chaque mouvement de wallet laisse
+  une ligne dans `wallet_ledger`, écrite dans la même transaction que le solde.
 
-- `owner@...` logs in as owner
-- `admin@...` logs in as admin
-- `client@...` logs in as client
-- any other email logs in as agent
+| Dossier | Contenu |
+|---|---|
+| `lib/app/` | app, routeur (`go_router`) et gardes de rôle |
+| `lib/core/` | client HTTP, session, configuration, rôles |
+| `lib/features/` | accès API par domaine (auth, transactions, users, wallet, payments, operations) |
+| `lib/pages/` | écrans |
+| `server/` | API, authentification, commissions, OTP — voir [`server/README.md`](server/README.md) |
+| `bazik/` | intégration Bazik — voir [`bazik/README.md`](bazik/README.md) |
 
-## Testing
+## Rôles
 
-Run:
+`owner` > `admin` > `agent` > `client`. La hiérarchie est appliquée **par le
+serveur** (un admin ne peut ni créer ni modifier un owner, personne ne se modifie
+soi-même) ; le routeur Flutter ne fait que masquer les écrans.
+
+- owner et admin → `/admin` (tableau de bord entreprise ; `/owner` y mène aussi)
+- agent et client → `/dashboard`
+
+## Démarrer
 
 ```sh
-flutter test
-flutter analyze
-flutter build web --dart-define=MOCK_FIREBASE=true
+# 1. Serveur
+cd server
+cp .env.example .env          # puis renseigner les clés
+npm install
+node scripts/create_user.js --email admin@exemple.com --password '…' --role admin
+npm run dev                   # http://127.0.0.1:4500
+
+# 2. App
+flutter pub get
+flutter run -d chrome
+# autre serveur : --dart-define=API_BASE_URL=https://api.exemple.com
 ```
 
-The tests cover the auth repository seam, role routing, UUID generation, and the existing smoke test.
+Sans serveur, l'app tourne en démonstration avec
+`--dart-define=MOCK_FIREBASE=true` (nom historique : le mode n'a plus de lien
+avec Firebase). Raccourcis : `owner@…`, `admin@…`, `client@…`, tout autre e-mail
+= agent.
 
-## Running the app
+## Livraison (Docker)
 
-1. Install Flutter and configure your environment.
-2. Run `flutter pub get`.
-3. Use `flutter run` to start the application.
+```sh
+cp server/.env.example server/.env   # secrets : OTP_SECRET, Bazik, SMTP
+cp .env.example .env                 # DOMAIN
+docker compose --profile tls up -d --build
+```
 
-## Notes
+Guide complet (sauvegardes, mises à jour, restauration) : [`docker/README.md`](docker/README.md).
 
-- The new feature structure uses `go_router` for navigation.
-- Firebase emulator support is included via the `USE_FIREBASE_EMULATORS` environment flag.
-- Existing legacy pages remain in the project, but the app entry now routes through the feature-based architecture.
+## Tests
+
+```sh
+flutter analyze && flutter test     # app
+cd server && npm test               # auth, hiérarchie, commissions, mail, OTP
+cd bazik && npm test                # transferts, webhooks, idempotence, argent
+```

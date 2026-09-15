@@ -1,0 +1,312 @@
+"use strict";
+
+/**
+ * Tranzaksyon yo — ranplase koleksyon Firestore `transactions`.
+ *
+ *   GET    /api/transactions            lis (limit, status)
+ *   GET    /api/transactions/stats      total / pending / delivered / volim
+ *   GET    /api/transactions/:id
+ *   POST   /api/transactions            kreye
+ *   PATCH  /api/transactions/:id        chanje estati
+ *   DELETE /api/transactions/:id        owner sèlman
+ *
+ * Tout wout yo limite sou antrepriz moun k ap rele a. Yon admin pa ka wè
+ * tranzaksyon yon lòt antrepriz, menm si li konnen ID a.
+ */
+
+const express = require("express");
+
+const { getDb, now } = require("../db/db");
+const { requireAuth, requireRole, requireEnterprise } = require("../auth/middleware");
+const { money } = require("../../../bazik/index.js");
+const AppIds = require("../../../bazik/src/ids");
+const { computeCommission, applyCommissionToTx } = require("../commission/engine");
+
+const router = express.Router();
+
+/** Estati yon tranzaksyon ka pran. */
+const STATUSES = ["pending", "sending", "delivered", "failed", "canceled"];
+
+function send(res, err) {
+  const status = err.status || 400;
+  if (status >= 500) console.error("[transactions]", err);
+
+  return res.status(status).json({
+    ok: false,
+    code: err.code || "error",
+    message: err.message,
+  });
+}
+
+/** Fòm JSON yon tranzaksyon — menm non chan ak sa app la te li nan Firestore. */
+function toJson(row) {
+  if (!row) return null;
+
+  return {
+    txId: row.tx_id,
+    transactionId: row.tx_id,
+    serviceName: row.service,
+    serviceId: row.service_id || "",
+    customerName: row.client_name || "",
+    customerPhone: row.phone || "",
+    country: row.country || "",
+    paymentAmount: money.fromMinor(row.amount_minor),
+    paymentCurrency: row.currency,
+    status: row.status,
+    enterpriseId: row.enterprise_id,
+    enterpriseName: row.enterprise_name || "",
+    staffUid: row.staff_uid,
+    staffName: row.staff_name || "",
+    staffRole: row.staff_role || "",
+    gatewayRef: row.gateway_ref || "",
+    commissionApplied: row.commission_applied === 1,
+    commissionAgent: money.fromMinor(row.commission_agent_minor || 0),
+    commissionOwner: money.fromMinor(row.commission_owner_minor || 0),
+    note: row.note || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// --- Estatistik ---
+
+/**
+ * Estatistik sou TOUT antrepriz la, pa sèlman dènye paj la.
+ *
+ * (Ansyen dashboard la te kalkile sou 10 dènye tranzaksyon yo epi li te rele
+ * sa "Transactions" — chif la pa t janm depase 10.)
+ */
+router.get("/stats", requireAuth, requireEnterprise, (req, res) => {
+  try {
+    const db = getDb();
+    const enterpriseId = req.user.enterpriseId;
+
+    const total = db
+      .prepare("SELECT COUNT(*) AS n FROM transactions WHERE enterprise_id = ?")
+      .get(enterpriseId).n;
+
+    const delivered = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM transactions WHERE enterprise_id = ? AND status = 'delivered'"
+      )
+      .get(enterpriseId).n;
+
+    const failed = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM transactions WHERE enterprise_id = ? AND status IN ('failed','canceled')"
+      )
+      .get(enterpriseId).n;
+
+    // Volim pa deviz: adisyone USD ak HTG ansanm pa vle di anyen.
+    const volumes = {};
+    const rows = db
+      .prepare(
+        `SELECT currency, SUM(amount_minor) AS total
+           FROM transactions WHERE enterprise_id = ? GROUP BY currency`
+      )
+      .all(enterpriseId);
+
+    for (const row of rows) {
+      if (row.total) volumes[row.currency] = money.fromMinor(row.total);
+    }
+
+    return res.json({
+      ok: true,
+      stats: {
+        total,
+        delivered,
+        failed,
+        pending: total - delivered - failed,
+        volumes,
+      },
+    });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+// --- Lis ---
+
+router.get("/", requireAuth, requireEnterprise, (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 25, 200);
+    const status = String(req.query.status || "").trim();
+
+    const filters = ["enterprise_id = ?"];
+    const params = [req.user.enterpriseId];
+
+    if (status && STATUSES.includes(status)) {
+      filters.push("status = ?");
+      params.push(status);
+    }
+
+    // Yon ajan wè pwòp tranzaksyon li sèlman.
+    if (req.user.role === "agent") {
+      filters.push("staff_uid = ?");
+      params.push(req.user.uid);
+    }
+
+    const rows = getDb()
+      .prepare(
+        `SELECT * FROM transactions WHERE ${filters.join(" AND ")}
+          ORDER BY created_at DESC LIMIT ?`
+      )
+      .all(...params, limit);
+
+    return res.json({ ok: true, transactions: rows.map(toJson) });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+router.get("/:id", requireAuth, requireEnterprise, (req, res) => {
+  try {
+    const row = getDb()
+      .prepare("SELECT * FROM transactions WHERE tx_id = ? AND enterprise_id = ?")
+      .get(req.params.id, req.user.enterpriseId);
+
+    if (!row) {
+      return res.status(404).json({ ok: false, code: "not_found" });
+    }
+
+    return res.json({ ok: true, transaction: toJson(row) });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+// --- Kreye ---
+
+router.post("/", requireAuth, requireEnterprise, (req, res) => {
+  try {
+    const body = req.body || {};
+
+    const serviceName = String(body.serviceName || "").trim();
+    const customerPhone = String(body.customerPhone || "").trim();
+
+    if (!serviceName) {
+      return send(res, { code: "missing_service", message: "Sèvis la obligatwa." });
+    }
+
+    let amountMinor;
+    try {
+      amountMinor = money.toMinor(body.paymentAmount);
+    } catch (err) {
+      return send(res, { code: "invalid_amount", message: err.message });
+    }
+
+    const txId = AppIds.transaction(
+      `${serviceName}:${customerPhone}:${req.user.uid}:${Date.now()}`
+    );
+
+    // To komisyon an fikse KOUNYE A: si yon admin chanje to sèvis la pita, sa
+    // pa modifye retwoaktivman sa tranzaksyon sa a te pwomèt.
+    const commission = computeCommission({ amountMinor, serviceName });
+
+    // `enterprise_id` ak `staff_uid` toujou soti nan sesyon an, jamè nan kò a:
+    // yon kliyan pa ka atribiye yon tranzaksyon bay yon lòt antrepriz.
+    getDb()
+      .prepare(
+        `INSERT INTO transactions
+          (tx_id, enterprise_id, enterprise_name, staff_uid, staff_name, staff_role,
+           client_name, phone, service, service_id, country, amount_minor, currency,
+           status, gateway_ref, commission_applied, note, created_at, updated_at,
+           commission_agent_minor, commission_owner_minor,
+           agent_commission_pct, owner_commission_pct)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', 0, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        txId,
+        req.user.enterpriseId,
+        req.user.enterpriseName,
+        req.user.uid,
+        req.user.displayName,
+        req.user.role,
+        String(body.customerName || "").trim(),
+        customerPhone,
+        serviceName,
+        String(body.serviceId || "").trim(),
+        String(body.country || "").trim(),
+        amountMinor,
+        String(body.paymentCurrency || "USD").trim().toUpperCase(),
+        String(body.note || "").trim(),
+        now(),
+        now(),
+        commission.agentMinor,
+        commission.ownerMinor,
+        commission.agentPct,
+        commission.ownerPct
+      );
+
+    const row = getDb().prepare("SELECT * FROM transactions WHERE tx_id = ?").get(txId);
+    return res.json({ ok: true, transaction: toJson(row) });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+// --- Chanje estati ---
+
+/**
+ * Chanje estati yon tranzaksyon — owner/admin sèlman.
+ *
+ * Yon ajan pa dwe ka make pwòp tranzaksyon li `delivered`: se sa ki deklanche
+ * komisyon yo. Li ta vle di ajan an valide pwòp livrezon li epi li peye tèt li.
+ *
+ * Chemen nòmal ajan an se "Livre via Bazik": la, se konfimasyon Bazik ki fè
+ * estati a chanje, sèvè-bò, pa yon klik.
+ */
+router.patch("/:id", requireAuth, requireEnterprise, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const status = String(req.body?.status || "").trim();
+
+    if (!STATUSES.includes(status)) {
+      return send(res, {
+        code: "invalid_status",
+        message: `Estati a dwe youn nan: ${STATUSES.join(", ")}.`,
+      });
+    }
+
+    const row = getDb()
+      .prepare("SELECT * FROM transactions WHERE tx_id = ? AND enterprise_id = ?")
+      .get(req.params.id, req.user.enterpriseId);
+
+    if (!row) return res.status(404).json({ ok: false, code: "not_found" });
+
+    getDb()
+      .prepare("UPDATE transactions SET status = ?, note = ?, updated_at = ? WHERE tx_id = ?")
+      .run(status, String(req.body?.note ?? row.note ?? ""), now(), req.params.id);
+
+    // Livrezon konfime: komisyon an aplike tou swit (idempotan).
+    let commission = null;
+    if (status === "delivered") {
+      commission = await applyCommissionToTx(req.params.id);
+    }
+
+    const updated = getDb()
+      .prepare("SELECT * FROM transactions WHERE tx_id = ?")
+      .get(req.params.id);
+
+    return res.json({ ok: true, transaction: toJson(updated), commission });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+router.delete("/:id", requireAuth, requireEnterprise, requireRole("owner"), (req, res) => {
+  try {
+    const result = getDb()
+      .prepare("DELETE FROM transactions WHERE tx_id = ? AND enterprise_id = ?")
+      .run(req.params.id, req.user.enterpriseId);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ ok: false, code: "not_found" });
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+module.exports = router;
