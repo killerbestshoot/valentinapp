@@ -87,6 +87,10 @@ débit verra tous les agents avec la même adresse.
 docker compose up -d --build
 ```
 
+Un vhost nginx prêt à l'emploi pour `voupvapcash.tech` (TLS Let's Encrypt,
+redirection `www` → apex, HSTS, `X-Forwarded-For`) est fourni dans
+[`deploy/nginx/`](../deploy/nginx/README.md).
+
 ## Mise à jour
 
 ```sh
