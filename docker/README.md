@@ -118,10 +118,12 @@ La sauvegarde utilise `VACUUM INTO` (instantané cohérent, même pendant des
 écritures) puis `PRAGMA integrity_check` : une copie abîmée est supprimée et les
 anciennes sont conservées. Options : `--keep 30`, `--dir /data/backups`.
 
-Sauvegarde quotidienne à 3 h via le cron de l'hôte (`crontab -e`) :
+Sauvegarde quotidienne à 3 h : la tâche cron est fournie dans
+[`deploy/backup/`](../deploy/backup/README.md), avec son script d'enveloppe.
 
-```cron
-0 3 * * * cd /chemin/vers/mon_premye_app && docker compose exec -T api node scripts/backup_db.js >> /var/log/voupvapcash-backup.log 2>&1
+```sh
+sudo install -m 755 deploy/backup/voupvapcash-backup.sh /usr/local/bin/voupvapcash-backup.sh
+sudo install -m 644 deploy/backup/voupvapcash-backup.cron /etc/cron.d/voupvapcash-backup
 ```
 
 Une sauvegarde qui reste sur le même disque ne protège pas d'une panne du

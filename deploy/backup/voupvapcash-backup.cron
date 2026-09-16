@@ -1,0 +1,23 @@
+# VOUPVAPCASH — sauvegarde quotidienne de la base SQLite.
+#
+# À installer sous /etc/cron.d/voupvapcash-backup — SANS l'extension .cron :
+# cron ignore purement et simplement les fichiers de /etc/cron.d dont le nom
+# contient un point. Voir deploy/backup/README.md.
+#
+# Format système : la 6e colonne est l'utilisateur, absente d'un `crontab -e`.
+
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Dossier du dépôt cloné sur ce serveur.
+PROJECT_DIR=/home/deploy/valentinapp
+# Nombre de copies conservées (backup_db.js supprime les plus anciennes).
+KEEP=14
+
+# Un courriel à chaque échec — n'arrive que si un MTA est installé sur la
+# machine. Sans MTA, le journal reste la seule trace : surveillez-le.
+#MAILTO=killerbestshoot@gmail.com
+
+# 3 h, heure locale du serveur (`timedatectl`). `flock -n` évite que deux
+# sauvegardes se chevauchent si l'une traîne.
+0 3 * * * root flock -n /var/lock/voupvapcash-backup.lock /usr/local/bin/voupvapcash-backup.sh >> /var/log/voupvapcash-backup.log 2>&1
