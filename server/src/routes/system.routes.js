@@ -3,8 +3,13 @@
 /**
  * Sante sistèm ak notifikasyon.
  *
- *   GET /api/system/health          eta baz la + pasrèl la (owner/admin)
+ *   GET /api/system/health          eta baz la + pasrèl yo (owner/admin)
+ *   GET /api/system/reloadly        pèmisyon ak done kont Reloadly (owner/admin)
  *   GET /api/system/notifications   sa ki bezwen atansyon kounye a
+ *
+ * DONE LAJAN = OWNER SÈLMAN: sòld pasrèl yo, komisyon (maj) Reloadly yo,
+ * istorik rechaj yo ak solvabilite a. Filt la fèt sou serveur a; kache yo nan
+ * UI a sèlman pa t ap pwoteje anyen.
  *
  * Notifikasyon yo DERIVE depi done yo, pa estoke apa. Ansyen koleksyon
  * `notifications` la te dwe mete ajou pa chak ekran — epi li te tonbe an
@@ -16,6 +21,8 @@ const express = require("express");
 
 const { getDb, getDbFile } = require("../db/db");
 const { getBazikService } = require("../bazik_service");
+const { getAirtimeService } = require("../airtime_service");
+const { checkSolvency, solvencyNotification } = require("../solvency");
 const { requireAuth, requireRole, requireEnterprise } = require("../auth/middleware");
 const { money } = require("../../../bazik/index.js");
 
@@ -65,13 +72,55 @@ router.get("/health", requireAuth, requireRole("owner", "admin"), async (req, re
     checks.gateway = { ok: false, error: err.code || err.message };
   }
 
+  // Solvabilite: se yon done lajan, donk owner sèlman.
+  if (req.user.role === "owner") {
+    try {
+      checks.solvency = await checkSolvency({ enterpriseId: ent });
+    } catch (err) {
+      checks.solvency = { ok: false, status: "unknown", reasons: [err.code || err.message] };
+    }
+  } else {
+    checks.solvency = { restricted: true };
+  }
+
   const healthy =
     checks.database.ok && checks.gateway.ok && checks.data.stuckTransfers === 0;
 
   return res.json({ ok: true, healthy, checks });
 });
 
-router.get("/notifications", requireAuth, requireEnterprise, (req, res) => {
+/**
+ * Pèmisyon kont Reloadly la ak sa chak pèmisyon bay.
+ *
+ * `read-prepaid-balance`, `read-prepaid-commissions` ak `read-topups-history`
+ * se done lajan: yo REZÈVE pou owner. Pou yon admin, nou pa menm rele Reloadly.
+ */
+router.get("/reloadly", requireAuth, requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const service = getAirtimeService();
+
+    if (service.disabled) {
+      return res.json({
+        ok: true,
+        enabled: false,
+        mode: service.config.mode,
+        warning: "Minit Haiti poko aktive: kle Reloadly yo pa konfigire sou serveur a.",
+      });
+    }
+
+    const overview = await service.insights.overview({
+      isOwner: req.user.role === "owner",
+      historyLimit: Math.min(Number(req.query.limit) || 10, 25),
+    });
+
+    return res.json({ ok: true, enabled: true, ...overview });
+  } catch (err) {
+    console.error("[system] reloadly:", err);
+    return res.status(502).json({ ok: false, code: err.code || "error", message: err.message });
+  }
+});
+
+router.get("/notifications", requireAuth, requireEnterprise, async (req, res) => {
   const db = getDb();
   const ent = req.user.enterpriseId;
   const isManager = ["owner", "admin", "administrator"].includes(req.user.role);
@@ -148,6 +197,21 @@ router.get("/notifications", requireAuth, requireEnterprise, (req, res) => {
         req.user.uid
       )
     );
+  }
+
+  // Alèt solvabilite: owner sèlman (li gen chif pasrèl yo ladan).
+  if (req.user.role === "owner") {
+    try {
+      const alert = solvencyNotification(await checkSolvency({ enterpriseId: ent }));
+      if (alert) items.push(alert);
+    } catch (err) {
+      items.push({
+        type: "solvency_unknown",
+        severity: "warning",
+        title: `Nou pa ka verifye solvabilite a: ${err.code || err.message}`,
+        count: 1,
+      });
+    }
   }
 
   return res.json({ ok: true, notifications: items, total: items.reduce((s, i) => s + i.count, 0) });

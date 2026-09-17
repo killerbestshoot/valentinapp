@@ -24,4 +24,6 @@ Nimewo benefisyè a ranplase pa `50937123456`; tout lòt chan yo tel kel.
 | `sandbox_topup_digicel_2026.json` | `POST /topups` reponn AK `status: "SUCCESSFUL"`, e `balanceInfo.cost` |
 | `sandbox_operator_digicel_2026.json` | Digicel Haiti: RANGE 4–100 USD, remiz 2%, `status: "ACTIVE"` |
 | `sandbox_errors_2026.json` | kòd erè reyèl: montan anba minimòm, fiks, `customIdentifier` deja itilize |
-
+| `sandbox_token_2026.json` | `scope` jeton an (jeton an li menm ranplase) |
+| `sandbox_commission_digicel_2026.json` | `GET /operators/173/commissions` |
+\n

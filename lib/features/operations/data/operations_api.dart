@@ -1,4 +1,5 @@
 import '../../../core/network/api_client.dart';
+import 'package:mon_premye_app/features/airtime/domain/reloadly_overview.dart';
 
 double _d(dynamic v) => v is num ? v.toDouble() : 0;
 int _i(dynamic v) => v is num ? v.toInt() : 0;
@@ -305,6 +306,11 @@ class SystemHealth {
   Map<String, dynamic> get database => (checks['database'] as Map?)?.cast<String, dynamic>() ?? {};
   Map<String, dynamic> get gateway => (checks['gateway'] as Map?)?.cast<String, dynamic>() ?? {};
   Map<String, dynamic> get data => (checks['data'] as Map?)?.cast<String, dynamic>() ?? {};
+
+  /// Solvabilite: float ajan yo kontre pwovizyon pasrèl yo. Owner sèlman —
+  /// pou lòt moun li rive ak `restricted: true`.
+  Map<String, dynamic> get solvency =>
+      (checks['solvency'] as Map?)?.cast<String, dynamic>() ?? const {'restricted': true};
 }
 
 class SystemApi {
@@ -322,6 +328,11 @@ class SystemApi {
     return ((json['notifications'] as List?) ?? const [])
         .map((e) => AppNotification.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  /// Pèmisyon ak done kont Reloadly la (owner/admin).
+  Future<ReloadlyOverview> reloadly() async {
+    return ReloadlyOverview.fromJson(await _client.get('/api/system/reloadly'));
   }
 
   Future<SystemHealth> health() async {

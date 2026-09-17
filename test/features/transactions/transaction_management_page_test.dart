@@ -14,14 +14,14 @@ class _ListOnlyTransactionApi extends TransactionApi {
   Future<List<TransactionRecord>> list({int limit = 25, String? status}) async => records;
 }
 
-TransactionRecord _tx(String id, String service) => TransactionRecord(
+TransactionRecord _tx(String id, String service, {String status = 'pending'}) => TransactionRecord(
       txId: id,
       serviceName: service,
       customerName: 'Kliyan $id',
       customerPhone: '37123456',
       amount: 5,
       currency: 'USD',
-      status: 'pending',
+      status: status,
     );
 
 void main() {
@@ -45,5 +45,29 @@ void main() {
     expect(find.text('Livre via Bazik'), findsOneWidget);
     expect(find.text('Voye minit'), findsOneWidget);
     expect(find.text('Make manyèl'), findsNWidgets(3));
+  });
+
+  testWidgets('yon tranzaksyon LIVRE: okenn bouton ki ka chanje l', (tester) async {
+    TransactionApi.override(_ListOnlyTransactionApi([
+      _tx('TX_D', 'MonCash', status: 'delivered'),
+    ]));
+
+    await tester.binding.setSurfaceSize(const Size(1000, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(const MaterialApp(home: TransactionManagementPage()));
+    await tester.pumpAndSettle();
+
+    // Serveur a refize (409); UI a dezaktive bouton yo pou di sa davans.
+    for (final label in ['Livre via Bazik', 'Make manyèl', 'Pending', 'Efase']) {
+      // `find.byType` konpare tip EGZAK la: `ButtonStyleButton` se abstrè.
+      final button = tester.widget<ButtonStyleButton>(
+        find.ancestor(
+          of: find.text(label),
+          matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+        ),
+      );
+      expect(button.onPressed, isNull, reason: label);
+    }
   });
 }

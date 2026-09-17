@@ -60,10 +60,10 @@ test("rechaj san `transactionId` ni estati: pa janm konsidere reyisi", () => {
 });
 
 test("sòld: fiksti SDK", () => {
-  assert.deepEqual(
-    { ...mapper.readBalanceResponse(fixture("account_balance.json")), raw: undefined },
-    { balanceMinor: 100000, currency: "USD", raw: undefined }
-  );
+  const balance = mapper.readBalanceResponse(fixture("account_balance.json"));
+  assert.equal(balance.balanceMinor, 100000);
+  assert.equal(balance.currency, "USD");
+  assert.equal(balance.lowBalanceThresholdMinor, 0);
 });
 
 test("nimewo Ayiti: tout fòm kouran yo bay +509 ak 8 chif", () => {
@@ -140,4 +140,40 @@ test("sandbox: kòd erè reyèl yo tounen kòd nou konnen", () => {
   assert.equal(mapper.readErrorResponse(errors.amountBelowMinimum.body).code, "invalid_amount_for_operator");
   assert.equal(mapper.readErrorResponse(errors.landlineAutoDetect.body).code, "could_not_auto_detect_operator");
   assert.equal(mapper.readErrorResponse(errors.customIdentifierReused.body).code, "custom_identifier_already_used");
+});
+
+test("sandbox: pèmisyon jeton an — lekti sèlman pou sòld la, anyen pou finanse kont lan", () => {
+  const token = mapper.readTokenResponse(fixture("sandbox_token_2026.json"), 0);
+
+  assert.deepEqual(token.scopes, [
+    "send-topups",
+    "read-operators",
+    "read-promotions",
+    "read-topups-history",
+    "read-prepaid-balance",
+    "read-prepaid-commissions",
+  ]);
+  assert.equal(token.expiresAt, 86400 * 1000);
+});
+
+test("sandbox: komisyon Digicel Haiti 2% (0% an montan lokal)", () => {
+  const commission = mapper.readCommission(fixture("sandbox_commission_digicel_2026.json"));
+  assert.deepEqual(commission, {
+    operatorId: 173,
+    operatorName: "Digicel Haiti",
+    percentage: 2,
+    internationalPercentage: 2,
+    localPercentage: 0,
+    updatedAt: "2025-04-14 00:55:49",
+  });
+});
+
+test("sòld sandbox: papòt alèt la li", () => {
+  const balance = mapper.readBalanceResponse({
+    balance: 962.24464, frozenBalance: null, currencyCode: "USD", currencyName: "US Dollar",
+    updatedAt: "2026-09-17 17:35:58", lowBalanceThreshold: 25, maxLowBalanceThreshold: 0,
+  });
+  assert.equal(balance.balanceMinor, 96224);
+  assert.equal(balance.lowBalanceThresholdMinor, 2500);
+  assert.equal(balance.updatedAt, "2026-09-17 17:35:58");
 });

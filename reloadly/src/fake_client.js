@@ -77,6 +77,15 @@ function createFakeReloadlyClient({
   failNumbers = ["37000000"], // Reloadly refize (4xx)
   processingNumbers = ["37111111"], // rete PROCESSING jiska yon `topupStatus`
   failOnStatusNumbers = ["37222222"], // PROCESSING, epi FAILED (REFUNDED) apre
+  scopes = [
+    "send-topups",
+    "read-operators",
+    "read-promotions",
+    "read-topups-history",
+    "read-prepaid-balance",
+    "read-prepaid-commissions",
+  ],
+  promotions = [],
 } = {}) {
   let balanceMinor = mapper.toMinor(balance);
   let counter = 0;
@@ -141,7 +150,40 @@ function createFakeReloadlyClient({
     records,
 
     async balance() {
-      return mapper.readBalanceResponse({ balance: balanceMinor / 100, currencyCode: "USD" });
+      return mapper.readBalanceResponse({
+        balance: balanceMinor / 100,
+        currencyCode: "USD",
+        lowBalanceThreshold: 0,
+        updatedAt: new Date().toISOString(),
+      });
+    },
+
+    /** Menm pèmisyon ak kont sandbox antrepriz la (17/09/2026). */
+    async scopes() {
+      return [...scopes];
+    },
+
+    async operatorsByCountry() {
+      return operators.map(mapper.readOperator);
+    },
+
+    async promotionsByCountry() {
+      return promotions.map(mapper.readPromotion);
+    },
+
+    async commission(operatorId) {
+      const operator = operatorById(operatorId);
+      return mapper.readCommission({
+        percentage: operator.internationalDiscount || 0,
+        internationalPercentage: operator.internationalDiscount || 0,
+        localPercentage: operator.localDiscount || 0,
+        updatedAt: "2026-09-17 00:00:00",
+        operator: { id: operator.id, name: operator.name, status: true },
+      });
+    },
+
+    async recentTopups(limit = 10) {
+      return [...records.values()].map(mapper.readTopup).reverse().slice(0, limit);
     },
 
     async detectOperator(phone) {

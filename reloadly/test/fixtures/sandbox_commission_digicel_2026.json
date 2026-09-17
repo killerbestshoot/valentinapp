@@ -1,0 +1,15 @@
+{
+  "percentage": 2,
+  "internationalPercentage": 2,
+  "localPercentage": 0,
+  "updatedAt": "2025-04-14 00:55:49",
+  "operator": {
+    "id": 173,
+    "operatorId": 173,
+    "name": "Digicel Haiti",
+    "countryCode": "HT",
+    "data": false,
+    "bundle": false,
+    "status": true
+  }
+}

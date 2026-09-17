@@ -15,6 +15,7 @@ const { createReloadlyClient } = require("./src/client");
 const { createFakeReloadlyClient } = require("./src/fake_client");
 const { createAirtimeStore } = require("./src/store/sqlite_store");
 const { createAirtimeUseCases } = require("./src/airtime");
+const { createAccountInsights, PERMISSIONS } = require("./src/insights");
 const { ReloadlyError, DomainError } = require("./src/errors");
 const { createRateBook } = require("../bazik/src/rates");
 const mapper = require("./src/mapper");
@@ -42,7 +43,9 @@ function createAirtimeService({ ledgerStore, client, config, env, rates } = {}) 
     rates: resolvedRates,
   });
 
-  return { config: resolvedConfig, client: resolvedClient, store, topups, rates: resolvedRates };
+  const insights = createAccountInsights({ client: resolvedClient, config: resolvedConfig });
+
+  return { config: resolvedConfig, client: resolvedClient, store, topups, insights, rates: resolvedRates };
 }
 
 module.exports = {
@@ -53,4 +56,5 @@ module.exports = {
   ReloadlyError,
   DomainError,
   mapper,
+  PERMISSIONS,
 };

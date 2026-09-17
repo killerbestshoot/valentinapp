@@ -118,6 +118,12 @@ function readTokenResponse(body, now = Date.now()) {
   return {
     token: String(token),
     expiresAt: expiresIn > 0 ? now + expiresIn * 1000 : 0,
+    /**
+     * Pèmisyon kont lan (obsève 17/09/2026): send-topups, read-operators,
+     * read-promotions, read-topups-history, read-prepaid-balance,
+     * read-prepaid-commissions. Pa gen okenn pèmisyon pou FINANSE kont lan.
+     */
+    scopes: String(pick(body, ["scope"], "")).split(/\s+/).filter(Boolean),
     raw: body,
   };
 }
@@ -210,12 +216,58 @@ function readTopupPage(body) {
   return (Array.isArray(content) ? content : []).map(readTopup);
 }
 
-/** GET /accounts/balance -> { balance, currencyCode, currencyName, updatedAt }. */
+/**
+ * GET /accounts/balance -> { balance, frozenBalance, currencyCode, updatedAt,
+ * lowBalanceThreshold, maxLowBalanceThreshold } (sandbox 17/09/2026).
+ */
 function readBalanceResponse(body) {
   return {
     balanceMinor: toMinor(pick(body, ["balance"], 0)),
     currency: String(pick(body, ["currencyCode"], "")).toUpperCase(),
+    /** Papòt alèt sòld ba, regle sou dashboard Reloadly a (0 = pa regle). */
+    lowBalanceThresholdMinor: toMinor(pick(body, ["lowBalanceThreshold"], 0)),
+    updatedAt: String(pick(body, ["updatedAt"], "")),
     raw: body,
+  };
+}
+
+/** GET /promotions/countries/{iso} -> [Promotion] (`Promotion` SDK a). */
+function readPromotion(body) {
+  return {
+    promotionId: Number(pick(body, ["id", "promotionId"], 0)),
+    operatorId: Number(pick(body, ["operatorId"], 0)),
+    title: String(pick(body, ["title"], "")),
+    title2: String(pick(body, ["title2"], "")),
+    description: String(pick(body, ["description"], "")),
+    startDate: String(pick(body, ["startDate"], "")),
+    endDate: String(pick(body, ["endDate"], "")),
+    denominations: String(pick(body, ["denominations"], "")),
+    localDenominations: String(pick(body, ["localDenominations"], "")),
+  };
+}
+
+/**
+ * GET /operators/{id}/commissions -> { percentage, internationalPercentage,
+ * localPercentage, updatedAt, operator: { id, name, status } }.
+ * Se REMIZ Reloadly bay la: tout maj antrepriz la sou yon rechaj.
+ */
+function readCommission(body) {
+  const operator = pick(body, ["operator"], {}) || {};
+  return {
+    operatorId: Number(pick(operator, ["operatorId", "id"], 0)),
+    operatorName: String(pick(operator, ["name"], "")),
+    percentage: Number(pick(body, ["percentage"], 0)),
+    internationalPercentage: Number(pick(body, ["internationalPercentage"], 0)),
+    localPercentage: Number(pick(body, ["localPercentage"], 0)),
+    updatedAt: String(pick(body, ["updatedAt"], "")),
+  };
+}
+
+/** Enfòmasyon paj Spring yon lis (`totalElements`, `totalPages`). */
+function readPageInfo(body) {
+  return {
+    totalElements: Number(pick(body, ["totalElements"], 0)),
+    totalPages: Number(pick(body, ["totalPages"], 0)),
   };
 }
 
@@ -251,5 +303,8 @@ module.exports = {
   readStatusResponse,
   readTopupPage,
   readBalanceResponse,
+  readPromotion,
+  readCommission,
+  readPageInfo,
   readErrorResponse,
 };

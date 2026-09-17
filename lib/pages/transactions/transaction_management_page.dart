@@ -320,13 +320,15 @@ class _TransactionRow extends StatelessWidget {
                   icon: const Icon(Icons.phone_android_outlined, size: 18),
                   label: const Text('Voye minit'),
                 ),
+              // Yon tranzaksyon livre FÈMEN: komisyon yo peye, lajan an pati.
+              // Serveur a refize (409) — bouton yo dezaktive pou di sa davans.
               OutlinedButton.icon(
-                onPressed: onMarkDelivered,
+                onPressed: tx.isDelivered ? null : onMarkDelivered,
                 icon: const Icon(Icons.check_circle_outline, size: 18),
                 label: const Text('Make manyèl'),
               ),
               OutlinedButton.icon(
-                onPressed: onMarkPending,
+                onPressed: tx.isDelivered ? null : onMarkPending,
                 icon: const Icon(Icons.pending_actions, size: 18),
                 label: const Text('Pending'),
               ),
@@ -334,7 +336,7 @@ class _TransactionRow extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFFB91C1C),
                 ),
-                onPressed: onDelete,
+                onPressed: tx.isDelivered ? null : onDelete,
                 icon: const Icon(Icons.delete_outline, size: 18),
                 label: const Text('Efase'),
               ),

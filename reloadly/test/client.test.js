@@ -212,3 +212,82 @@ test("prepare() jwenn jeton an san rele API a", async () => {
 
   assert.deepEqual(calls.map((c) => c.url), ["https://auth.reloadly.com/oauth/token"]);
 });
+
+// --- Vi administratè (onglet Sante sistèm) -------------------------------------
+
+test("pèmisyon yo soti nan `scope` jeton an, san apèl API anplis", async () => {
+  const { fetchImpl, calls } = fakeFetch([
+    [isToken, json(200, { access_token: "tok", expires_in: 86400, scope: "send-topups read-prepaid-balance" })],
+  ]);
+
+  const c = client(fetchImpl);
+  assert.deepEqual(await c.scopes(), ["send-topups", "read-prepaid-balance"]);
+  assert.deepEqual(await c.scopes(), ["send-topups", "read-prepaid-balance"]);
+  assert.equal(calls.length, 1, "jeton an nan cache");
+});
+
+/**
+ * Konpòtman sandbox la (17/09/2026): `page` kòmanse a 1 (0 = 1), `sort`
+ * inyore, lis la toujou PI ANSYEN AN AVAN.
+ */
+function historyRoute(ids) {
+  return [
+    (url) => url.includes("/topups/reports/transactions"),
+    (url) => {
+      const query = new URL(url).searchParams;
+      const size = Number(query.get("size"));
+      const page = Math.max(1, Number(query.get("page") || 1));
+      const slice = ids.slice((page - 1) * size, page * size);
+      return json(200, {
+        content: slice.map((id) => ({ ...topupFixture, transactionId: id, customIdentifier: `AIR_${id}` })),
+        totalElements: ids.length,
+        totalPages: Math.ceil(ids.length / size),
+        number: page - 1,
+      });
+    },
+  ];
+}
+
+test("dènye rechaj yo: PI RESAN AN AVAN, menm si API a bay pi ansyen an avan", async () => {
+  const ids = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const { fetchImpl } = fakeFetch([[isToken, tokenOk], historyRoute(ids)]);
+
+  const recent = await client(fetchImpl).recentTopups(3);
+  assert.deepEqual(recent.map((t) => t.gatewayId), ["9", "8", "7"]);
+});
+
+test("dènye rechaj yo: dènye paj enkonplè — nou konplete ak paj anvan an", async () => {
+  const ids = [1, 2, 3, 4, 5, 6, 7];
+  const { fetchImpl } = fakeFetch([[isToken, tokenOk], historyRoute(ids)]);
+
+  const recent = await client(fetchImpl).recentTopups(3);
+  // dènye paj (3) = [7]; paj 2 = [4,5,6]
+  assert.deepEqual(recent.map((t) => t.gatewayId), ["7", "6", "5"]);
+});
+
+test("dènye rechaj yo: yon sèl paj", async () => {
+  const { fetchImpl, calls } = fakeFetch([[isToken, tokenOk], historyRoute([1, 2])]);
+
+  const recent = await client(fetchImpl).recentTopups(10);
+  assert.deepEqual(recent.map((t) => t.gatewayId), ["2", "1"]);
+  assert.equal(calls.filter((c) => c.url.includes("/reports/")).length, 1);
+});
+
+test("chemen API yo: operatè peyi, pwomosyon, komisyon (SDK ofisyèl)", async () => {
+  const { fetchImpl, calls } = fakeFetch([
+    [isToken, tokenOk],
+    [(url) => url.includes("/operators/countries/HT"), json(200, [operatorFixture])],
+    [(url) => url.endsWith("/promotions/countries/HT"), json(200, [])],
+    [(url) => url.endsWith("/operators/173/commissions"), json(200, require("./fixtures/sandbox_commission_digicel_2026.json"))],
+  ]);
+
+  const c = client(fetchImpl);
+  const operators = await c.operatorsByCountry("HT");
+  const promotions = await c.promotionsByCountry("HT");
+  const commission = await c.commission(173);
+
+  assert.equal(operators[0].name, "Digicel Haiti");
+  assert.match(calls.find((x) => x.url.includes("/operators/countries/")).url, /includeBundles=true/);
+  assert.deepEqual(promotions, []);
+  assert.equal(commission.percentage, 2);
+});

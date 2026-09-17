@@ -108,6 +108,29 @@ docker compose exec api node scripts/refresh_rates.js --force     # forcer (comp
 Après un rejet pour variation suspecte, vérifier les taux à la main puis :
 `--force --accept-large-change`.
 
+## Solvabilité et onglet « Santé du système »
+
+L'onglet **Santé du système** (owner/admin) montre l'état des passerelles. Les
+données d'argent y sont **réservées à l'owner**, filtrées côté serveur :
+
+| Visible par | Contenu |
+|---|---|
+| owner + admin | permissions des clés Reloadly, opérateurs Haïti, promotions |
+| **owner seul** | solde Reloadly, commissions (marges), dernières recharges, solvabilité |
+
+**Solvabilité** : la somme des floats d'agents (leur dette envers eux) est
+comparée aux provisions Bazik (HTG) et Reloadly (USD), converties en gourdes au
+taux du jour. L'owner reçoit une alerte quand les provisions ne couvrent plus
+les floats, ou quand la marge tombe sous `SOLVENCY_BUFFER` (10 % par défaut).
+
+Une réserve de 10 % n'est pas une garantie par service : les gourdes de Bazik ne
+paient pas de minutes, et les dollars de Reloadly ne paient pas de MonCash.
+L'écran affiche donc aussi chaque provision séparément.
+
+Le compte Reloadly **ne peut pas être approvisionné par l'API** : les clés
+n'ont que des permissions de lecture sur le solde (`read-prepaid-balance`).
+L'approvisionnement se fait depuis le tableau de bord Reloadly.
+
 ## Minit Haiti (Reloadly)
 
 Les recharges de minutes passent par Reloadly Airtime. Sans clés, le service est

@@ -22,7 +22,7 @@ function sleep(ms) {
 }
 
 function createReloadlyClient(config, { fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
-  /** { token, expiresAt } */
+  /** { token, expiresAt, scopes } */
   let cachedToken = null;
 
   async function rawRequest(url, { method = "GET", body, headers = {} } = {}) {
@@ -95,6 +95,7 @@ function createReloadlyClient(config, { fetchImpl = globalThis.fetch, now = () =
       token: parsed.token,
       // San `expires_in`, nou pran 1 èdtan: pi bon pase kenbe yon jeton mouri.
       expiresAt: parsed.expiresAt > 0 ? parsed.expiresAt : now() + 3600000,
+      scopes: parsed.scopes,
     };
 
     return cachedToken.token;
@@ -154,6 +155,61 @@ function createReloadlyClient(config, { fetchImpl = globalThis.fetch, now = () =
      */
     async prepare() {
       await getToken();
+    },
+
+    /** Pèmisyon jeton an (`scope`), san apèl anplis si jeton an nan cache. */
+    async scopes() {
+      await getToken();
+      return [...cachedToken.scopes];
+    },
+
+    /** GET /operators/countries/{iso} — TOUT operatè peyi a, pakè yo ladan. */
+    async operatorsByCountry(countryCode = config.countryCode) {
+      const query = new URLSearchParams({
+        includeBundles: "true",
+        includeData: "true",
+        includePin: "true",
+        suggestedAmounts: "false",
+      });
+      const body = await call(`/operators/countries/${encodeURIComponent(countryCode)}?${query}`);
+      return (Array.isArray(body) ? body : []).map(mapper.readOperator);
+    },
+
+    /** GET /promotions/countries/{iso} (`PromotionOperations.getByCountryCode`). */
+    async promotionsByCountry(countryCode = config.countryCode) {
+      const body = await call(`/promotions/countries/${encodeURIComponent(countryCode)}`);
+      return (Array.isArray(body) ? body : []).map(mapper.readPromotion);
+    },
+
+    /** GET /operators/{id}/commissions (`DiscountOperations.getByOperatorId`). */
+    async commission(operatorId) {
+      return mapper.readCommission(await call(`/operators/${encodeURIComponent(operatorId)}/commissions`));
+    },
+
+    /**
+     * Dènye rechaj yo, PI RESAN AN AVAN.
+     *
+     * Sandbox la (17/09/2026): `page` kòmanse a 1, `sort` INYORE (toujou
+     * pi ansyen an avan), filt dat yo pa fyab. Donk nou li total la, epi
+     * DÈNYE paj yo — pa premye a, ki ta bay rechaj ki pi ansyen yo.
+     */
+    async recentTopups(limit = 10) {
+      const size = Math.max(1, Math.min(Number(limit) || 10, 50));
+      const path = (page) => `/topups/reports/transactions?${new URLSearchParams({ size: String(size), page: String(page) })}`;
+
+      const first = await call(path(1));
+      const { totalPages } = mapper.readPageInfo(first);
+      if (totalPages <= 1) return mapper.readTopupPage(first).reverse().slice(0, size);
+
+      const last = await call(path(totalPages));
+      let items = mapper.readTopupPage(last);
+
+      if (items.length < size) {
+        const previous = totalPages - 1 === 1 ? first : await call(path(totalPages - 1));
+        items = [...mapper.readTopupPage(previous), ...items];
+      }
+
+      return items.slice(-size).reverse();
     },
 
     /** GET /accounts/balance — kont Reloadly a finanse tout rechaj yo. */

@@ -113,8 +113,15 @@ router.get("/status", requireAuth, async (req, res) => {
 
   try {
     const account = await service.topups.accountBalance();
-    status.account = { balance: money.fromMinor(account.balanceMinor), currency: account.currency };
+
+    // MONTAN an se yon done lajan: owner sèlman. Tout lòt moun jwenn `funded`,
+    // ki se tou sa UI a bezwen pou avèti anvan yon vant.
     status.funded = account.balanceMinor > 0;
+    status.account =
+      req.user.role === "owner"
+        ? { balance: money.fromMinor(account.balanceMinor), currency: account.currency }
+        : { restricted: true, currency: account.currency };
+
     if (!status.funded) {
       status.warning = "Kont Reloadly la vid: tout rechaj minit ap refize.";
     }

@@ -12,6 +12,12 @@
  *
  * Tout wout yo limite sou antrepriz moun k ap rele a. Yon admin pa ka wè
  * tranzaksyon yon lòt antrepriz, menm si li konnen ID a.
+ *
+ * YON TRANZAKSYON `delivered` FÈMEN: pèsonn pa ka efase l ni remèt li
+ * `pending`. Lajan an deja pati (oswa yon moun deklare livrezon an), komisyon
+ * yo aplike, e liy rejis yo pwente sou li. Sèl SISTÈM lan ka chanje l ankò:
+ * rekonsilyasyon pasrèl la (`settleTransfer`, `settleTopup`) ki ekri dirèkteman
+ * nan baz la lè Bazik oswa Reloadly di yon transfè echwe apre tou.
  */
 
 const express = require("express");
@@ -26,6 +32,24 @@ const router = express.Router();
 
 /** Estati yon tranzaksyon ka pran. */
 const STATUSES = ["pending", "sending", "delivered", "failed", "canceled"];
+
+/**
+ * Yon tranzaksyon lye ak lajan k ap deplase (oswa ki deplase): efase l ta kite
+ * transfè a oswa rechaj la san tranzaksyon, epi rejis la san esplikasyon.
+ */
+function linkedMoney(db, txId) {
+  const transfer = db
+    .prepare("SELECT status FROM bazik_transfers WHERE tx_id = ? AND status IN ('pending','processing','completed') LIMIT 1")
+    .get(txId);
+  if (transfer) return `yon transfè Bazik (${transfer.status})`;
+
+  const topup = db
+    .prepare("SELECT status FROM airtime_topups WHERE tx_id = ? AND status IN ('processing','completed') LIMIT 1")
+    .get(txId);
+  if (topup) return `yon rechaj minit (${topup.status})`;
+
+  return null;
+}
 
 function send(res, err) {
   const status = err.status || 400;
@@ -273,6 +297,18 @@ router.patch("/:id", requireAuth, requireEnterprise, requireRole("owner", "admin
 
     if (!row) return res.status(404).json({ ok: false, code: "not_found" });
 
+    // Yon livrezon konfime pa retounen an `pending` sou yon klik: komisyon yo
+    // deja peye, e yon dezyèm livrezon ta voye lajan an de fwa.
+    if (row.status === "delivered") {
+      return res.status(409).json({
+        ok: false,
+        code: "transaction_closed",
+        message:
+          "Tranzaksyon sa a livre: li pa ka chanje ankò. Sèl rekonsilyasyon " +
+          "pasrèl la ka make l otreman.",
+      });
+    }
+
     getDb()
       .prepare("UPDATE transactions SET status = ?, note = ?, updated_at = ? WHERE tx_id = ?")
       .run(status, String(req.body?.note ?? row.note ?? ""), now(), req.params.id);
@@ -295,13 +331,32 @@ router.patch("/:id", requireAuth, requireEnterprise, requireRole("owner", "admin
 
 router.delete("/:id", requireAuth, requireEnterprise, requireRole("owner"), (req, res) => {
   try {
-    const result = getDb()
-      .prepare("DELETE FROM transactions WHERE tx_id = ? AND enterprise_id = ?")
-      .run(req.params.id, req.user.enterpriseId);
+    const db = getDb();
+    const row = db
+      .prepare("SELECT status FROM transactions WHERE tx_id = ? AND enterprise_id = ?")
+      .get(req.params.id, req.user.enterpriseId);
 
-    if (result.changes === 0) {
-      return res.status(404).json({ ok: false, code: "not_found" });
+    if (!row) return res.status(404).json({ ok: false, code: "not_found" });
+
+    if (row.status === "delivered") {
+      return res.status(409).json({
+        ok: false,
+        code: "transaction_closed",
+        message: "Tranzaksyon sa a livre: li pa ka efase. Se tras livrezon an ak komisyon yo.",
+      });
     }
+
+    const linked = linkedMoney(db, req.params.id);
+    if (linked) {
+      return res.status(409).json({
+        ok: false,
+        code: "transaction_has_money",
+        message: `Tranzaksyon sa a lye ak ${linked}: li pa ka efase.`,
+      });
+    }
+
+    db.prepare("DELETE FROM transactions WHERE tx_id = ? AND enterprise_id = ?")
+      .run(req.params.id, req.user.enterpriseId);
 
     return res.json({ ok: true });
   } catch (err) {
