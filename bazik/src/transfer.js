@@ -16,16 +16,10 @@
 
 const AppIds = require("./ids");
 const { DomainError, BazikError } = require("./errors");
-const {
-  convertToHtgMinor,
-  convertFromHtgMinor,
-  assertNetworkAmount,
-  feeMinor,
-  fromMinor,
-  DEFAULT_FEE_PERCENT,
-} = require("./money");
+const { assertNetworkAmount, feeMinor, fromMinor, DEFAULT_FEE_PERCENT } = require("./money");
+const { createRateBook } = require("./rates");
 
-function createTransferUseCases({ store, client, config }) {
+function createTransferUseCases({ store, client, config, rates = createRateBook({ store }) }) {
   /**
    * Sòld Bazik la chanje dousman; nou kenbe l yon ti moman pou nou pa boule
    * kota 100 req/min nan ak yon apèl anplis sou chak transfè.
@@ -77,10 +71,16 @@ function createTransferUseCases({ store, client, config }) {
   /**
    * Prepare chif yo: konvèsyon deviz + frè Bazik.
    * Nou mande Bazik yon `quote` lè nou kapab, konsa si frè a chanje nou swiv.
+   *
+   * DE DEVIZ, DE ROL:
+   *   - `currency`       : deviz MONTAN AN (sa kliyan an peye ajan an)
+   *   - `walletCurrency` : deviz WALLET ajan an, kote debi a fèt
+   * Tout konvèsyon pase pa `rates` (liv to echanj la), ki konnen dat ak sous
+   * chak to. Montan an -> HTG pou benefisyè a; total HTG -> deviz wallet pou debi a.
    */
-  async function prepareAmounts({ amountMinor, currency, network }) {
-    const rateToHtg = await store.getRateToHtg(currency);
-    const amountHtgMinor = convertToHtgMinor(amountMinor, rateToHtg);
+  async function prepareAmounts({ amountMinor, currency, walletCurrency = currency, network }) {
+    const toHtg = await rates.convert(amountMinor, currency, "HTG");
+    const amountHtgMinor = toHtg.amountMinor;
 
     assertNetworkAmount(network, amountHtgMinor);
 
@@ -109,32 +109,53 @@ function createTransferUseCases({ store, client, config }) {
     }
 
     const totalHtgMinor = amountHtgMinor + feeHtgMinor;
+    const debit = await rates.convert(totalHtgMinor, "HTG", walletCurrency);
+
+    // San frè: montan an konvèti DIREKTEMAN nan deviz wallet la (pa atravè
+    // HTG awondi), konsa menm deviz = menm montan egzak.
+    const amountInWallet = await rates.convert(amountMinor, currency, walletCurrency);
 
     return {
-      rateToHtg,
+      rateToHtg: toHtg.fromRateToHtg,
+      walletCurrency: String(walletCurrency).toUpperCase(),
+      walletRateToHtg: debit.toRateToHtg,
       amountHtgMinor,
       feeHtgMinor,
       feePercent,
       totalHtgMinor,
-      /** Sa nou retire nan wallet la, nan deviz wallet la. */
-      debitMinor: convertFromHtgMinor(totalHtgMinor, rateToHtg),
+      /** Sa nou retire nan wallet la, nan deviz WALLET la (frè ladan). */
+      debitMinor: debit.amountMinor,
+      /** Menm bagay san frè (`chargeFeeToWallet: false`). */
+      amountWalletMinor: amountInWallet.amountMinor,
+      ratesUpdatedAt: toHtg.updatedAt ?? debit.updatedAt ?? null,
+      ratesStale: toHtg.stale || debit.stale,
     };
   }
 
-  /** Yon estimasyon pou UI a, san anyen pa deplase. */
-  async function quote({ amountMinor, currency = config.walletCurrency, network = "moncash" }) {
-    const amounts = await prepareAmounts({ amountMinor, currency, network });
+  /**
+   * Yon estimasyon pou UI a, san anyen pa deplase.
+   * Ak `uid`/`enterpriseId`, debi a kalkile nan deviz WALLET ajan an.
+   */
+  async function quote({ amountMinor, currency, network = "moncash", uid, enterpriseId }) {
+    const wallet = uid && enterpriseId ? await store.getWallet({ uid, enterpriseId }) : null;
+    const walletCurrency = wallet?.currency || String(currency || config.walletCurrency).toUpperCase();
+    const amountCurrency = String(currency || walletCurrency).toUpperCase();
+
+    const amounts = await prepareAmounts({ amountMinor, currency: amountCurrency, walletCurrency, network });
 
     return {
       network,
-      currency,
+      currency: amountCurrency,
       amountMinor,
       amountHtg: fromMinor(amounts.amountHtgMinor),
       feeHtg: fromMinor(amounts.feeHtgMinor),
       totalHtg: fromMinor(amounts.totalHtgMinor),
       feePercent: amounts.feePercent,
       debitMinor: amounts.debitMinor,
+      walletCurrency: amounts.walletCurrency,
       rateToHtg: amounts.rateToHtg,
+      ratesUpdatedAt: amounts.ratesUpdatedAt,
+      ratesStale: amounts.ratesStale,
       mode: client.mode,
     };
   }
@@ -173,7 +194,8 @@ function createTransferUseCases({ store, client, config }) {
    * @param {object} params
    * @param {'payout'|'delivery'} params.kind
    * @param {'moncash'|'natcash'} params.network
-   * @param {number} params.amountMinor santim nan deviz WALLET la
+   * @param {number} params.amountMinor santim nan deviz `currency`
+   * @param {string} [params.currency] deviz montan an (default: deviz wallet la)
    * @param {string} params.phone nimewo benefisyè a
    * @param {string} [params.receiverName] OBLIGATWA pou NatCash
    * @param {string} [params.txId] tranzaksyon app la, si se yon livrezon
@@ -203,25 +225,20 @@ function createTransferUseCases({ store, client, config }) {
       throw new DomainError("missing_receiver_name", "NatCash mande non konplè benefisyè a.");
     }
 
-    // --- Deviz la soti nan WALLET la, jamè nan demann lan ---
+    // --- Deviz montan an ≠ deviz wallet la: KONVÈSYON, pa konfizyon ---
     //
-    // Anvan, deviz la te soti nan kò demann lan. Yon ajan ak yon wallet HTG
-    // voye `currency: "USD"` → nou konvèti 100 "USD" = 13 200 HTG pou
-    // benefisyè a, men nou debite 105 nan wallet HTG li. Li te achte
-    // 13 200 HTG pou 105 HTG.
+    // Ansyen twou: yon wallet HTG voye `currency: "USD"` → 100 USD = 13 200 HTG
+    // pou benefisyè a, men 105 debite nan wallet HTG la (inite melanje). Li te
+    // achte 13 200 HTG pou 105 HTG. Premye koreksyon an te REFIZE tout lòt
+    // deviz. Kounye a nou konvèti: debi a toujou kalkile NAN DEVIZ WALLET LA
+    // (13 860 HTG pou egzanp lan), ak to jounen an.
     const wallet = await store.getWallet({ uid, enterpriseId });
     if (!wallet) {
       throw new DomainError("wallet_not_found", "Wallet sa a pa egziste.");
     }
 
-    if (currency && String(currency).toUpperCase() !== wallet.currency) {
-      throw new DomainError(
-        "currency_mismatch",
-        `Wallet la an ${wallet.currency}. Montan an dwe nan menm deviz la.`
-      );
-    }
-
     const walletCurrency = wallet.currency;
+    const amountCurrency = String(currency || walletCurrency).toUpperCase();
 
     // --- Idempotans: yon kle STAB, san lè ---
     //
@@ -242,8 +259,8 @@ function createTransferUseCases({ store, client, config }) {
       return { transfer: existing, duplicate: true, mode: client.mode };
     }
 
-    const amounts = await prepareAmounts({ amountMinor, currency: walletCurrency, network });
-    const debitMinor = chargeFeeToWallet ? amounts.debitMinor : amountMinor;
+    const amounts = await prepareAmounts({ amountMinor, currency: amountCurrency, walletCurrency, network });
+    const debitMinor = chargeFeeToWallet ? amounts.debitMinor : amounts.amountWalletMinor;
 
     await assertGatewayFunded(amounts.totalHtgMinor);
 
@@ -255,12 +272,15 @@ function createTransferUseCases({ store, client, config }) {
         kind,
         network,
         amountMinor,
-        currency: walletCurrency,
+        currency: amountCurrency,
         amountHtgMinor: amounts.amountHtgMinor,
         feeHtgMinor: amounts.feeHtgMinor,
         totalHtgMinor: amounts.totalHtgMinor,
         debitMinor,
         rateToHtg: amounts.rateToHtg,
+        walletCurrency,
+        walletRateToHtg: amounts.walletRateToHtg,
+        ratesUpdatedAt: amounts.ratesUpdatedAt,
         uid,
         enterpriseId,
         enterpriseName,

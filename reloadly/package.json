@@ -1,0 +1,15 @@
+{
+  "name": "reloadly",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VOUPVAPCASH <-> Reloadly Airtime (Minit Haiti) integration",
+  "main": "index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test --no-warnings=ExperimentalWarning \"test/*.test.js\"",
+    "check": "node scripts/check_contract.js"
+  }
+}

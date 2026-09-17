@@ -66,11 +66,21 @@ class TransferQuote {
     required this.feePercent,
     required this.debit,
     required this.rateToHtg,
+    String? walletCurrency,
+    this.ratesStale = false,
     this.mode = 'live',
-  });
+  }) : walletCurrency = walletCurrency ?? currency;
 
   final PaymentNetwork network;
+
+  /// Deviz MONTAN AN (sa kliyan an peye).
   final String currency;
+
+  /// Deviz wallet ajan an: se ladan `debit` la kalkile.
+  final String walletCurrency;
+
+  /// To jounen an pa ajou (API a pa reponn depi plis pase 36 h).
+  final bool ratesStale;
 
   /// Sa benefisyè a resevwa.
   final double amountHtg;
@@ -82,7 +92,7 @@ class TransferQuote {
   final double totalHtg;
   final double feePercent;
 
-  /// Sa nou retire nan wallet ajan an, nan deviz wallet la.
+  /// Sa nou retire nan wallet ajan an, nan `walletCurrency`.
   final double debit;
   final double rateToHtg;
 
@@ -102,6 +112,8 @@ class TransferQuote {
       feePercent: toDouble(json['feePercent']),
       debit: toDouble(json['debit']),
       rateToHtg: toDouble(json['rateToHtg']),
+      walletCurrency: json['walletCurrency'] == null ? null : '${json['walletCurrency']}',
+      ratesStale: json['ratesStale'] == true,
       mode: '${json['mode'] ?? 'live'}',
     );
   }
@@ -200,6 +212,13 @@ class PaymentException implements Exception {
         'missing_receiver_name',
         'invalid_wallet',
         'invalid_amount',
+        // Minit Haiti
+        'invalid_phone',
+        'operator_not_found',
+        'operator_not_supported',
+        'operator_mismatch',
+        'amount_not_offered',
+        'currency_mismatch',
       }.contains(code);
 
   @override

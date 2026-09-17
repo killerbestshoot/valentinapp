@@ -1,0 +1,29 @@
+{
+  "transactionId": 179870,
+  "status": "SUCCESSFUL",
+  "operatorTransactionId": null,
+  "customIdentifier": "AIR_probe_1789664692199",
+  "recipientPhone": "50937123456",
+  "recipientEmail": null,
+  "senderPhone": null,
+  "countryCode": "HT",
+  "operatorId": 173,
+  "operatorName": "Digicel Haiti",
+  "discount": 0.08,
+  "discountCurrencyCode": "USD",
+  "requestedAmount": 4,
+  "requestedAmountCurrencyCode": "USD",
+  "deliveredAmount": 523.57,
+  "deliveredAmountCurrencyCode": "HTG",
+  "transactionDate": "2026-09-17 17:04:52",
+  "pinDetail": null,
+  "fee": 0,
+  "balanceInfo": {
+    "oldBalance": 984.96,
+    "newBalance": 981.04,
+    "cost": 3.92,
+    "currencyCode": "USD",
+    "currencyName": "US Dollar",
+    "updatedAt": "2026-09-17 16:56:06"
+  }
+}

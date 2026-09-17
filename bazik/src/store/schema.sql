@@ -6,10 +6,13 @@
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
+-- `source`: 'seed' (valè fiks premye demaraj) oswa 'exchangerate-api' (mete
+-- ajou chak jou pa serveur a). `updated_at`: lè DONE yo date, pa lè nou ekri yo.
 CREATE TABLE IF NOT EXISTS exchange_rates (
   currency     TEXT PRIMARY KEY,
   rate_to_htg  REAL NOT NULL,
-  updated_at   INTEGER NOT NULL
+  updated_at   INTEGER NOT NULL,
+  source       TEXT NOT NULL DEFAULT 'seed'
 );
 
 CREATE TABLE IF NOT EXISTS wallets (
@@ -92,13 +95,16 @@ CREATE TABLE IF NOT EXISTS bazik_transfers (
   status           TEXT NOT NULL DEFAULT 'pending',
   gateway_id       TEXT NOT NULL DEFAULT '',
   gateway_status   TEXT NOT NULL DEFAULT '',
-  amount_minor     INTEGER NOT NULL,        -- deviz wallet la
+  amount_minor     INTEGER NOT NULL,        -- montan an, nan deviz demann lan
   currency         TEXT NOT NULL DEFAULT 'USD',
   amount_htg_minor INTEGER NOT NULL,        -- sa benefisyè a resevwa
   fee_htg_minor    INTEGER NOT NULL DEFAULT 0,
   total_htg_minor  INTEGER NOT NULL DEFAULT 0,
-  debit_minor      INTEGER NOT NULL DEFAULT 0, -- sa nou retire nan wallet la
-  rate_to_htg      REAL NOT NULL,
+  debit_minor      INTEGER NOT NULL DEFAULT 0, -- sa nou retire nan wallet la (wallet_currency)
+  rate_to_htg      REAL NOT NULL,           -- to `currency` la
+  wallet_currency  TEXT NOT NULL DEFAULT '',
+  wallet_rate_to_htg REAL NOT NULL DEFAULT 0,
+  rates_updated_at INTEGER,
   uid              TEXT NOT NULL DEFAULT '',
   enterprise_id    TEXT NOT NULL DEFAULT '',
   enterprise_name  TEXT NOT NULL DEFAULT '',

@@ -38,28 +38,30 @@ async function htgAgent(store, balanceMinor) {
 
 // --- Vòl pa konfizyon deviz ---
 
-test("yon wallet HTG pa ka voye an 'USD' pou achte HTG pou granmesi", async (t) => {
+test("wallet HTG ki voye an 'USD': debi a konvèti an HTG, pa janm 105 HTG pou 13 200", async (t) => {
   // Eksplwatasyon ki te pwouve: 100 'USD' = 13 200 HTG voye bay benefisyè a,
   // men 105 sèlman debite nan wallet HTG la. Ajan an achte ×125.
+  // Premye koreksyon an te REFIZE lòt deviz yo. Kounye a nou KONVÈTI — e se
+  // tès sa a ki garanti debi a toujou kalkile nan inite wallet la.
   const { service } = makeService({ autoComplete: true });
   t.after(() => service.close());
 
-  const agent = await htgAgent(service.store, 1000000); // 10 000 HTG
+  const agent = await htgAgent(service.store, 2000000); // 20 000 HTG
 
-  await assert.rejects(
-    service.transfers.send({
-      network: "moncash",
-      amountMinor: 10000,
-      currency: "USD",
-      uid: agent.uid,
-      enterpriseId: agent.enterpriseId,
-      phone: "37123456",
-      idempotencySeed: "vol-deviz",
-    }),
-    { code: "currency_mismatch" }
-  );
+  const { transfer } = await service.transfers.send({
+    network: "moncash",
+    amountMinor: 10000, // 100 USD
+    currency: "USD",
+    uid: agent.uid,
+    enterpriseId: agent.enterpriseId,
+    phone: "37123456",
+    idempotencySeed: "vol-deviz",
+  });
 
-  assert.equal(await balanceOf(service.store, agent), 1000000, "okenn debi");
+  assert.equal(transfer.amountHtgMinor, 1320000, "100 USD × 132 = 13 200 HTG pou benefisyè a");
+  assert.equal(transfer.walletCurrency, "HTG");
+  assert.equal(transfer.debitMinor, 1386000, "13 200 + 5% = 13 860 HTG debite, PA 105");
+  assert.equal(await balanceOf(service.store, agent), 2000000 - 1386000);
 });
 
 test("deviz wallet la aplike menm si demann lan pa di anyen", async (t) => {

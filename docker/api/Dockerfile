@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# Serveur VOUPVAPCASH : API + base SQLite + passerelle Bazik.
-# Contexte de build : racine du dépôt (le serveur importe ../bazik).
+# Serveur VOUPVAPCASH : API + base SQLite + passerelles Bazik et Reloadly.
+# Contexte de build : racine du dépôt (le serveur importe ../bazik et ../reloadly).
 #
 #   docker build -f docker/api/Dockerfile -t voupvapcash-api .
 #   docker build -f docker/api/Dockerfile --target test .   # tests dans l'image
@@ -22,8 +22,9 @@ FROM base AS test
 COPY server/package.json server/package-lock.json server/
 RUN npm ci --prefix server --ignore-scripts
 COPY bazik bazik
+COPY reloadly reloadly
 COPY server server
-RUN cd bazik && npm test && cd ../server && npm test
+RUN cd bazik && npm test && cd ../reloadly && npm test && cd ../server && npm test
 
 # --- Image livrée -----------------------------------------------------------
 FROM base AS runtime
@@ -42,6 +43,10 @@ COPY --from=deps /app/server/node_modules server/node_modules
 COPY bazik/index.js bazik/package.json bazik/
 COPY bazik/src bazik/src
 COPY bazik/scripts bazik/scripts
+# Sans ces lignes l'API s'arrête au démarrage : `Cannot find module '../../reloadly'`.
+COPY reloadly/index.js reloadly/package.json reloadly/
+COPY reloadly/src reloadly/src
+COPY reloadly/scripts reloadly/scripts
 COPY server/package.json server/
 COPY server/src server/src
 COPY server/scripts server/scripts

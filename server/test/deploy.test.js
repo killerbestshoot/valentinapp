@@ -25,6 +25,10 @@ function prodEnv(overrides = {}) {
     SMTP_USER: "no-reply@example.com",
     SMTP_PASS: "x",
     CORS_ORIGINS: "https://app.example.com",
+    RELOADLY_MODE: "live",
+    RELOADLY_CLIENT_ID: "reloadly_live_id",
+    RELOADLY_CLIENT_SECRET: "reloadly_live_secret",
+    EXCHANGE_RATE_API_KEY: "exr_live_key",
     ...overrides,
   };
 }
@@ -69,6 +73,52 @@ test("preflight: sandbox ak CORS louvri se avètisman, pa erè", () => {
   );
   assert.deepEqual(errors, []);
   assert.equal(warnings.length, 2);
+});
+
+test("preflight: san kle Reloadly, Minit Haiti dezaktive — avètisman, PA blokaj", () => {
+  const { errors, warnings } = checkProductionConfig(
+    prodEnv({ RELOADLY_MODE: "", RELOADLY_CLIENT_ID: "", RELOADLY_CLIENT_SECRET: "" })
+  );
+
+  // MonCash ak NatCash pa dwe sispann mache paske Reloadly poko pare.
+  assert.deepEqual(errors, []);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /Minit Haiti dezaktive/);
+});
+
+test("preflight: RELOADLY_MODE eksplisit SAN kle se yon move konfigirasyon — blokaj", () => {
+  const { errors } = checkProductionConfig(
+    prodEnv({ RELOADLY_MODE: "live", RELOADLY_CLIENT_ID: "", RELOADLY_CLIENT_SECRET: "" })
+  );
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /RELOADLY_CLIENT_ID/);
+});
+
+test("preflight: Reloadly sandbox an pwodiksyon se yon avètisman", () => {
+  const { errors, warnings } = checkProductionConfig(prodEnv({ RELOADLY_MODE: "sandbox" }));
+  assert.deepEqual(errors, []);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /sandbox/);
+});
+
+test("preflight: `.env.example` kopye san chanjman pa bloke demaraj la akoz Reloadly", () => {
+  // Leson Bazik la: `BAZIK_MODE=sandbox` ak kle vid nan egzanp lan te bloke
+  // demaraj la. Egzanp Reloadly a dwe kite RELOADLY_MODE vid.
+  const example = fs.readFileSync(path.join(__dirname, "..", ".env.example"), "utf8");
+  const line = example.split("\n").find((l) => l.startsWith("RELOADLY_MODE="));
+  assert.equal(line, "RELOADLY_MODE=");
+});
+
+test("preflight: san EXCHANGE_RATE_API_KEY, demaraj la bloke (konvèsyon yo ta refize)", () => {
+  const { errors } = checkProductionConfig(prodEnv({ EXCHANGE_RATE_API_KEY: "" }));
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /EXCHANGE_RATE_API_KEY/);
+});
+
+test("preflight: RATES_MAX_AGE_HOURS envalid bloke demaraj la", () => {
+  assert.equal(checkProductionConfig(prodEnv({ RATES_MAX_AGE_HOURS: "jamè" })).errors.length, 1);
+  assert.equal(checkProductionConfig(prodEnv({ RATES_MAX_AGE_HOURS: "0" })).errors.length, 1);
+  assert.deepEqual(checkProductionConfig(prodEnv({ RATES_MAX_AGE_HOURS: "72" })).errors, []);
 });
 
 function tempDir() {

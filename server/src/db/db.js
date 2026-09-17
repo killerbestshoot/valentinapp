@@ -6,9 +6,10 @@
  * MENM FICHYE ak baz Bazik la: sòld yo, `wallet_ledger` ak `transactions` se
  * menm tab yo. De fichye separe ta vle di de verite sou menm kòb la.
  *
- * Nou aplike de schema youn apre lòt:
- *   1. `bazik/src/store/schema.sql`  (wallets, ledger, transfers, transactions)
- *   2. `app_schema.sql`              (users, sessions, enterprises, services)
+ * Nou aplike schema yo youn apre lòt:
+ *   1. `bazik/src/store/schema.sql`    (wallets, ledger, transfers, transactions)
+ *   2. `reloadly/src/store/schema.sql` (airtime_topups — Minit Haiti)
+ *   3. `app_schema.sql`                (users, sessions, enterprises, services)
  */
 
 const fs = require("node:fs");
@@ -16,6 +17,7 @@ const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 
 const BAZIK_SCHEMA = path.join(__dirname, "..", "..", "..", "bazik", "src", "store", "schema.sql");
+const AIRTIME_SCHEMA = path.join(__dirname, "..", "..", "..", "reloadly", "src", "store", "schema.sql");
 const APP_SCHEMA = path.join(__dirname, "app_schema.sql");
 
 /** Chan nou ajoute sou tab `transactions` bazik la bay la. */
@@ -51,7 +53,10 @@ function ensureColumns(database, table, columns) {
 }
 
 /**
- * To echanj yo DWE egziste depi premye demaraj la.
+ * To echanj yo DWE egziste depi premye demaraj la. Se valè `seed` (fiks): an
+ * pwodiksyon, konvèsyon yo refize yo jiskaske `rates_refresher` ranplase yo
+ * ak to jounen an (`bazik/src/rates.js`).
+ *
  *
  * Anvan, sèl `sqlite_store.js` te semen yo — e li kreye sèlman lè yon wout
  * Bazik rele pou premye fwa, dèyè `requireAuth`. Sou yon baz vid:
@@ -115,8 +120,11 @@ function getDb() {
   db = new DatabaseSync(dbFile);
 
   db.exec(fs.readFileSync(BAZIK_SCHEMA, "utf8"));
+  db.exec(fs.readFileSync(AIRTIME_SCHEMA, "utf8"));
   db.exec(fs.readFileSync(APP_SCHEMA, "utf8"));
   ensureColumns(db, "transactions", TRANSACTION_EXTRA_COLUMNS);
+  // `source`: 'seed' oswa 'exchangerate-api'. Baz ki te egziste anvan an pa genyen l.
+  ensureColumns(db, "exchange_rates", [["source", "TEXT NOT NULL DEFAULT 'seed'"]]);
   seedExchangeRates(db);
   seedServices(db);
 

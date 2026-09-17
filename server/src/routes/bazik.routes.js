@@ -188,6 +188,9 @@ router.post("/quote", requireAuth, requireEnterprise, async (req, res) => {
       amountMinor: amountMinorFrom(req.body || {}),
       currency: req.body?.currency,
       network: req.body?.network || "moncash",
+      // Debi a kalkile nan deviz WALLET moun k ap rele a.
+      uid: req.user.uid,
+      enterpriseId: req.user.enterpriseId,
     });
 
     return res.json({ ok: true, quote: { ...quote, debit: money.fromMinor(quote.debitMinor) } });

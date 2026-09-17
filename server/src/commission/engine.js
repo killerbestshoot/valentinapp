@@ -63,15 +63,14 @@ function computeCommission({ amountMinor, serviceName }) {
   };
 }
 
-/** Konvèti santim yon deviz vè yon lòt, pa HTG (se konsa to yo estoke). */
+/**
+ * Konvèti santim yon deviz vè yon lòt, ak liv to echanj la (to jounen an).
+ * Si to yo pa fre an pwodiksyon, sa voye `rates_stale`: komisyon an rete an
+ * reta, e pwochen pasaj `applyPendingCommissions` ap aplike l.
+ */
 async function convertMinor(amountMinor, fromCurrency, toCurrency) {
   if (fromCurrency === toCurrency || amountMinor === 0) return amountMinor;
-
-  const store = getBazikService().store;
-  const fromRate = await store.getRateToHtg(fromCurrency);
-  const toRate = await store.getRateToHtg(toCurrency);
-
-  return money.convertFromHtgMinor(money.convertToHtgMinor(amountMinor, fromRate), toRate);
+  return (await getBazikService().rates.convert(amountMinor, fromCurrency, toCurrency)).amountMinor;
 }
 
 /**

@@ -4,6 +4,7 @@ require("dotenv").config();
 
 const otpRoutes = require("./routes/otp.routes");
 const bazikRoutes = require("./routes/bazik.routes");
+const airtimeRoutes = require("./routes/airtime.routes");
 const authRoutes = require("./routes/auth.routes");
 const transactionRoutes = require("./routes/transactions.routes");
 const userRoutes = require("./routes/users.routes");
@@ -14,6 +15,7 @@ const systemRoutes = require("./routes/system.routes");
 const { attachUser } = require("./auth/middleware");
 const { getDb, resetDb } = require("./db/db");
 const { checkProductionConfig } = require("./preflight");
+const { getRatesRefresher } = require("./rates/rates_refresher");
 
 const preflight = checkProductionConfig();
 for (const warning of preflight.warnings) console.warn(`⚠️  ${warning}`);
@@ -78,12 +80,20 @@ app.use("/api/payouts", payoutRoutes);
 app.use("/api/system", systemRoutes);
 app.use("/api/otp", otpRoutes);
 app.use("/api/bazik", bazikRoutes);
+app.use("/api/airtime", airtimeRoutes);
 
 const PORT = Number(process.env.PORT || 4700);
 const HOST = process.env.HOST || "127.0.0.1";
 
 const server = app.listen(PORT, HOST, () => {
   console.log(`Server running on http://${HOST}:${PORT}`);
+
+  // To echanj: yon apèl pa jou, estoke, itilize tout jounen an.
+  const rates = getRatesRefresher();
+  if (!process.env.EXCHANGE_RATE_API_KEY) {
+    console.warn("[rates] ⚠️  EXCHANGE_RATE_API_KEY manke: to yo pa mete ajou (valè `seed` yo rete).");
+  }
+  rates.start();
 });
 
 // `docker stop` voye SIGTERM. Nou sispann aksepte demand, men nou kite sa ki
@@ -102,6 +112,8 @@ function shutdown(signal) {
     process.exit(1);
   }, SHUTDOWN_GRACE_MS);
   force.unref();
+
+  getRatesRefresher().stop();
 
   server.close(() => {
     resetDb();

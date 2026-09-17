@@ -1,0 +1,35 @@
+{
+  "amountBelowMinimum": {
+    "httpStatus": 400,
+    "body": {
+      "timeStamp": "2026-09-17 17:04:52",
+      "message": "Invalid amount provided, the current minimum  amount for this operator is 4.00 USD",
+      "path": "/topups",
+      "errorCode": "INVALID_AMOUNT_FOR_OPERATOR",
+      "infoLink": null,
+      "details": []
+    }
+  },
+  "landlineAutoDetect": {
+    "httpStatus": 404,
+    "body": {
+      "timeStamp": "2026-09-17 17:04:51",
+      "message": "Could not auto detect operator for given phone number",
+      "path": "/operators/auto-detect/phone/%2B50922123456/countries/HT",
+      "errorCode": "COULD_NOT_AUTO_DETECT_OPERATOR",
+      "infoLink": null,
+      "details": []
+    }
+  },
+  "customIdentifierReused": {
+    "httpStatus": 400,
+    "body": {
+      "timeStamp": "2026-09-17 17:04:52",
+      "message": "The custom identifier provided has already been used. Please provide a new, unique custom identifier",
+      "path": "/topups",
+      "errorCode": "CUSTOM_IDENTIFIER_ALREADY_USED",
+      "infoLink": null,
+      "details": []
+    }
+  }
+}

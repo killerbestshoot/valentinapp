@@ -101,6 +101,110 @@ class PaymentErrorInfo {
           severity: PaymentErrorSeverity.userFixable,
         );
 
+      // --- Minit Haiti (Reloadly) ---
+      case 'invalid_phone':
+        return PaymentErrorInfo(
+          title: 'Nimewo a pa valid',
+          detail: error.message,
+          action: 'Antre yon nimewo Ayiti ak 8 chif (Digicel oswa Natcom).',
+          severity: PaymentErrorSeverity.userFixable,
+        );
+
+      case 'operator_not_found':
+      case 'could_not_auto_detect_operator':
+        return PaymentErrorInfo(
+          title: 'Operatè a pa jwenn',
+          detail: error.message,
+          action: 'Verifye nimewo a: se sèlman Digicel ak Natcom ki sipòte.',
+          severity: PaymentErrorSeverity.userFixable,
+        );
+
+      case 'operator_not_supported':
+        return PaymentErrorInfo(
+          title: 'Operatè sa a pa sipòte',
+          detail: error.message,
+          action: 'Minit Haiti vann kredi dirèk sou yon liy Ayiti sèlman.',
+          severity: PaymentErrorSeverity.userFixable,
+        );
+
+      case 'operator_mismatch':
+        return PaymentErrorInfo(
+          title: 'Operatè a pa koresponn ak nimewo a',
+          detail: error.message,
+          action: 'Rechaje devi a: se nimewo a ki deside operatè a.',
+          severity: PaymentErrorSeverity.userFixable,
+        );
+
+      case 'operator_unavailable':
+        return PaymentErrorInfo(
+          title: 'Operatè a pa disponib',
+          detail: error.message,
+          action: 'Pa ankese kòb la kounye a. Eseye ankò pita.',
+          severity: PaymentErrorSeverity.retryable,
+        );
+
+      case 'amount_not_offered':
+      case 'invalid_amount_for_operator':
+        return PaymentErrorInfo(
+          title: 'Operatè a pa vann montan sa a',
+          detail: error.message,
+          action: 'Chwazi youn nan montan operatè a aksepte yo.',
+          severity: PaymentErrorSeverity.userFixable,
+        );
+
+      case 'currency_mismatch':
+        return PaymentErrorInfo(
+          title: 'Move deviz',
+          detail: error.message,
+          action: 'Antre montan an nan deviz wallet ou.',
+          severity: PaymentErrorSeverity.userFixable,
+        );
+
+      case 'phone_recently_recharged':
+        return PaymentErrorInfo(
+          title: 'Nimewo a fèk resevwa minit',
+          detail: error.message,
+          action: 'Wallet ou ranbouse. Tann kèk minit anvan ou rechaje menm nimewo a ankò.',
+          severity: PaymentErrorSeverity.retryable,
+        );
+
+      case 'airtime_underfunded':
+        return PaymentErrorInfo(
+          title: 'Kont Reloadly la san pwovizyon',
+          detail: error.message,
+          action:
+              'Se administratè a ki dwe chaje kont Reloadly la. Okenn minit '
+              'p ap ka pati anvan sa.',
+          severity: PaymentErrorSeverity.blocking,
+        );
+
+      case 'airtime_unavailable':
+        return const PaymentErrorInfo(
+          title: 'Minit Haiti poko aktive',
+          detail: 'Kle Reloadly yo pa konfigire sou serveur a.',
+          action: 'Avèti administratè a. Pa ankese kòb pou minit anvan sa.',
+          severity: PaymentErrorSeverity.blocking,
+        );
+
+      case 'airtime_pending_verification':
+      case 'transfer_pending_verification':
+        return PaymentErrorInfo(
+          title: 'An verifikasyon',
+          detail: error.message,
+          action:
+              'PA voye l ankò. Tann kèk minit epi verifye estati a nan lis '
+              'tranzaksyon yo.',
+          severity: PaymentErrorSeverity.blocking,
+        );
+
+      case 'transaction_closed':
+        return PaymentErrorInfo(
+          title: 'Tranzaksyon an deja fèmen',
+          detail: error.message,
+          action: 'Pa gen anyen pou livre. Kreye yon nouvo tranzaksyon si sa nesesè.',
+          severity: PaymentErrorSeverity.blocking,
+        );
+
       // --- Konfigirasyon / kont ---
       case 'cash_in_unavailable':
       case 'endpoint_not_authorized':
@@ -118,6 +222,16 @@ class PaymentErrorInfo {
           title: 'Kle Bazik yo pa bon',
           detail: 'Bazik refize idantifye serveur a.',
           action: 'Administratè a dwe verifye kle API yo.',
+          severity: PaymentErrorSeverity.blocking,
+        );
+
+      case 'rates_stale':
+        return PaymentErrorInfo(
+          title: 'To echanj yo pa ajou',
+          detail: error.message,
+          action:
+              'Pa ankese kòb nan yon lòt deviz pou kounye a. Administratè a dwe '
+              'verifye mizajou to yo (EXCHANGE_RATE_API_KEY).',
           severity: PaymentErrorSeverity.blocking,
         );
 

@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 
 import 'package:mon_premye_app/core/network/api_client.dart';
+import 'package:mon_premye_app/features/airtime/domain/airtime_models.dart';
+import 'package:mon_premye_app/features/airtime/presentation/widgets/airtime_delivery_dialog.dart';
+import 'package:mon_premye_app/features/payments/domain/payment_models.dart';
 import 'package:mon_premye_app/features/payments/presentation/widgets/bazik_delivery_dialog.dart';
 import 'package:mon_premye_app/features/transactions/data/transaction_api.dart';
 import 'package:mon_premye_app/widgets/dashboard_ui.dart';
 
 /// Jesyon tranzaksyon yo: wè, livre, chanje estati, efase.
 ///
-/// "Livre via Bazik" se vre livrezon an — se konfimasyon Bazik ki fè
-/// tranzaksyon an vin `delivered`, epi se sa ki deklanche komisyon yo.
-/// Bouton "Make manyèl" la rete pou ka livrezon an fèt an kach.
+/// "Livre via Bazik" (MonCash/NatCash) ak "Voye minit" (Minit Haiti, Reloadly)
+/// se vre livrezon yo — se konfimasyon pasrèl la ki fè tranzaksyon an vin
+/// `delivered`, epi se sa ki deklanche komisyon yo. Bouton "Make manyèl" la
+/// rete pou ka livrezon an fèt an kach.
 class TransactionManagementPage extends StatefulWidget {
   const TransactionManagementPage({super.key});
 
@@ -96,17 +100,33 @@ class _TransactionManagementPageState extends State<TransactionManagementPage> {
   }
 
   Future<void> _deliver(TransactionRecord tx) async {
-    final sent = await BazikDeliveryDialog.show(
-      context,
-      txId: tx.txId,
-      amount: tx.amount,
-      currency: tx.currency,
-      phone: tx.customerPhone,
-      serviceName: tx.serviceName,
-      clientName: tx.customerName,
-    );
+    final Future<bool> dialog;
 
-    if (sent) _reload();
+    switch (DeliveryChannel.forService(tx.serviceName)) {
+      case DeliveryChannel.bazik:
+        dialog = BazikDeliveryDialog.show(
+          context,
+          txId: tx.txId,
+          amount: tx.amount,
+          currency: tx.currency,
+          phone: tx.customerPhone,
+          serviceName: tx.serviceName,
+          clientName: tx.customerName,
+        );
+      case DeliveryChannel.reloadly:
+        dialog = AirtimeDeliveryDialog.show(
+          context,
+          txId: tx.txId,
+          amount: tx.amount,
+          currency: tx.currency,
+          phone: tx.customerPhone,
+          clientName: tx.customerName,
+        );
+      case DeliveryChannel.manual:
+        return;
+    }
+
+    if (await dialog) _reload();
   }
 
   @override
@@ -282,11 +302,24 @@ class _TransactionRow extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              FilledButton.icon(
-                onPressed: tx.isDelivered ? null : onDeliver,
-                icon: const Icon(Icons.send_outlined, size: 18),
-                label: const Text('Livre via Bazik'),
-              ),
+              // Pa gen bouton pasrèl pou WU/CAM: anvan, "Livre via Bazik"
+              // te parèt sou TOUT tranzaksyon yo, e dyalòg la te tonbe sou
+              // MonCash pou yon sèvis li pa konnen — yon vant minit te ka voye
+              // vre goud MonCash bay kliyan an.
+              if (DeliveryChannel.forService(tx.serviceName) ==
+                  DeliveryChannel.bazik)
+                FilledButton.icon(
+                  onPressed: tx.isDelivered ? null : onDeliver,
+                  icon: const Icon(Icons.send_outlined, size: 18),
+                  label: const Text('Livre via Bazik'),
+                ),
+              if (DeliveryChannel.forService(tx.serviceName) ==
+                  DeliveryChannel.reloadly)
+                FilledButton.icon(
+                  onPressed: tx.isDelivered ? null : onDeliver,
+                  icon: const Icon(Icons.phone_android_outlined, size: 18),
+                  label: const Text('Voye minit'),
+                ),
               OutlinedButton.icon(
                 onPressed: onMarkDelivered,
                 icon: const Icon(Icons.check_circle_outline, size: 18),
@@ -311,5 +344,23 @@ class _TransactionRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Ki pasrèl ki livre yon sèvis.
+enum DeliveryChannel {
+  /// MonCash, NatCash.
+  bazik,
+
+  /// Minit Haiti.
+  reloadly,
+
+  /// Western Union, CAM...: livrezon fizik, "Make manyèl" sèlman.
+  manual;
+
+  static DeliveryChannel forService(String serviceName) {
+    if (PaymentNetworkX.forServiceName(serviceName) != null) return bazik;
+    if (isAirtimeServiceName(serviceName)) return reloadly;
+    return manual;
   }
 }

@@ -345,7 +345,7 @@ class _QuoteCard extends StatelessWidget {
             const Divider(),
             _QuoteRow(
               label: 'Total nan wallet ou',
-              value: '${quoted.debit.toStringAsFixed(2)} ${quoted.currency}',
+              value: '${quoted.debit.toStringAsFixed(2)} ${quoted.walletCurrency}',
               bold: true,
             ),
             const SizedBox(height: 4),

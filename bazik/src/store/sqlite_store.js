@@ -26,6 +26,16 @@ function now() {
   return Date.now();
 }
 
+/** SQLite pa gen `ADD COLUMN IF NOT EXISTS`: nou verifye tèt nou. */
+function ensureColumns(database, table, columns) {
+  const existing = new Set(
+    database.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name)
+  );
+  for (const [name, definition] of columns) {
+    if (!existing.has(name)) database.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+  }
+}
+
 function bool(value) {
   return value ? 1 : 0;
 }
@@ -98,6 +108,10 @@ function mapTransfer(row) {
     totalHtgMinor: row.total_htg_minor,
     debitMinor: row.debit_minor,
     rateToHtg: row.rate_to_htg,
+    // Ansyen liy yo pa gen kolòn nan: wallet la te OBLIGATWA menm deviz la.
+    walletCurrency: row.wallet_currency || row.currency,
+    walletRateToHtg: row.wallet_rate_to_htg || row.rate_to_htg,
+    ratesUpdatedAt: row.rates_updated_at,
     uid: row.uid,
     enterpriseId: row.enterprise_id,
     enterpriseName: row.enterprise_name,
@@ -139,6 +153,15 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
 
   const db = new DatabaseSync(file);
   db.exec(fs.readFileSync(SCHEMA_PATH, "utf8"));
+
+  // `CREATE TABLE IF NOT EXISTS` pa ajoute kolòn sou yon baz ki deja egziste
+  // (pwodiksyon). Nou ajoute sa ki manke san touche done yo.
+  ensureColumns(db, "exchange_rates", [["source", "TEXT NOT NULL DEFAULT 'seed'"]]);
+  ensureColumns(db, "bazik_transfers", [
+    ["wallet_currency", "TEXT NOT NULL DEFAULT ''"],
+    ["wallet_rate_to_htg", "REAL NOT NULL DEFAULT 0"],
+    ["rates_updated_at", "INTEGER"],
+  ]);
 
   if (seedRates) {
     // Menm valè ak `lib/services/rates/seed_exchange_rates.dart`.
@@ -255,15 +278,18 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
       `INSERT INTO bazik_transfers
         (transfer_id, reference, kind, network, status, gateway_id, gateway_status,
          amount_minor, currency, amount_htg_minor, fee_htg_minor, total_htg_minor,
-         debit_minor, rate_to_htg, uid, enterprise_id, enterprise_name, phone,
+         debit_minor, rate_to_htg, wallet_currency, wallet_rate_to_htg, rates_updated_at,
+         uid, enterprise_id, enterprise_name, phone,
          receiver_name, tx_id, wallet_debited, refunded, failure_reason, note,
          created_by, created_at, updated_at, settled_at)
-       VALUES (?, ?, ?, ?, ?, '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, NULL)`
+       VALUES (?, ?, ?, ?, ?, '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, NULL)`
     ).run(
       record.transferId, record.reference, record.kind, record.network,
       record.status || "pending", record.amountMinor, record.currency,
       record.amountHtgMinor, record.feeHtgMinor || 0, record.totalHtgMinor || 0,
-      record.debitMinor || 0, record.rateToHtg, record.uid || "", record.enterpriseId || "",
+      record.debitMinor || 0, record.rateToHtg, record.walletCurrency || record.currency,
+      record.walletRateToHtg || record.rateToHtg, record.ratesUpdatedAt ?? null,
+      record.uid || "", record.enterpriseId || "",
       record.enterpriseName || "", record.phone || "", record.receiverName || "",
       record.txId || "", bool(record.walletDebited), record.note || "",
       record.createdBy || "", now(), now()
@@ -277,6 +303,22 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
 
   return {
     _db: db,
+
+    /**
+     * Pou yon lòt pasrèl (Reloadly) ki dwe deplase lajan nan MENM rejis la.
+     *
+     * Li ekri pwòp liy pa li (`airtime_topups`) epi li debite wallet la nan
+     * MENM tranzaksyon SQLite a, atravè `atomic`. Pa gen dezyèm aplikasyon
+     * `moveSync`: si de kote te kalkile sòld yo, yo ta fini pa pa dakò.
+     *
+     * `debitSync`/`creditSync` dwe rele ANDAN `atomic` sèlman.
+     */
+    _ledger: {
+      db,
+      atomic: tx,
+      debitSync: (move) => moveSync("debit", move),
+      creditSync: (move) => moveSync("credit", move),
+    },
 
     async close() {
       db.close();
@@ -294,11 +336,27 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
       return rate;
     },
 
-    async setRate(currency, rateToHtg) {
+    /** Pou `createRateBook`: to a + sous li + dat done yo. */
+    async getRateInfo(currency) {
+      const code = String(currency || "").toUpperCase().trim();
+      if (code === "HTG") return { currency: "HTG", rateToHtg: 1, source: "identity", updatedAt: now() };
+
+      const row = db
+        .prepare("SELECT rate_to_htg, source, updated_at FROM exchange_rates WHERE currency = ?")
+        .get(code);
+      const rate = Number(row?.rate_to_htg || 0);
+      if (rate <= 0) {
+        throw new DomainError("missing_rate", `Pa gen exchange rate pou ${code} -> HTG.`);
+      }
+      return { currency: code, rateToHtg: rate, source: row.source || "seed", updatedAt: row.updated_at };
+    },
+
+    async setRate(currency, rateToHtg, { source = "seed", updatedAt = now() } = {}) {
       db.prepare(
-        `INSERT INTO exchange_rates (currency, rate_to_htg, updated_at) VALUES (?, ?, ?)
-         ON CONFLICT(currency) DO UPDATE SET rate_to_htg = excluded.rate_to_htg, updated_at = excluded.updated_at`
-      ).run(String(currency).toUpperCase(), Number(rateToHtg), now());
+        `INSERT INTO exchange_rates (currency, rate_to_htg, updated_at, source) VALUES (?, ?, ?, ?)
+         ON CONFLICT(currency) DO UPDATE SET rate_to_htg = excluded.rate_to_htg,
+           updated_at = excluded.updated_at, source = excluded.source`
+      ).run(String(currency).toUpperCase(), Number(rateToHtg), updatedAt, source);
     },
 
     async ensureWallet(args) {
@@ -530,7 +588,8 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
             // Nou ranbouse EGZAKTEMAN sa nou te debite (montan + frè), pa sèlman
             // montan an — sinon ajan an ap pèdi frè a sou yon transfè ki echwe.
             amountMinor: transfer.debitMinor || transfer.amountMinor,
-            currency: transfer.currency,
+            // Devise WALLET la, pa devise demann lan: debi a te fèt ladan.
+            currency: transfer.walletCurrency,
             type: `${transfer.kind}_refund`,
             note: `Ranbousman otomatik: ${failureReason || "transf echwe"}`,
             sourceCollection: "bazik_transfers",

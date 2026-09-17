@@ -18,6 +18,8 @@
 
 const express = require("express");
 
+const { getRatesRefresher } = require("../rates/rates_refresher");
+
 const { getDb, now } = require("../db/db");
 const { getBazikService } = require("../bazik_service");
 const { requireAuth, requireRole, requireEnterprise } = require("../auth/middleware");
@@ -76,7 +78,9 @@ router.get("/rates", requireAuth, (req, res) => {
     const rates = {};
     for (const row of rows) rates[row.currency] = row.rate_to_htg;
 
-    return res.json({ ok: true, rates });
+    // `meta`: sous ak dat to yo. UI a ka montre "to jounen an" oswa avèti si
+    // yo pa ajou. Kle API a pa janm la.
+    return res.json({ ok: true, rates, meta: getRatesRefresher().status() });
   } catch (err) {
     return send(res, err);
   }
@@ -186,18 +190,13 @@ router.post(
       let rateNote = "";
 
       if (inputCurrency !== currency) {
-        const store = getBazikService().store;
-
-        // Nou pase pa HTG paske se konsa `exchange_rates` estoke to yo.
-        const inputRate = await store.getRateToHtg(inputCurrency);
-        const walletRate = await store.getRateToHtg(currency);
-
-        const htgMinor = money.convertToHtgMinor(amountMinor, inputRate);
-        creditMinor = money.convertFromHtgMinor(htgMinor, walletRate);
+        // To jounen an (liv to echanj la), pa yon kalkil apa.
+        const converted = await getBazikService().rates.convert(amountMinor, inputCurrency, currency);
+        creditMinor = converted.amountMinor;
 
         rateNote =
           ` (${money.fromMinor(amountMinor)} ${inputCurrency} ` +
-          `@ ${(inputRate / walletRate).toFixed(4)})`;
+          `@ ${converted.rate.toFixed(4)})`;
       }
 
       getDb()

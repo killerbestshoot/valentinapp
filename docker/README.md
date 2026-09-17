@@ -35,6 +35,10 @@ chmod 600 server/.env
 #    - BAZIK_MODE=live, BAZIK_USER_ID, BAZIK_SECRET_KEY, BAZIK_WEBHOOK_SECRET
 #    - SMTP (Hostinger) ou HOSTINGER_MAIL_TOKEN
 #    - CORS_ORIGINS=https://app.exemple.com
+#    - EXCHANGE_RATE_API_KEY (exchangerate-api.com) — taux de change du jour
+#    Optionnel (Minit Haiti) :
+#    - RELOADLY_CLIENT_ID, RELOADLY_CLIENT_SECRET — sans elles, Minit Haiti
+#      est désactivé (503), le reste de l'app fonctionne
 
 # 2. Paramètres de déploiement
 cp .env.example .env
@@ -72,9 +76,61 @@ docker compose logs api
 | `OTP_SECRET manke oswa twò kout` | sans secret, les codes OTP ne peuvent pas être vérifiés |
 | `Pasrèl Bazik la an mòd fake` | sans clés Bazik, les « transferts » seraient simulés : l'agent serait débité, les commissions versées, mais aucun argent ne partirait |
 | `BAZIK_WEBHOOK_SECRET manke` | les confirmations Bazik seraient rejetées, les transferts resteraient en vérification |
+| `EXCHANGE_RATE_API_KEY manke` | sans taux du jour, toute conversion de devise (USD, MXN… → HTG) serait refusée |
+| `RELOADLY_MODE=live mande RELOADLY_CLIENT_ID…` | un mode Reloadly explicite sans clés : videz `RELOADLY_MODE` ou renseignez les clés |
 | `MAIL_PROVIDER=console entèdi` | les codes OTP partiraient dans les logs au lieu des e-mails |
 
 Pour une démonstration sans vrai argent : `BAZIK_MODE=fake` et `ALLOW_FAKE_GATEWAY=true`.
+
+## Taux de change
+
+Toutes les conversions (MonCash/NatCash, Minit Haiti, commissions, crédits de
+wallet) utilisent les taux du jour d'exchangerate-api.com :
+
+- **un appel par jour**, déclenché quand l'API annonce de nouvelles données
+  (00:00 UTC) ; un redémarrage ne relance pas d'appel ;
+- taux stockés dans `exchange_rates`, utilisés toute la journée ;
+- clé invalide ou quota atteint : aucune relance avant le lendemain ; panne
+  réseau : nouvel essai après 30 min, 6 au maximum par jour ;
+- une variation de plus de 25 % en un jour est **rejetée** (données suspectes),
+  les anciens taux sont conservés.
+
+En production, une conversion entre deux devises est **refusée** (`rates_stale`)
+tant que les taux ne viennent pas de l'API, ou s'ils ont plus de 7 jours
+(`RATES_MAX_AGE_HOURS`). Les opérations sans conversion (wallet HTG → MonCash)
+ne sont jamais bloquées.
+
+```sh
+docker compose exec api node scripts/refresh_rates.js --status   # état, sans appel
+docker compose exec api node scripts/refresh_rates.js --force     # forcer (compte dans le quota)
+```
+
+Après un rejet pour variation suspecte, vérifier les taux à la main puis :
+`--force --accept-large-change`.
+
+## Minit Haiti (Reloadly)
+
+Les recharges de minutes passent par Reloadly Airtime. Sans clés, le service est
+**désactivé** en production — jamais simulé : un simulateur débiterait l'agent pour
+des minutes qui ne partent pas.
+
+```sh
+# Vérifier les clés et le compte, sans déplacer d'argent
+docker compose exec api node ../reloadly/scripts/check_contract.js
+```
+
+Le script affiche le solde du compte Reloadly et, pour un numéro Digicel et un
+numéro Natcom, l'opérateur détecté avec ses limites réelles. Contrat et points à
+confirmer : [`reloadly/docs/contract.md`](../reloadly/docs/contract.md).
+
+Une recharge dont la réponse s'est perdue reste « en vérification », le wallet
+débité : la rembourser serait une perte si les minutes sont passées. Pour la
+réconcilier :
+
+```sh
+# owner/admin, depuis l'app ou :
+curl -X POST -H "Authorization: Bearer …" https://app.exemple.com/api/airtime/topups/poll
+```
 
 ## Sans le profil TLS
 

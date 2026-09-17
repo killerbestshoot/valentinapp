@@ -28,7 +28,16 @@ function getBazikService() {
     process.env.BAZIK_DB_PATH ||
     path.join(__dirname, "..", "data", "app.db");
 
-  service = createSqliteService({ file });
+  // An pwodiksyon, yon konvèsyon ant de deviz mande to jounen an (API), pa
+  // valè fiks `seed` yo. Gade `bazik/src/rates.js`.
+  const maxAgeHours = Number(process.env.RATES_MAX_AGE_HOURS || 168);
+  service = createSqliteService({
+    file,
+    ratesPolicy: {
+      requireFresh: process.env.NODE_ENV === "production",
+      maxAgeMs: maxAgeHours * 3600 * 1000,
+    },
+  });
 
   console.log(`[bazik] mòd=${service.config.mode} db=${file}`);
 

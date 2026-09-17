@@ -2,9 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/features/airtime/data/airtime_gateway_provider.dart';
+import 'package:mon_premye_app/features/airtime/domain/airtime_gateway.dart';
+import 'package:mon_premye_app/features/airtime/domain/airtime_models.dart';
+import 'package:mon_premye_app/features/airtime/presentation/widgets/airtime_delivery_dialog.dart';
 import 'package:mon_premye_app/features/payments/domain/payment_models.dart';
 import 'package:mon_premye_app/features/payments/data/payment_gateway_provider.dart';
 import 'package:mon_premye_app/features/payments/domain/payment_gateway.dart';
+import 'package:mon_premye_app/features/payments/presentation/widgets/network_minimum_notice.dart';
 import 'package:mon_premye_app/features/payments/presentation/widgets/payment_error_view.dart';
 import 'package:mon_premye_app/features/transactions/data/transaction_api.dart';
 
@@ -36,12 +41,21 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   bool _quoting = false;
   Timer? _quoteDebounce;
 
+  /// Devi Minit Haiti (operatè + sa benefisyè a resevwa).
+  AirtimeQuote? _airtimeQuote;
+
+  /// Yon erè devi ajan an ka korije (montan anba minimòm NatCash, nimewo,
+  /// deviz...). Li parèt PANDAN l ap tape, pa apre li fin anrejistre.
+  PaymentException? _quoteError;
+
   /// Rezilta dènye voye a.
   Transfer? _sent;
+  AirtimeTopup? _delivered;
   PaymentException? _error;
   String? _savedTxId;
 
   PaymentGateway get _gateway => PaymentGatewayProvider.instance;
+  AirtimeGateway get _airtime => AirtimeGatewayProvider.instance;
 
   final services = const ['MonCash', 'NatCash', 'Minit Haiti'];
   final currencies = const ['MXN', 'USD', 'DOP', 'CLP', 'BRL', 'HTG'];
@@ -50,6 +64,8 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   void initState() {
     super.initState();
     amountCtrl.addListener(_scheduleQuote);
+    // Devi Minit Haiti a depann de nimewo a (se li ki bay operatè a).
+    phoneCtrl.addListener(_scheduleQuote);
   }
 
   @override
@@ -67,6 +83,20 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   bool get _isGatewayService =>
       PaymentNetworkX.forServiceName(serviceName) != null;
 
+  /// Minit Haiti: livre pa Reloadly.
+  bool get _isAirtimeService => isAirtimeServiceName(serviceName);
+
+  /// Sèvis ki livre otomatikman apre anrejistreman (Bazik oswa Reloadly).
+  bool get _deliversAutomatically => _isGatewayService || _isAirtimeService;
+
+  bool get _hasHaitiPhone {
+    final digits = phoneCtrl.text.replaceAll(RegExp(r'\D'), '');
+    final local = digits.length == 11 && digits.startsWith('509')
+        ? digits.substring(3)
+        : digits;
+    return local.length == 8;
+  }
+
   /// Devi an dirèk, ak yon ti delè pou nou pa rele serveur a sou chak lèt.
   void _scheduleQuote() {
     _quoteDebounce?.cancel();
@@ -74,33 +104,75 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   }
 
   Future<void> _refreshQuote() async {
-    if (!_isGatewayService) {
-      if (mounted) setState(() => _quote = null);
-      return;
-    }
-
     final amount = _num(amountCtrl.text);
-    if (amount <= 0) {
-      if (mounted) setState(() => _quote = null);
+    final ready = _deliversAutomatically &&
+        amount > 0 &&
+        (!_isAirtimeService || _hasHaitiPhone);
+
+    if (!ready) {
+      if (mounted) {
+        setState(() {
+          _quote = null;
+          _airtimeQuote = null;
+          _quoteError = null;
+        });
+      }
       return;
     }
 
     setState(() => _quoting = true);
 
     try {
-      final quote = await _gateway.quote(
-        amount: amount,
-        network: PaymentNetworkX.forServiceName(serviceName)!,
-        currency: paymentCurrency,
-      );
-      if (mounted) setState(() => _quote = quote);
-    } on PaymentException {
-      // Devi a se yon konfò: si li echwe, fòm nan rete itilizab.
-      if (mounted) setState(() => _quote = null);
+      await _fetchQuote(amount);
+      if (mounted) setState(() => _quoteError = null);
+    } on PaymentException catch (err) {
+      // Devi a se yon konfò: si li echwe pou yon rezon teknik, fòm nan rete
+      // itilizab. Men yon erè ajan an KA korije (montan anba minimòm NatCash,
+      // nimewo, operatè) dwe parèt kounye a. Anvan, li te disparèt an silans:
+      // ajan an peze, tranzaksyon an te kreye, EPI voye a te echwe apre.
+      if (mounted) {
+        setState(() {
+          _quote = null;
+          _airtimeQuote = null;
+          _quoteError = err.isUserFixable ? err : null;
+        });
+      }
     } finally {
       if (mounted) setState(() => _quoting = false);
     }
   }
+
+  /// Rele devi ki koresponn ak sèvis la. Erè a monte bay moun k ap rele a.
+  Future<void> _fetchQuote(double amount) async {
+    if (_isAirtimeService) {
+      final quote = await _airtime.quote(
+        phone: phoneCtrl.text.trim(),
+        amount: amount,
+        currency: paymentCurrency,
+      );
+      if (mounted) {
+        setState(() {
+          _airtimeQuote = quote;
+          _quote = null;
+        });
+      }
+      return;
+    }
+
+    final quote = await _gateway.quote(
+      amount: amount,
+      network: PaymentNetworkX.forServiceName(serviceName)!,
+      currency: paymentCurrency,
+    );
+    if (mounted) {
+      setState(() {
+        _quote = quote;
+        _airtimeQuote = null;
+      });
+    }
+  }
+
+
 
   /// Anrejistre EPI voye, san okenn kesyon.
   ///
@@ -119,11 +191,24 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
     setState(() {
       loading = true;
       _error = null;
+      _quoteError = null;
       _sent = null;
+      _delivered = null;
       _savedTxId = null;
     });
 
     try {
+      // VERIFYE ANVAN NOU KREYE TRANZAKSYON AN.
+      //
+      // Devi a pase pa MENM validasyon ak voye a (minimòm NatCash 3 998 HTG,
+      // limit operatè, deviz wallet, kont Reloadly). Si li refize, nou
+      // kanpe la: pa gen tranzaksyon `pending` òfelen ki rete dèyè yon voye
+      // ki pa t ka janm pase. Devi an dirèk la ka pa t gen tan fini (debounce):
+      // se poutèt sa nou rele l ankò isit la, e nou tann li.
+      if (_deliversAutomatically) {
+        await _fetchQuote(amount);
+      }
+
       // Serveur a mete `enterpriseId` ak `staffUid` pou kont li, depi sesyon
       // an — yon kliyan pa ka atribiye yon tranzaksyon bay yon lòt antrepriz.
       final created = await TransactionApi.instance.create(
@@ -139,9 +224,24 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
       if (!mounted) return;
       setState(() => _savedTxId = txId);
 
-      // Sèvis ki pa pase sou Bazik (Minit, WU, CAM): yo livre yon lòt jan.
-      if (!_isGatewayService) {
+      // Sèvis ki pa livre otomatikman (WU, CAM): yo livre yon lòt jan.
+      if (!_deliversAutomatically) {
         _clearForm();
+        return;
+      }
+
+      // Minit Haiti: serveur a pran montan ak nimewo a nan tranzaksyon an.
+      // Menm tranzaksyon => menm rechaj, menm si moun nan peze de fwa.
+      if (_isAirtimeService) {
+        final topup = await _airtime.deliver(
+          txId: txId,
+          operatorId: _airtimeQuote?.operator.operatorId,
+        );
+
+        if (!mounted) return;
+        setState(() => _delivered = topup);
+
+        if (topup.status != AirtimeTopupStatus.failed) _clearForm();
         return;
       }
 
@@ -178,7 +278,11 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
     nameCtrl.clear();
     phoneCtrl.clear();
     amountCtrl.clear();
-    setState(() => _quote = null);
+    setState(() {
+      _quote = null;
+      _airtimeQuote = null;
+      _quoteError = null;
+    });
   }
 
   @override
@@ -306,8 +410,19 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
                 .toList(),
             onChanged: loading
                 ? null
-                : (v) => setState(() => serviceName = v ?? 'MonCash'),
+                : (v) {
+                    setState(() => serviceName = v ?? 'MonCash');
+                    _refreshQuote();
+                  },
           ),
+          if (PaymentNetworkX.forServiceName(serviceName) ==
+              PaymentNetwork.natcash) ...[
+            const SizedBox(height: 10),
+            NetworkMinimumNotice(
+              network: PaymentNetwork.natcash,
+              currency: paymentCurrency,
+            ),
+          ],
           const SizedBox(height: 14),
           TextFormField(
             controller: nameCtrl,
@@ -367,6 +482,8 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
               const SizedBox(width: 12),
               Expanded(
                 child: DropdownButtonFormField<String>(
+                  // Nenpòt deviz, pou tout sèvis: serveur a konvèti ak to
+                  // jounen an (exchangerate-api), debi a fèt nan deviz wallet la.
                   initialValue: paymentCurrency,
                   decoration: _inputDecoration(
                     label: 'Deviz',
@@ -407,20 +524,28 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
                       color: Colors.white,
                     ),
                   )
-                : Icon(_isGatewayService
+                : Icon(_deliversAutomatically
                     ? Icons.send_outlined
                     : Icons.save_outlined),
             label: Text(
               loading
-                  ? (_isGatewayService ? 'Ap voye...' : 'Ap anrejistre...')
-                  : (_isGatewayService
+                  ? (_deliversAutomatically ? 'Ap voye...' : 'Ap anrejistre...')
+                  : (_deliversAutomatically
                       ? 'Anrejistre epi voye'
                       : 'Anrejistre transaction'),
             ),
           ),
-          if (_quote != null || _quoting) ...[
+          if (!_isAirtimeService && (_quote != null || _quoting)) ...[
             const SizedBox(height: 16),
             _QuotePanel(quote: _quote, loading: _quoting),
+          ],
+          if (_isAirtimeService && _airtimeQuote != null) ...[
+            const SizedBox(height: 16),
+            AirtimeQuoteSummary(quote: _airtimeQuote!),
+          ],
+          if (_quoteError != null && _error == null) ...[
+            const SizedBox(height: 16),
+            PaymentErrorView(error: _quoteError!),
           ],
           if (_error != null) ...[
             const SizedBox(height: 16),
@@ -430,7 +555,14 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
             const SizedBox(height: 16),
             _SentPanel(transfer: _sent!),
           ],
-          if (_sent == null && _error == null && _savedTxId != null) ...[
+          if (_delivered != null) ...[
+            const SizedBox(height: 16),
+            AirtimeResultSummary(topup: _delivered!),
+          ],
+          if (_sent == null &&
+              _delivered == null &&
+              _error == null &&
+              _savedTxId != null) ...[
             const SizedBox(height: 16),
             _SavedPanel(txId: _savedTxId!),
           ],
@@ -730,7 +862,7 @@ class _QuotePanel extends StatelessWidget {
           const Divider(height: 18),
           _QuoteLine(
             label: 'Total nan wallet ou',
-            value: '${value.debit.toStringAsFixed(2)} ${value.currency}',
+            value: '${value.debit.toStringAsFixed(2)} ${value.walletCurrency}',
             bold: true,
           ),
         ],
@@ -818,8 +950,8 @@ class _SentPanel extends StatelessWidget {
   }
 }
 
-/// Sèvis ki pa pase sou Bazik: tranzaksyon an anrejistre, livrezon an fèt
-/// yon lòt jan (Western Union, CAM, Minit).
+/// Sèvis ki pa livre otomatikman: tranzaksyon an anrejistre, livrezon an
+/// fèt yon lòt jan (Western Union, CAM).
 class _SavedPanel extends StatelessWidget {
   const _SavedPanel({required this.txId});
 
@@ -851,7 +983,7 @@ class _SavedPanel extends StatelessWidget {
           SelectableText('ID: $txId'),
           const SizedBox(height: 4),
           const Text(
-            'Sèvis sa a pa pase sou Bazik: livrezon an fèt yon lòt jan.',
+            'Sèvis sa a pa livre otomatikman: livrezon an fèt yon lòt jan.',
             style: TextStyle(fontSize: 12),
           ),
         ],

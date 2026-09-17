@@ -186,7 +186,7 @@ class _BazikDeliveryDialogState extends State<BazikDeliveryDialog> {
                 ),
                 _Row(
                   label: 'Total nan wallet ou',
-                  value: '${_quote!.debit.toStringAsFixed(2)} ${_quote!.currency}',
+                  value: '${_quote!.debit.toStringAsFixed(2)} ${_quote!.walletCurrency}',
                   bold: true,
                 ),
               ],

@@ -78,6 +78,8 @@ const AppIds = {
   payoutRequest: (seed) => generate("PO", seed),
   withdrawRequest: (seed) => generate("WD", seed),
   transfer: (seed) => generate("TRF", seed),
+  /** Rechaj minit (Reloadly). Se ID sa a ki voye kòm `customIdentifier`. */
+  airtime: (seed) => generate("AIR", seed),
   ledger: (seed) => generate("LG", seed),
   history: (seed) => generate("HIS", seed),
   walletLog: (seed) => generate("WL", seed),

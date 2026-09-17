@@ -14,6 +14,7 @@ const { createTransferUseCases } = require("./transfer");
 const { createTopupUseCases } = require("./topup");
 const { createWebhookHandler } = require("./webhook");
 const { assertStore } = require("./store/port");
+const { createRateBook } = require("./rates");
 
 /**
  * @param {object} options
@@ -21,15 +22,20 @@ const { assertStore } = require("./store/port");
  * @param {object} [options.client] si nou pa bay youn, nou chwazi selon mòd la
  * @param {object} [options.config]
  */
-function createBazikService({ store, client, config, env } = {}) {
+/**
+ * @param {object} [options.ratesPolicy] `{ requireFresh, maxAgeMs }` — serveur a
+ *   mande to fre an pwodiksyon (gade `rates.js`).
+ */
+function createBazikService({ store, client, config, env, ratesPolicy = {} } = {}) {
   assertStore(store);
+  const rates = createRateBook({ store, ...ratesPolicy });
 
   const resolvedConfig = config || loadConfig(env);
   const resolvedClient =
     client || (resolvedConfig.isFake ? createFakeBazikClient() : createBazikClient(resolvedConfig));
 
-  const transfers = createTransferUseCases({ store, client: resolvedClient, config: resolvedConfig });
-  const topups = createTopupUseCases({ store, client: resolvedClient, config: resolvedConfig });
+  const transfers = createTransferUseCases({ store, client: resolvedClient, config: resolvedConfig, rates });
+  const topups = createTopupUseCases({ store, client: resolvedClient, config: resolvedConfig, rates });
   const webhooks = createWebhookHandler({
     store,
     client: resolvedClient,
@@ -41,6 +47,8 @@ function createBazikService({ store, client, config, env } = {}) {
   return {
     config: resolvedConfig,
     store,
+    /** Liv to echanj la: rechaj minit yo (Reloadly) sèvi ak MENM nan. */
+    rates,
     client: resolvedClient,
     transfers,
     topups,

@@ -11,9 +11,19 @@ class FakePaymentGateway implements PaymentGateway {
     double balance = 500,
     this.feePercent = 5,
     this.failingPhones = const {'37000000'},
+    this.walletCurrency = 'USD',
+    this.ratesToHtg = const {'HTG': 1, 'MXN': 7.25, 'DOP': 2.25, 'CLP': 0.14, 'BRL': 24},
   }) : _balance = balance;
 
+  /// To USD (ansyen paramèt la, kenbe pou tès ki egziste yo).
   final double rateToHtg;
+  final String walletCurrency;
+
+  /// To lòt deviz yo, "HTG pou 1 inite".
+  final Map<String, double> ratesToHtg;
+
+  double _rateOf(String currency) =>
+      currency.toUpperCase() == 'USD' ? rateToHtg : (ratesToHtg[currency.toUpperCase()] ?? rateToHtg);
   final double feePercent;
   final Set<String> failingPhones;
 
@@ -32,18 +42,32 @@ class FakePaymentGateway implements PaymentGateway {
     required PaymentNetwork network,
     String? currency,
   }) async {
-    final amountHtg = amount * rateToHtg;
+    final amountCurrency = (currency ?? walletCurrency).toUpperCase();
+    final amountHtg = amount * _rateOf(amountCurrency);
     final feeHtg = amountHtg * feePercent / 100;
+
+    // Menm tchèk ak `prepareAmounts` sou serveur a: devi a refize yon montan
+    // anba minimòm rezo a, pa sèlman voye a. Se sa ki pèmèt UI a bloke
+    // anvan li kreye tranzaksyon an.
+    if (amountHtg < network.minimumHtg) {
+      throw PaymentException(
+        'amount_too_low',
+        'Minimòm pou ${network.label} se ${network.minimumHtg.toStringAsFixed(0)} HTG. '
+            'Ou mande ${amountHtg.toStringAsFixed(0)} HTG.',
+      );
+    }
 
     return TransferQuote(
       network: network,
-      currency: currency ?? 'USD',
+      currency: amountCurrency,
       amountHtg: amountHtg,
       feeHtg: feeHtg,
       totalHtg: amountHtg + feeHtg,
       feePercent: feePercent,
-      debit: (amountHtg + feeHtg) / rateToHtg,
-      rateToHtg: rateToHtg,
+      // Debi a nan deviz WALLET la, jan serveur a fè l.
+      debit: (amountHtg + feeHtg) / _rateOf(walletCurrency),
+      walletCurrency: walletCurrency,
+      rateToHtg: _rateOf(amountCurrency),
     );
   }
 
@@ -59,7 +83,7 @@ class FakePaymentGateway implements PaymentGateway {
     String? currency,
     String? idempotencySeed,
   }) async {
-    final amountHtg = amount * rateToHtg;
+    final amountHtg = amount * _rateOf(currency ?? walletCurrency);
 
     if (network.requiresReceiverName && receiverName.trim().isEmpty) {
       throw const PaymentException(
@@ -83,7 +107,7 @@ class FakePaymentGateway implements PaymentGateway {
     }
 
     final feeHtg = amountHtg * feePercent / 100;
-    final debit = (amountHtg + feeHtg) / rateToHtg;
+    final debit = (amountHtg + feeHtg) / _rateOf(walletCurrency);
 
     if (debit > _balance) {
       throw const PaymentException('insufficient_funds', 'Sld wallet la pa ase.');

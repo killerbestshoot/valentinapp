@@ -14,16 +14,18 @@ const { createFakeBazikClient } = require("./src/fake_client");
 const { createBazikClient } = require("./src/client");
 const { loadConfig } = require("./src/config");
 const AppIds = require("./src/ids");
+const { createRateBook } = require("./src/rates");
 const money = require("./src/money");
 const { BazikError, DomainError } = require("./src/errors");
 
 /** Sèvis ki chita sou SQLite — devlopman ak tès. */
-function createSqliteService({ file = ":memory:", client, config, env } = {}) {
+function createSqliteService({ file = ":memory:", client, config, env, ratesPolicy } = {}) {
   return createBazikService({
     store: createSqliteStore({ file }),
     client,
     config,
     env,
+    ratesPolicy,
   });
 }
 
@@ -36,6 +38,7 @@ module.exports = {
   loadConfig,
   AppIds,
   money,
+  createRateBook,
   BazikError,
   DomainError,
 };

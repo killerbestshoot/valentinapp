@@ -15,9 +15,10 @@
 
 const AppIds = require("./ids");
 const { DomainError, BazikError } = require("./errors");
-const { convertToHtgMinor, assertNetworkAmount, fromMinor } = require("./money");
+const { assertNetworkAmount, fromMinor } = require("./money");
+const { createRateBook } = require("./rates");
 
-function createTopupUseCases({ store, client, config }) {
+function createTopupUseCases({ store, client, config, rates = createRateBook({ store }) }) {
   /**
    * Kreye yon demand rechaj epi mande Bazik yon lyen peman.
    * Wallet la PA kredite isit la — se sèlman lè peman an konfime.
@@ -43,10 +44,20 @@ function createTopupUseCases({ store, client, config }) {
       throw new DomainError("missing_target", "targetUid ak enterpriseId obligatwa.");
     }
 
-    const rateToHtg = await store.getRateToHtg(currency);
-    const amountHtgMinor = convertToHtgMinor(amountMinor, rateToHtg);
+    // Rechaj la KREDITE `amount_minor` nan deviz `currency` (`settleTopup`).
+    // Si wallet sib la nan yon lòt deviz, nou konvèti montan an nan deviz
+    // WALLET la isit la — sinon 100 "USD" ta tounen 100 HTG nan yon wallet HTG.
+    const target = await store.getWallet({ uid: targetUid, enterpriseId });
+    const requestCurrency = String(currency || target?.currency || config.walletCurrency).toUpperCase();
+    const creditCurrency = target?.currency || requestCurrency;
+
+    const toHtg = await rates.convert(amountMinor, requestCurrency, "HTG");
+    const amountHtgMinor = toHtg.amountMinor;
+    const rateToHtg = toHtg.fromRateToHtg;
 
     assertNetworkAmount(network, amountHtgMinor);
+
+    const credit = await rates.convert(amountMinor, requestCurrency, creditCurrency);
 
     const seed = idempotencySeed || `${enterpriseId}:${targetUid}:${amountMinor}:${Date.now()}`;
     const requestId = AppIds.topupRequest(seed);
@@ -59,10 +70,10 @@ function createTopupUseCases({ store, client, config }) {
       gatewayOrderId: requestId,
       status: "pending",
       network,
-      amountMinor,
-      currency,
+      amountMinor: credit.amountMinor,
+      currency: creditCurrency,
       amountHtgMinor,
-      rateToHtg,
+      rateToHtg: credit.crossCurrency ? credit.toRateToHtg : rateToHtg,
       targetUid,
       targetEmail,
       targetName,
@@ -141,8 +152,9 @@ function createTopupUseCases({ store, client, config }) {
 
   /** Estimasyon pou UI a. */
   async function preview({ amountMinor, currency = config.walletCurrency }) {
-    const rateToHtg = await store.getRateToHtg(currency);
-    const amountHtgMinor = convertToHtgMinor(amountMinor, rateToHtg);
+    const toHtg = await rates.convert(amountMinor, currency, "HTG");
+    const rateToHtg = toHtg.fromRateToHtg;
+    const amountHtgMinor = toHtg.amountMinor;
 
     return {
       amountMinor,

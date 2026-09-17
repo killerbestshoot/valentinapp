@@ -1,0 +1,52 @@
+{
+  "id": 173,
+  "operatorId": 173,
+  "name": "Digicel Haiti",
+  "bundle": false,
+  "data": false,
+  "pin": false,
+  "supportsLocalAmounts": false,
+  "denominationType": "RANGE",
+  "senderCurrencyCode": "USD",
+  "senderCurrencySymbol": "$",
+  "destinationCurrencyCode": "HTG",
+  "destinationCurrencySymbol": "HTG",
+  "commission": 12.0,
+  "internationalDiscount": 12.0,
+  "localDiscount": 0.0,
+  "mostPopularAmount": 15,
+  "mostPopularLocalAmount": null,
+  "minAmount": 5.0,
+  "maxAmount": 70,
+  "localMinAmount": null,
+  "localMaxAmount": null,
+  "country": {
+    "isoName": "HT",
+    "name": "Haiti"
+  },
+  "fx": {
+    "rate": 68,
+    "currencyCode": "HTG"
+  },
+  "fixedAmounts": [],
+  "fixedAmountsDescriptions": {},
+  "localFixedAmounts": [],
+  "localFixedAmountsDescriptions": {},
+  "suggestedAmounts": [
+    5,
+    10,
+    15,
+    20,
+    25,
+    30,
+    35,
+    40,
+    45,
+    50,
+    55,
+    60,
+    65,
+    70
+  ],
+  "suggestedAmountsMap": {}
+}

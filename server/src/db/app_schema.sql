@@ -136,3 +136,19 @@ CREATE TABLE IF NOT EXISTS payout_requests (
 
 CREATE INDEX IF NOT EXISTS idx_payout_requests_ent
   ON payout_requests (enterprise_id, status, created_at DESC);
+
+-- Chak apèl exchangerate-api.com (`src/rates/rates_refresher.js`).
+-- Se tab sa a ki garanti "yon apèl pa jou": eta a siviv yon redemaraj.
+CREATE TABLE IF NOT EXISTS exchange_rate_fetches (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  attempted_at        INTEGER NOT NULL,
+  status              TEXT NOT NULL CHECK (status IN ('success','error','rejected')),
+  provider_updated_at INTEGER,
+  next_update_at      INTEGER,
+  currencies          INTEGER NOT NULL DEFAULT 0,
+  error_code          TEXT NOT NULL DEFAULT '',
+  error_message       TEXT NOT NULL DEFAULT '',
+  permanent           INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_fetches_time ON exchange_rate_fetches (attempted_at DESC);
