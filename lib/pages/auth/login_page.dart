@@ -2,6 +2,7 @@ import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:mon_premye_app/core/session/session_store.dart';
 import 'package:mon_premye_app/features/auth/domain/auth_repository.dart';
 import 'package:mon_premye_app/features/auth/domain/login_use_case.dart';
 import 'package:mon_premye_app/services/auth/remember_me_service.dart';
@@ -39,6 +40,20 @@ class _LoginPageState extends State<LoginPage> {
     super.initState();
     _loginUseCase = LoginUseCase(repository: widget.authRepository);
     _loadRememberedLogin();
+    _announceTimeout();
+  }
+
+  /// Si se minitè inaktivite a ki te dekonekte moun nan, nou di l poukisa.
+  /// San sa li ta panse app la tonbe nan mitan travay li.
+  void _announceTimeout() {
+    if (!SessionStore.instance.consumeTimeoutNotice()) return;
+
+    final minutes = SessionStore.instance.idleTimeout.inMinutes;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showMessage(
+        'Sesyon an fèmen apre $minutes minit san aktivite. Konekte ankò.',
+      );
+    });
   }
 
   @override

@@ -41,12 +41,23 @@ class ApiClient {
 
   static ApiClient get instance => _instance ??= ApiClient();
 
+  /// Rele lè serveur a refize jeton an (401).
+  ///
+  /// Netwaye jeton an pa ase: san yon siyal, ekran an rete kanpe sou done ki
+  /// pa aktyèl ankò. Se `HttpAuthRepository` ki branche l pou app la retounen
+  /// sou paj koneksyon an.
+  static void Function()? onUnauthenticated;
+
   /// Pou tès yo.
   static void override(ApiClient client) => _instance = client;
-  static void reset() => _instance = null;
 
-  Map<String, String> _headers() {
-    final token = _session.token;
+  static void reset() {
+    _instance = null;
+    onUnauthenticated = null;
+  }
+
+  Map<String, String> _headers({String? asToken}) {
+    final token = asToken ?? _session.token;
     return {
       'content-type': 'application/json',
       if (token != null && token.isNotEmpty) 'authorization': 'Bearer $token',
@@ -60,10 +71,17 @@ class ApiClient {
         ));
   }
 
-  Future<Map<String, dynamic>> post(String path, [Map<String, dynamic>? body]) {
+  /// [asToken] sèvi nan yon sèl ka: anile yon sesyon ki deja tonbe pou
+  /// inaktivite. Nan moman sa a `SessionStore.token` deja vid, men serveur a
+  /// bezwen jeton an pou l konnen ki liy pou l efase.
+  Future<Map<String, dynamic>> post(
+    String path, [
+    Map<String, dynamic>? body,
+    String? asToken,
+  ]) {
     return _send(() => _client.post(
           ApiBase.uri(path),
-          headers: _headers(),
+          headers: _headers(asToken: asToken),
           body: jsonEncode(body ?? const {}),
         ));
   }
@@ -109,6 +127,7 @@ class ApiClient {
     if (response.statusCode == 401) {
       // Sesyon an pa bon ankò: nou netwaye l pou app la mande koneksyon.
       await _session.clear();
+      onUnauthenticated?.call();
     }
 
     if (response.statusCode >= 400 || json['ok'] != true) {

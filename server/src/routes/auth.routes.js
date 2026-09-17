@@ -109,6 +109,7 @@ router.post("/bootstrap", async (req, res) => {
       user: users.profileOf(owner.uid),
       token: session.token,
       expiresAt: session.expiresAt,
+      idleTimeoutMs: session.idleTimeoutMs,
     });
   } catch (err) {
     return send(res, err);
@@ -142,6 +143,7 @@ router.post("/login", async (req, res) => {
       user: users.profileOf(user.uid),
       token: session.token,
       expiresAt: session.expiresAt,
+      idleTimeoutMs: session.idleTimeoutMs,
     });
   } catch (err) {
     return send(res, err);
@@ -154,7 +156,12 @@ router.post("/logout", (req, res) => {
 });
 
 router.get("/me", requireAuth, (req, res) => {
-  return res.json({ ok: true, user: req.user });
+  return res.json({
+    ok: true,
+    user: req.user,
+    expiresAt: req.session?.expiresAt,
+    idleTimeoutMs: req.session?.idleTimeoutMs,
+  });
 });
 
 router.post("/change-password", requireAuth, async (req, res) => {

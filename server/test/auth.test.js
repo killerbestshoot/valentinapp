@@ -261,3 +261,101 @@ test("dezaktive yon kont dekonekte l tou swit", async () => {
 
   assert.equal(sessions.resolveSession(session.token), null);
 });
+
+// --- Limit inaktivite (5 minit) ---
+
+/**
+ * Fè yon sesyon vin vye: nou rekile dat yo olye nou tann pou vre.
+ * `resolveSession` konpare ak `Date.now()`, donk sa ekivalan.
+ */
+function ageSession(token, ms) {
+  const tokenHash = require("node:crypto")
+    .createHash("sha256")
+    .update(token)
+    .digest("hex");
+
+  db.getDb()
+    .prepare(
+      `UPDATE sessions
+          SET created_at = created_at - ?,
+              last_seen_at = last_seen_at - ?,
+              expires_at = expires_at - ?
+        WHERE token_hash = ?`
+    )
+    .run(ms, ms, ms, tokenHash);
+}
+
+test("yon sesyon tonbe apre 5 minit san aktivite", async () => {
+  const user = await users.createUser({
+    email: "inaktif@example.com",
+    password: "modpas-solid-123",
+    role: "agent",
+  });
+
+  const session = sessions.createSession(user.uid);
+  assert.equal(session.idleTimeoutMs, 5 * 60 * 1000, "5 minit pa defo");
+
+  ageSession(session.token, 4 * 60 * 1000);
+  assert.equal(
+    sessions.resolveSession(session.token).uid,
+    user.uid,
+    "4 minit: sesyon an toujou bon"
+  );
+
+  // Apèl anvan an fèk repouse limit lan; nou rekile 5 minit ankò.
+  ageSession(session.token, 5 * 60 * 1000 + 1000);
+
+  assert.equal(sessions.resolveSession(session.token), null);
+  assert.equal(
+    db.getDb().prepare("SELECT COUNT(*) AS n FROM sessions WHERE uid = ?").get(user.uid).n,
+    0,
+    "liy lan efase, pa sèlman inyore"
+  );
+});
+
+test("chak apèl repouse limit inaktivite a", async () => {
+  const user = await users.createUser({
+    email: "aktif@example.com",
+    password: "modpas-solid-123",
+    role: "agent",
+  });
+
+  const session = sessions.createSession(user.uid);
+
+  // Kat fwa 4 minit = 16 minit an tou, men yon apèl chak fwa.
+  for (let i = 0; i < 4; i += 1) {
+    ageSession(session.token, 4 * 60 * 1000);
+    assert.ok(sessions.resolveSession(session.token), `tou #${i + 1}`);
+  }
+});
+
+test("plafon absoli a pa glise: apre 7 jou sesyon an tonbe menm si moun nan aktif", async () => {
+  const user = await users.createUser({
+    email: "semèn@example.com",
+    password: "modpas-solid-123",
+    role: "agent",
+  });
+
+  const session = sessions.createSession(user.uid);
+
+  // 7 jou pase depi koneksyon an, men dènye apèl la fèk fèt.
+  ageSession(session.token, 7 * 24 * 3600 * 1000 + 1000);
+
+  assert.equal(sessions.resolveSession(session.token), null);
+});
+
+test("netwayaj la efase sesyon ki tonbe pou inaktivite", async () => {
+  const user = await users.createUser({
+    email: "netwayaj@example.com",
+    password: "modpas-solid-123",
+    role: "agent",
+  });
+
+  const vye = sessions.createSession(user.uid);
+  const nèf = sessions.createSession(user.uid);
+  ageSession(vye.token, 6 * 60 * 1000);
+
+  assert.ok(sessions.purgeExpiredSessions() >= 1);
+  assert.equal(sessions.resolveSession(vye.token), null);
+  assert.equal(sessions.resolveSession(nèf.token).uid, user.uid);
+});

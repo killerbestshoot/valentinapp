@@ -18,10 +18,21 @@ function readToken(req) {
   return "";
 }
 
-/** Mete `req.user` si jeton an bon. Li pa bloke anyen. */
+/**
+ * Mete `req.user` si jeton an bon. Li pa bloke anyen.
+ *
+ * `req.session` pote limit inaktivite a tou: wout `/me` a voye l bay kliyan an
+ * pou app la konte menm 5 minit yo ak serveur a, menm si yon operatè chanje
+ * `SESSION_IDLE_MINUTES`.
+ */
 function attachUser(req, res, next) {
   const session = resolveSession(readToken(req));
+
   req.user = session ? profileOf(session.uid) : null;
+  req.session = session
+    ? { expiresAt: session.expiresAt, idleTimeoutMs: session.idleTimeoutMs }
+    : null;
+
   next();
 }
 

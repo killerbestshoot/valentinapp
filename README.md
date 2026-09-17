@@ -16,6 +16,10 @@ Flutter (lib/)  ──HTTP + Bearer token──►  server/ (Express, port 4500)
 
 - **Aucun Firebase.** Toutes les données vivent dans une seule base SQLite
   côté serveur ; l'app ne garde qu'un jeton de session.
+- **Session courte.** Sans signe de navigation pendant 5 minutes, la session
+  se ferme des deux côtés : l'app renvoie sur l'écran de connexion et le
+  serveur supprime le jeton (`SESSION_IDLE_MINUTES`, plafond absolu
+  `SESSION_TTL_HOURS`).
 - **Aucun secret dans l'app.** Les clés Bazik et SMTP sont dans `server/.env`
   (ignoré par git — modèle : `server/.env.example`).
 - L'argent est stocké en centimes entiers ; chaque mouvement de wallet laisse

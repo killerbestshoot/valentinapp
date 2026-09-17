@@ -14,7 +14,14 @@ import '../models/auth_user.dart';
 ///     paj pa dekonekte moun nan;
 ///   - serveur a ka anile yon sesyon nenpòt lè (chanjman modpas, dezaktivasyon).
 class HttpAuthRepository implements AuthRepository {
-  HttpAuthRepository._();
+  HttpAuthRepository._() {
+    // Lè serveur a refize jeton an (sesyon ekspire, dekoneksyon sou yon lòt
+    // aparèy, chanjman modpas), `ApiClient` netwaye jeton an. Nou anonse l
+    // isit la tou, san sa wout yo ta kite moun nan sou yon ekran ki mouri.
+    ApiClient.onUnauthenticated = () {
+      if (_currentUser != null) _emit(null);
+    };
+  }
 
   static final HttpAuthRepository instance = HttpAuthRepository._();
 
@@ -48,6 +55,15 @@ class HttpAuthRepository implements AuthRepository {
 
     try {
       final json = await _api.get('/api/auth/me');
+
+      // Serveur a bay limit inaktivite li ak nouvo dat ekspirasyon an: nou
+      // aliyen sou li pou app la pa konte yon lòt 5 minit pase l.
+      await _session.save(
+        _session.rawToken!,
+        expiresAt: _asInt(json['expiresAt']),
+        idleTimeoutMs: _asInt(json['idleTimeoutMs']),
+      );
+
       final user = AuthUser.fromJson(json['user'] as Map<String, dynamic>);
       _emit(user);
       return user;
@@ -89,13 +105,15 @@ class HttpAuthRepository implements AuthRepository {
     return _acceptSession(json);
   }
 
+  static int? _asInt(Object? value) => value is num ? value.toInt() : null;
+
   Future<AuthUser> _acceptSession(Map<String, dynamic> json) async {
     final token = '${json['token'] ?? ''}';
-    final expiresAt = json['expiresAt'];
 
     await _session.save(
       token,
-      expiresAt: expiresAt is num ? expiresAt.toInt() : null,
+      expiresAt: _asInt(json['expiresAt']),
+      idleTimeoutMs: _asInt(json['idleTimeoutMs']),
     );
 
     final user = AuthUser.fromJson(json['user'] as Map<String, dynamic>);
@@ -105,8 +123,13 @@ class HttpAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {
+    // `rawToken` epi pa `token`: lè se minitè inaktivite a ki dekonekte moun
+    // nan, jeton an deja konsidere tonbe lokalman — men nou vle serveur a
+    // efase liy lan pou vre, pa tann pwòp limit pa l.
+    final token = _session.rawToken;
+
     try {
-      await _api.post('/api/auth/logout');
+      await _api.post('/api/auth/logout', const {}, token);
     } on ApiException {
       // Menm si serveur a pa reponn, nou dekonekte lokalman.
     }
