@@ -1,11 +1,11 @@
 {
-    "name": "mon_premye_app",
-    "short_name": "mon_premye_app",
+    "name": "VOUPVAPCASH",
+    "short_name": "VOUPVAPCASH",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FBFBFB",
+    "theme_color": "#0070F0",
+    "description": "Plus qu'un paiement, une solution. Transferts, MonCash, NatCash et minutes Haïti.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -18,19 +18,122 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Plus qu'un paiement, une solution. Transferts, MonCash, NatCash et minutes Haïti.">
+
+  <title>VOUPVAPCASH</title>
+
+  <!--
+    Aperçu du lien quand il est partagé (WhatsApp, Facebook, Signal, Slack…).
+
+    Ces robots ne lancent pas le JavaScript : ils lisent ce fichier tel qu'il
+    est servi, donc le titre de l'app Flutter ne leur parvient jamais. Sans ces
+    balises, ils retombent sur le gabarit `flutter create` — d'où le
+    « mon_premye_app / A new Flutter project. » et le logo Flutter.
+
+    Les URL doivent être absolues : le robot ne résout pas `<base href>`. Et
+    l'image doit être un PNG ou un JPEG, jamais le `.ico`, qu'aucun d'eux ne
+    sait afficher.
+  -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="VOUPVAPCASH">
+  <meta property="og:title" content="VOUPVAPCASH">
+  <meta property="og:description" content="Plus qu'un paiement, une solution. Transferts, MonCash, NatCash et minutes Haïti.">
+  <meta property="og:url" content="https://voupvapcash.com/">
+  <meta property="og:locale" content="fr_FR">
+  <meta property="og:image" content="https://voupvapcash.com/icons/Icon-512.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="512">
+  <meta property="og:image:height" content="512">
+  <meta property="og:image:alt" content="Logo VOUPVAPCASH">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="VOUPVAPCASH">
+  <meta name="twitter:description" content="Plus qu'un paiement, une solution. Transferts, MonCash, NatCash et minutes Haïti.">
+  <meta name="twitter:image" content="https://voupvapcash.com/icons/Icon-512.png">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="mon_premye_app">
+  <meta name="apple-mobile-web-app-title" content="VOUPVAPCASH">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <!-- Favicon : le .ico porte les 7 tailles (16 à 256), le PNG sert de repli. -->
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" href="favicon.png">
 
-  <title>mon_premye_app</title>
+  <meta name="theme-color" content="#0070F0">
   <link rel="manifest" href="manifest.json">
+
+  <!--
+    Relais pour la proposition d'installation (PWA).
+
+    `beforeinstallprompt` n'arrive qu'une fois, et souvent avant que Flutter
+    n'ait fini de démarrer : si personne ne l'écoute à ce moment-là, il est
+    perdu et l'app ne peut plus proposer l'installation. On le capture donc
+    ici, dans l'en-tête, et on le garde pour que le Dart le déclenche plus tard
+    depuis un vrai geste de l'utilisateur — les navigateurs refusent la
+    proposition autrement.
+
+    Safari iOS n'envoie jamais cet événement : l'installation y passe par le
+    menu Partager, d'où le mode `manual`.
+  -->
+  <script>
+    (function () {
+      var deferred = null;
+      var listeners = [];
+
+      function isStandalone() {
+        return window.matchMedia('(display-mode: standalone)').matches ||
+               window.navigator.standalone === true;
+      }
+
+      function isIosSafari() {
+        var ua = window.navigator.userAgent;
+        var ios = /iPad|iPhone|iPod/.test(ua) ||
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        var safari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+        return ios && safari;
+      }
+
+      function currentMode() {
+        if (isStandalone()) return 'none';   // déjà installée
+        if (deferred) return 'prompt';
+        if (isIosSafari()) return 'manual';
+        return 'none';
+      }
+
+      function notify() {
+        listeners.forEach(function (cb) { try { cb(); } catch (e) {} });
+      }
+
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();   // sinon Chrome pose sa propre barre par-dessus l'app
+        deferred = e;
+        notify();
+      });
+
+      window.addEventListener('appinstalled', function () {
+        deferred = null;
+        notify();
+      });
+
+      window.pwaMode = currentMode;
+      window.pwaOnChange = function (cb) { listeners.push(cb); };
+
+      window.pwaPrompt = function () {
+        if (!deferred) return Promise.resolve('unavailable');
+
+        // Un événement ne se rejoue pas : on le consomme tout de suite.
+        var e = deferred;
+        deferred = null;
+        notify();
+
+        return e.prompt()
+          .then(function () { return e.userChoice; })
+          .then(function (choice) { return choice.outcome; })
+          .catch(function () { return 'dismissed'; });
+      };
+    })();
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
