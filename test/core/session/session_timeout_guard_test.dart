@@ -51,11 +51,13 @@ void main() {
     WidgetTester tester, {
     required _FakeAuthRepository auth,
     required SessionStore session,
+    Future<void> Function()? onHeartbeat,
   }) async {
     await tester.pumpWidget(MaterialApp(
       home: SessionTimeoutGuard(
         authRepository: auth,
         sessionStore: session,
+        onHeartbeat: onHeartbeat ?? () async {},
         checkEvery: const Duration(seconds: 1),
         child: const Scaffold(body: Center(child: Text('tablo'))),
       ),
@@ -105,6 +107,93 @@ void main() {
 
     expect(auth.signOutCount, 0);
     expect(auth.currentUser, isNotNull);
+  });
+
+  testWidgets('ak sa serveur a voye vre, navige pa fèmen sesyon an',
+      (tester) async {
+    // Regresyon: nou te voye echeyans 5 minit lan nan `expiresAt`, epi app la
+    // te fèmen sesyon an 5 minit apre koneksyon an menm pandan moun nan t ap
+    // travay. Isit la nou sèvi ak sa `/api/auth/login` voye vre: plafon an.
+    const idle = Duration(minutes: 5);
+    var clock = 1000;
+    final session = SessionStore.forTests(clock: () => clock);
+    await session.save(
+      'jeton',
+      expiresAt: clock + const Duration(days: 7).inMilliseconds,
+      idleTimeoutMs: idle.inMilliseconds,
+    );
+
+    final auth = _FakeAuthRepository();
+    addTearDown(auth.dispose);
+
+    await pumpGuard(tester, auth: auth, session: session);
+
+    // 20 minit navigasyon, yon touche chak 2 minit.
+    for (var i = 0; i < 10; i += 1) {
+      clock += const Duration(minutes: 2).inMilliseconds;
+      await tester.tap(find.text('tablo'));
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    expect(auth.signOutCount, 0, reason: 'moun nan pa t sispann navige');
+    expect(auth.currentUser, isNotNull);
+  });
+
+  testWidgets('navige san rele API a fè siy bay serveur a', (tester) async {
+    var clock = 1000;
+    final session = SessionStore.forTests(clock: () => clock);
+    await session.save('jeton', idleTimeoutMs: 5 * 60 * 1000);
+
+    final auth = _FakeAuthRepository();
+    addTearDown(auth.dispose);
+
+    var pings = 0;
+    await pumpGuard(
+      tester,
+      auth: auth,
+      session: session,
+      onHeartbeat: () async => pings += 1,
+    );
+
+    await tester.tap(find.text('tablo'));
+    await tester.pump();
+    expect(pings, 0, reason: 'koneksyon an fèk fèt: serveur a konnen');
+
+    clock += const Duration(seconds: 61).inMilliseconds;
+    await tester.tap(find.text('tablo'));
+    await tester.pump();
+    expect(pings, 1);
+
+    await tester.tap(find.text('tablo'));
+    await tester.pump();
+    expect(pings, 1, reason: 'yon sèl siy pa minit, pa youn pa dwèt');
+
+    clock += const Duration(seconds: 61).inMilliseconds;
+    await tester.tap(find.text('tablo'));
+    await tester.pump();
+    expect(pings, 2);
+  });
+
+  testWidgets('pa fè siy si pa gen sesyon', (tester) async {
+    var clock = 1000;
+    final session = SessionStore.forTests(clock: () => clock);
+
+    final auth = _FakeAuthRepository();
+    addTearDown(auth.dispose);
+
+    var pings = 0;
+    await pumpGuard(
+      tester,
+      auth: auth,
+      session: session,
+      onHeartbeat: () async => pings += 1,
+    );
+
+    clock += const Duration(minutes: 2).inMilliseconds;
+    await tester.tap(find.text('tablo'));
+    await tester.pump();
+
+    expect(pings, 0);
   });
 
   testWidgets('gad la kite bouton yo resevwa touche yo', (tester) async {

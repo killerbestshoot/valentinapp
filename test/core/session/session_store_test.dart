@@ -65,6 +65,37 @@ void main() {
     });
   });
 
+  group('batman kè', () {
+    test('koneksyon an konte kòm yon kontak ak serveur a', () async {
+      final store = SessionStore.forTests(clock: () => 1000);
+      await store.save('jeton', idleTimeoutMs: 5 * 60 * 1000);
+
+      expect(store.needsHeartbeat, isFalse);
+      expect(store.heartbeatEvery, const Duration(minutes: 1),
+          reason: 'yon senkyèm nan limit lan');
+    });
+
+    test('li lè pou fè siy apre yon senkyèm nan limit lan', () async {
+      var clock = 1000;
+      final store = SessionStore.forTests(clock: () => clock);
+      await store.save('jeton', idleTimeoutMs: 5 * 60 * 1000);
+
+      clock += const Duration(seconds: 61).inMilliseconds;
+      expect(store.needsHeartbeat, isTrue);
+
+      store.markServerContact();
+      expect(store.needsHeartbeat, isFalse);
+    });
+
+    test('san sesyon, pa gen siy pou voye', () async {
+      var clock = 1000;
+      final store = SessionStore.forTests(clock: () => clock);
+
+      clock += const Duration(minutes: 10).inMilliseconds;
+      expect(store.needsHeartbeat, isFalse);
+    });
+  });
+
   group('demaraj', () {
     test('yon sesyon ki te rete san bouje pa retounen apre redemaraj', () async {
       SharedPreferences.setMockInitialValues({

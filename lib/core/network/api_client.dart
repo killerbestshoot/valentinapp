@@ -138,6 +138,10 @@ class ApiClient {
       );
     }
 
+    // Apèl la pase, donk serveur a fèk repouse limit inaktivite li a: pa
+    // bezwen voye yon batman kè anplis.
+    _session.markServerContact();
+
     return json;
   }
 }

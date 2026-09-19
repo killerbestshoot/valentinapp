@@ -359,3 +359,29 @@ test("netwayaj la efase sesyon ki tonbe pou inaktivite", async () => {
   assert.equal(sessions.resolveSession(vye.token), null);
   assert.equal(sessions.resolveSession(nèf.token).uid, user.uid);
 });
+
+test("kliyan an resevwa PLAFON an kòm `expiresAt`, pa limit inaktivite a", async () => {
+  const user = await users.createUser({
+    email: "plafon@example.com",
+    password: "modpas-solid-123",
+    role: "agent",
+  });
+
+  const session = sessions.createSession(user.uid);
+  const marge = session.expiresAt - Date.now();
+
+  // Si nou voye echeyans 5 minit lan isit la, app la fèmen sesyon an 5 minit
+  // apre koneksyon an MENM SI moun nan ap navige: dat ki sove sou aparèy la
+  // pa janm bouje. Se plafon 7 jou a ki dwe soti.
+  assert.ok(
+    marge > session.idleTimeoutMs,
+    `expiresAt dwe pi lwen pase limit inaktivite a (jwenn ${marge} ms)`
+  );
+  assert.ok(Math.abs(marge - sessions.SESSION_MAX_MS) < 5000);
+
+  // Menm bagay la sou /me, ki sèvi lè app la redemare.
+  assert.ok(
+    sessions.resolveSession(session.token).expiresAt - Date.now() >
+      session.idleTimeoutMs
+  );
+});

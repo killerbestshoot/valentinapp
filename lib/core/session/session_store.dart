@@ -31,6 +31,13 @@ class SessionStore {
   /// Limit pa defo. Serveur a ka voye yon lòt nan koneksyon an.
   static const defaultIdleTimeout = Duration(minutes: 5);
 
+  /// Chak konbyen tan nou fè serveur a konnen moun nan la toujou.
+  ///
+  /// Serveur a pa wè dwèt sou ekran an: li konte sèlman apèl API yo. Sou yon
+  /// ekran ki pa rele API a, sesyon li a ta mouri pandan moun nan ap navige.
+  /// Yon senkyèm nan limit lan kite plas pou kat tantativ ki rate.
+  Duration get heartbeatEvery => _idleTimeout ~/ 5;
+
   /// Nou pa ekri sou disk la nan chak touche dwèt: sa ta bat stokaj la pou
   /// anyen. An memwa limit lan egzat; sou disk li ka an reta [_persistEvery].
   static const _persistEvery = Duration(seconds: 15);
@@ -45,6 +52,7 @@ class SessionStore {
   String? _token;
   int? _expiresAt;
   int? _lastSeenAt;
+  int? _lastServerContactAt;
   Duration _idleTimeout = defaultIdleTimeout;
   bool _loaded = false;
   int _persistedLastSeenAt = 0;
@@ -91,6 +99,18 @@ class SessionStore {
     final left = _idleTimeout.inMilliseconds - (_now() - lastSeenAt);
     return left <= 0 ? Duration.zero : Duration(milliseconds: left);
   }
+
+  /// Vre lè li lè pou nou fè siy bay serveur a.
+  bool get needsHeartbeat {
+    if (token == null) return false;
+
+    final last = _lastServerContactAt;
+    return last == null || _now() - last >= heartbeatEvery.inMilliseconds;
+  }
+
+  /// Make ke serveur a fèk tande nou: limit inaktivite li a repouse.
+  /// `ApiClient` rele l apre chak apèl ki pase.
+  void markServerContact() => _lastServerContactAt = _now();
 
   /// Chaje jeton an ki te sove. Rele l yon fwa nan demaraj la.
   ///
@@ -139,6 +159,7 @@ class SessionStore {
     _expiresAt = expiresAt;
     _lastSeenAt = _now();
     _persistedLastSeenAt = _lastSeenAt!;
+    _lastServerContactAt = _lastSeenAt;
     _loaded = true;
     _timedOut = false;
 
@@ -196,6 +217,7 @@ class SessionStore {
     _token = null;
     _expiresAt = null;
     _lastSeenAt = null;
+    _lastServerContactAt = null;
     _persistedLastSeenAt = 0;
 
     try {

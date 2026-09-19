@@ -54,6 +54,19 @@ function deadlineOf(createdAt, lastSeenAt) {
   return Math.min(lastSeenAt + SESSION_IDLE_MS, createdAt + SESSION_MAX_MS);
 }
 
+/**
+ * Ki dat nou anonse bay kliyan an.
+ *
+ * Se PLAFON an, pa limit inaktivite a. Kliyan an trete dat sa a kòm yon mi:
+ * pase l, li fèmen sesyon an san poze kesyon. Si nou ba l echeyans 5 minit
+ * lan, li dekonekte moun nan 5 minit apre koneksyon an menm si l ap travay,
+ * paske anyen pa repouse dat ki sove sou aparèy la. Limit inaktivite a vwayaje
+ * apa, nan `idleTimeoutMs`, e se kontè lokal la ki jere l.
+ */
+function capOf(createdAt) {
+  return createdAt + SESSION_MAX_MS;
+}
+
 /** Kreye yon sesyon. Retounen jeton an AN KLÈ (sèl fwa nou wè l). */
 function createSession(uid, { userAgent = "" } = {}) {
   const token = randomBytes(32).toString("hex");
@@ -67,7 +80,11 @@ function createSession(uid, { userAgent = "" } = {}) {
     )
     .run(hashToken(token), uid, createdAt, expiresAt, createdAt, userAgent);
 
-  return { token, expiresAt, idleTimeoutMs: SESSION_IDLE_MS };
+  return {
+    token,
+    expiresAt: capOf(createdAt),
+    idleTimeoutMs: SESSION_IDLE_MS,
+  };
 }
 
 /**
@@ -120,7 +137,7 @@ function resolveSession(token) {
     displayName: user.display_name,
     role: user.role,
     mustChangePassword: user.must_change_password === 1,
-    expiresAt,
+    expiresAt: capOf(session.created_at),
     idleTimeoutMs: SESSION_IDLE_MS,
   };
 }

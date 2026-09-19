@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../features/auth/data/auth_repository_provider.dart';
 import '../../features/auth/domain/auth_repository.dart';
+import '../network/api_client.dart';
 import 'session_store.dart';
 
 /// Fèmen sesyon an lè moun nan sispann navige.
@@ -27,6 +28,7 @@ class SessionTimeoutGuard extends StatefulWidget {
     required this.child,
     this.authRepository,
     this.sessionStore,
+    this.onHeartbeat,
     this.checkEvery = const Duration(seconds: 10),
   });
 
@@ -35,6 +37,9 @@ class SessionTimeoutGuard extends StatefulWidget {
   /// Pou tès yo; pa defo se sa aplikasyon an sèvi.
   final AuthRepository? authRepository;
   final SessionStore? sessionStore;
+
+  /// Sa nou voye bay serveur a pou di l moun nan la toujou.
+  final Future<void> Function()? onHeartbeat;
 
   /// Chak konbyen tan nou gade kontè a. Nou pa remete yon `Timer` sou chak
   /// dwèt: yon ti verifikasyon regilye koute mwens e li wè tou lè aparèy la
@@ -86,7 +91,37 @@ class _SessionTimeoutGuardState extends State<SessionTimeoutGuard>
     return false; // Nou tande sèlman: evènman an kontinye chemen l.
   }
 
-  void _onActivity() => _session.touch();
+  void _onActivity() {
+    _session.touch();
+    _keepServerAlive();
+  }
+
+  /// Serveur a gen menm limit 5 minit lan, men li konte sèlman apèl API yo.
+  /// Sou yon ekran ki pa rele API a (yon fòm moun nan ap ranpli, yon lis li ap
+  /// li), sesyon li a ta mouri pandan moun nan ap navige, epi pwochen apèl la
+  /// ta tounen 401. Yon ti siy chak minit kenbe de bò yo dakò.
+  void _keepServerAlive() {
+    if (!_session.needsHeartbeat) return;
+
+    // Nou make kontak la AVAN repons lan: si rezo a koupe, sa kite nou ak yon
+    // sèl tantativ pa minit olye youn pa mouvman dwèt.
+    _session.markServerContact();
+    unawaited(_sendHeartbeat());
+  }
+
+  Future<void> _sendHeartbeat() async {
+    try {
+      await (widget.onHeartbeat ?? _defaultHeartbeat)();
+    } catch (_) {
+      // Rezo koupe: pwochen siy navigasyon an ap eseye ankò. Si se yon 401,
+      // `ApiClient` deja netwaye jeton an epi wout yo voye moun nan sou
+      // paj koneksyon an.
+    }
+  }
+
+  static Future<void> _defaultHeartbeat() async {
+    await ApiClient.instance.get('/api/auth/me');
+  }
 
   void _check() {
     if (_closing) return;
