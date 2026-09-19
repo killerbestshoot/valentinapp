@@ -1,4 +1,4 @@
-# nginx de l'hôte — voupvapcash.tech
+# nginx de l'hôte — voupvapcash.com
 
 Alternative au profil `tls` de docker compose (Caddy) : c'est nginx, installé sur la machine, qui termine le TLS et relaie vers le conteneur `web`.
 
@@ -10,7 +10,7 @@ N'activez pas les deux : `docker compose --profile tls up -d` ferait écouter Ca
 
 ## Prérequis
 
-- Le DNS de `voupvapcash.tech` **et** `www.voupvapcash.tech` pointe vers ce serveur (enregistrements A, et AAAA si le serveur a une IPv6).
+- Le DNS de `voupvapcash.com` **et** `www.voupvapcash.com` pointe vers ce serveur (enregistrements A, et AAAA si le serveur a une IPv6).
 - Ports 80 et 443 ouverts.
 - `nginx` et `certbot` installés : `sudo apt install nginx certbot` (le greffon `python3-certbot-nginx` est inutile : on passe par `--webroot`, et le vhost porte ses propres réglages TLS)
 - L'app tourne : `docker compose up -d --build` (sans `--profile tls`), avec `HTTP_BIND=127.0.0.1` et `HTTP_PORT=8080` dans `.env` — les valeurs par défaut.
@@ -29,26 +29,26 @@ sudo mkdir -p /var/www/certbot
 
 # 2. vhost provisoire (HTTP seul) : sans lui, nginx ne démarrerait pas,
 #    puisque le vrai vhost réclame un certificat qui n'existe pas encore.
-sudo cp deploy/nginx/voupvapcash.tech.bootstrap.conf \
-        /etc/nginx/sites-available/voupvapcash.tech
-sudo ln -sf /etc/nginx/sites-available/voupvapcash.tech \
-            /etc/nginx/sites-enabled/voupvapcash.tech
+sudo cp deploy/nginx/voupvapcash.com.bootstrap.conf \
+        /etc/nginx/sites-available/voupvapcash.com
+sudo ln -sf /etc/nginx/sites-available/voupvapcash.com \
+            /etc/nginx/sites-enabled/voupvapcash.com
 sudo nginx -t && sudo systemctl reload nginx
 
 # 3. Certificat (méthode webroot : nginx n'est jamais arrêté)
 sudo certbot certonly --webroot -w /var/www/certbot \
-     -d voupvapcash.tech -d www.voupvapcash.tech \
+     -d voupvapcash.com -d www.voupvapcash.com \
      --email <votre-email> --agree-tos --no-eff-email
 
 # 4. vhost définitif (HTTPS + relais)
-sudo cp deploy/nginx/voupvapcash.tech.conf \
-        /etc/nginx/sites-available/voupvapcash.tech
+sudo cp deploy/nginx/voupvapcash.com.conf \
+        /etc/nginx/sites-available/voupvapcash.com
 sudo nginx -t && sudo systemctl reload nginx
 
 # 5. Vérifier
-curl -fsS https://voupvapcash.tech/healthz          # → {"ok":true}
-curl -sI  http://voupvapcash.tech | head -1         # → 301
-curl -sI  https://www.voupvapcash.tech | head -1    # → 301
+curl -fsS https://voupvapcash.com/healthz          # → {"ok":true}
+curl -sI  http://voupvapcash.com | head -1         # → 301
+curl -sI  https://www.voupvapcash.com | head -1    # → 301
 ```
 
 Le renouvellement est automatique (timer `certbot.timer`). Pour que nginx recharge le certificat renouvelé :
@@ -60,13 +60,24 @@ sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 sudo certbot renew --dry-run
 ```
 
+## Serveur déjà installé avec `voupvapcash.tech`
+
+Le vhost a changé de nom. Désactivez l'ancien, sinon nginx charge les deux et signale `conflicting server name` :
+
+```sh
+sudo rm /etc/nginx/sites-enabled/voupvapcash.tech \
+        /etc/nginx/sites-available/voupvapcash.tech
+```
+
+Puis refaites les étapes 2 à 5 : le certificat de `.tech` ne couvre pas `.com`. Supprimez ensuite l'ancien (`sudo certbot delete --cert-name voupvapcash.tech`), sinon son renouvellement échouera dès que le DNS de `.tech` ne pointera plus ici.
+
 ## À régler ailleurs
 
 | Où | Valeur |
 | --- | --- |
-| `server/.env` | `CORS_ORIGINS=https://voupvapcash.tech` |
-| Tableau de bord Bazik | webhook `https://voupvapcash.tech/api/bazik/webhook` |
-| Build Android/iOS | `--dart-define=API_BASE_URL=https://voupvapcash.tech` |
+| `server/.env` | `CORS_ORIGINS=https://voupvapcash.com` |
+| Tableau de bord Bazik | webhook `https://voupvapcash.com/api/bazik/webhook` |
+| Build Android/iOS | `--dart-define=API_BASE_URL=https://voupvapcash.com` |
 
 `.env` à la racine : laissez `API_BASE_URL` vide — l'app web appelle l'API sur sa propre origine. `DOMAIN` ne sert qu'à Caddy, il est ignoré ici.
 
@@ -87,7 +98,7 @@ Seuls le TLS, HSTS et la redirection vers l'apex viennent d'ici.
 | `502 Bad Gateway` | conteneur `web` arrêté, ou `HTTP_BIND`/`HTTP_PORT` modifiés dans `.env` sans mettre à jour l'`upstream` |
 | nginx ne démarre pas, `cannot load certificate` | étape 3 non faite, ou nom de domaine différent dans `/etc/letsencrypt/live/` |
 | `open() "/etc/letsencrypt/options-ssl-nginx.conf" failed` | vhost d'une version antérieure : `git pull`, il n'inclut plus ce fichier |
-| `/etc/nginx/sites-available/` n'existe pas | paquet nginx.org ou RHEL : copiez vers `/etc/nginx/conf.d/voupvapcash.tech.conf` — extension `.conf` obligatoire, pas de lien symbolique |
+| `/etc/nginx/sites-available/` n'existe pas | paquet nginx.org ou RHEL : copiez vers `/etc/nginx/conf.d/voupvapcash.com.conf` — extension `.conf` obligatoire, pas de lien symbolique |
 | `duplicate default_server` | le bloc commenté en fin de vhost a été activé alors que `/etc/nginx/sites-enabled/default` existe toujours |
 | Tous les agents bloqués en 429 | `X-Forwarded-For` non transmis : `web` voit l'IP du proxy pour tout le monde |
 | Le défi ACME renvoie 404 | `/var/www/certbot` absent, ou la redirection 301 passe avant le bloc `acme-challenge` (gardez le `^~`) |
