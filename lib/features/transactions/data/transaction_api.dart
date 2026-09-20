@@ -63,6 +63,58 @@ class TransactionRecord {
   }
 }
 
+/// Chif livrezon an, jan serveur a kalkile yo lè transfè a te fèt.
+///
+/// Yo pa soti nan tab to jounen an: yo fikse sou liy transfè a. Konsa yon resi
+/// ki enprime jodi a bay menm chif yo nan yon mwa, menm si to a bouje.
+class DeliveryDetails {
+  const DeliveryDetails({
+    required this.amountHtg,
+    required this.rateToHtg,
+    required this.rateCurrency,
+    required this.feeHtg,
+    required this.feePercent,
+    required this.feePaidBySender,
+    required this.totalHtg,
+    this.network = '',
+  });
+
+  /// Sa benefisyè a resevwa nan men l, an gouden.
+  final double amountHtg;
+
+  /// Konbyen gouden 1 [rateCurrency] te vo lè transfè a fèt.
+  final double rateToHtg;
+  final String rateCurrency;
+
+  final double feeHtg;
+  final double feePercent;
+
+  /// Vre: ajan an peye frè a anplis, kliyan an resevwa tout montan an.
+  /// Fo: frè a soti nan montan an, kliyan an resevwa mwens.
+  final bool feePaidBySender;
+
+  final double totalHtg;
+  final String network;
+
+  bool get hasFee => feeHtg > 0;
+
+  static double _toDouble(Object? value) =>
+      value is num ? value.toDouble() : 0;
+
+  factory DeliveryDetails.fromJson(Map<String, dynamic> json) {
+    return DeliveryDetails(
+      amountHtg: _toDouble(json['amountHtg']),
+      rateToHtg: _toDouble(json['rateToHtg']),
+      rateCurrency: '${json['rateCurrency'] ?? ''}',
+      feeHtg: _toDouble(json['feeHtg']),
+      feePercent: _toDouble(json['feePercent']),
+      feePaidBySender: '${json['feePaidBy'] ?? 'sender'}' == 'sender',
+      totalHtg: _toDouble(json['totalHtg']),
+      network: '${json['network'] ?? ''}',
+    );
+  }
+}
+
 /// Estatistik sou TOUT antrepriz la.
 class TransactionStats {
   const TransactionStats({
@@ -166,6 +218,31 @@ class TransactionApi {
       final json = await _client.get('/api/transactions/$txId');
       return TransactionRecord.fromJson(
         json['transaction'] as Map<String, dynamic>,
+      );
+    } on ApiException catch (err) {
+      if (err.code == 'not_found' || err.status == 404) return null;
+      rethrow;
+    }
+  }
+
+  /// Tranzaksyon an ak chif livrezon li yo, pou resi a.
+  ///
+  /// `delivery` vid pou yon tranzaksyon san transfè Bazik (rechaj minit,
+  /// livrezon deklare alamen): resi a annik sote liy sa yo.
+  Future<({TransactionRecord record, DeliveryDetails? delivery})?> findWithDelivery(
+    String txId,
+  ) async {
+    try {
+      final json = await _client.get('/api/transactions/$txId');
+      final delivery = json['delivery'];
+
+      return (
+        record: TransactionRecord.fromJson(
+          json['transaction'] as Map<String, dynamic>,
+        ),
+        delivery: delivery is Map<String, dynamic>
+            ? DeliveryDetails.fromJson(delivery)
+            : null,
       );
     } on ApiException catch (err) {
       if (err.code == 'not_found' || err.status == 404) return null;

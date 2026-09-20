@@ -107,6 +107,7 @@ function mapTransfer(row) {
     feeHtgMinor: row.fee_htg_minor,
     totalHtgMinor: row.total_htg_minor,
     debitMinor: row.debit_minor,
+    feeChargedToWallet: row.fee_charged_to_wallet !== 0,
     rateToHtg: row.rate_to_htg,
     // Ansyen liy yo pa gen kolòn nan: wallet la te OBLIGATWA menm deviz la.
     walletCurrency: row.wallet_currency || row.currency,
@@ -161,6 +162,9 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
     ["wallet_currency", "TEXT NOT NULL DEFAULT ''"],
     ["wallet_rate_to_htg", "REAL NOT NULL DEFAULT 0"],
     ["rates_updated_at", "INTEGER"],
+    // Ansyen liy yo: frè a te TOUJOU sou wallet la, okenn apelan pa t janm
+    // pase `chargeFeeToWallet: false`. Donk 1 se bon pou yo.
+    ["fee_charged_to_wallet", "INTEGER NOT NULL DEFAULT 1"],
   ]);
 
   if (seedRates) {
@@ -278,16 +282,18 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
       `INSERT INTO bazik_transfers
         (transfer_id, reference, kind, network, status, gateway_id, gateway_status,
          amount_minor, currency, amount_htg_minor, fee_htg_minor, total_htg_minor,
-         debit_minor, rate_to_htg, wallet_currency, wallet_rate_to_htg, rates_updated_at,
+         debit_minor, fee_charged_to_wallet, rate_to_htg, wallet_currency,
+         wallet_rate_to_htg, rates_updated_at,
          uid, enterprise_id, enterprise_name, phone,
          receiver_name, tx_id, wallet_debited, refunded, failure_reason, note,
          created_by, created_at, updated_at, settled_at)
-       VALUES (?, ?, ?, ?, ?, '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, NULL)`
+       VALUES (?, ?, ?, ?, ?, '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, NULL)`
     ).run(
       record.transferId, record.reference, record.kind, record.network,
       record.status || "pending", record.amountMinor, record.currency,
       record.amountHtgMinor, record.feeHtgMinor || 0, record.totalHtgMinor || 0,
-      record.debitMinor || 0, record.rateToHtg, record.walletCurrency || record.currency,
+      record.debitMinor || 0, bool(record.feeChargedToWallet !== false),
+      record.rateToHtg, record.walletCurrency || record.currency,
       record.walletRateToHtg || record.rateToHtg, record.ratesUpdatedAt ?? null,
       record.uid || "", record.enterpriseId || "",
       record.enterpriseName || "", record.phone || "", record.receiverName || "",

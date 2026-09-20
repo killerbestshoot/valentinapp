@@ -101,6 +101,10 @@ CREATE TABLE IF NOT EXISTS bazik_transfers (
   fee_htg_minor    INTEGER NOT NULL DEFAULT 0,
   total_htg_minor  INTEGER NOT NULL DEFAULT 0,
   debit_minor      INTEGER NOT NULL DEFAULT 0, -- sa nou retire nan wallet la (wallet_currency)
+  -- 1 = ajan an peye frè a ANPLIS (benefisyè a resevwa tout montan an)
+  -- 0 = frè a soti NAN montan an (benefisyè a resevwa mwens)
+  -- Resi a di kliyan an ki nan de a, donk li dwe rete ekri sou liy lan.
+  fee_charged_to_wallet INTEGER NOT NULL DEFAULT 1,
   rate_to_htg      REAL NOT NULL,           -- to `currency` la
   wallet_currency  TEXT NOT NULL DEFAULT '',
   wallet_rate_to_htg REAL NOT NULL DEFAULT 0,
@@ -122,6 +126,9 @@ CREATE TABLE IF NOT EXISTS bazik_transfers (
 );
 
 CREATE INDEX IF NOT EXISTS idx_transfers_status ON bazik_transfers (status, created_at);
+
+-- Resi a chèche transfè a apati tranzaksyon an.
+CREATE INDEX IF NOT EXISTS idx_transfers_tx ON bazik_transfers (tx_id);
 
 CREATE TABLE IF NOT EXISTS bazik_events (
   event_id     TEXT PRIMARY KEY,            -- kle idempotans webhook

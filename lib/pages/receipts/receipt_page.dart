@@ -28,8 +28,8 @@ class ReceiptPage extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
       ),
-      body: FutureBuilder<TransactionRecord?>(
-        future: TransactionApi.instance.find(transactionId),
+      body: FutureBuilder<({TransactionRecord record, DeliveryDetails? delivery})?>(
+        future: TransactionApi.instance.findWithDelivery(transactionId),
         builder: (context, snap) {
           if (snap.hasError) {
             final error = snap.error;
@@ -44,7 +44,8 @@ class ReceiptPage extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final tx = snap.data;
+          final tx = snap.data?.record;
+          final delivery = snap.data?.delivery;
 
           if (tx == null) {
             return const _StateMessage(
@@ -212,9 +213,27 @@ class ReceiptPage extends StatelessWidget {
                                     ),
                                     _ReceiptRow(
                                       icon: Icons.payments_outlined,
-                                      label: 'Montan',
+                                      label: 'Montan kliyan an peye',
                                       value: '$amount $currency'.trim(),
                                     ),
+                                    if (delivery != null) ...[
+                                      _ReceiptRow(
+                                        icon: Icons.currency_exchange,
+                                        label: 'To echanj',
+                                        value: _rateLine(delivery),
+                                      ),
+                                      _ReceiptRow(
+                                        icon: Icons.account_balance_wallet_outlined,
+                                        label: 'Benefisyè a resevwa',
+                                        value: '${_htg(delivery.amountHtg)} HTG',
+                                      ),
+                                      if (delivery.hasFee)
+                                        _ReceiptRow(
+                                          icon: Icons.receipt_outlined,
+                                          label: 'Frè',
+                                          value: _feeLine(delivery),
+                                        ),
+                                    ],
                                     const SizedBox(height: 18),
                                     Container(
                                       padding: const EdgeInsets.all(16),
@@ -266,6 +285,7 @@ class ReceiptPage extends StatelessWidget {
                                             amount: amount,
                                             currency: currency,
                                             status: status,
+                                            delivery: delivery,
                                           ),
                                           icon:
                                               const Icon(Icons.share_outlined),
@@ -300,6 +320,7 @@ class ReceiptPage extends StatelessWidget {
     required String amount,
     required String currency,
     required String status,
+    DeliveryDetails? delivery,
   }) async {
     final receipt = [
       'VOUPVAPCASH - Receipt / Resi',
@@ -307,7 +328,12 @@ class ReceiptPage extends StatelessWidget {
       'Service: $service',
       'Kliyan: $customerName',
       'Telefòn: $phone',
-      'Montan: ${'$amount $currency'.trim()}',
+      'Montan kliyan an peye: ${'$amount $currency'.trim()}',
+      if (delivery != null) ...[
+        'To echanj: ${_rateLine(delivery)}',
+        'Benefisyè a resevwa: ${_htg(delivery.amountHtg)} HTG',
+        if (delivery.hasFee) 'Frè: ${_feeLine(delivery)}',
+      ],
       'Status: $status',
     ].join('\n');
 
@@ -318,6 +344,40 @@ class ReceiptPage extends StatelessWidget {
       const SnackBar(content: Text('Resi a kopye.')),
     );
   }
+}
+
+/// Gouden ak yon espas chak twa chif: `13 200,00`. Yon ajan ki li yon resi a
+/// vwa wot pa dwe bezwen konte zewo yo.
+String _htg(double value) {
+  final fixed = value.toStringAsFixed(2);
+  final parts = fixed.split('.');
+  final digits = parts.first;
+
+  final grouped = StringBuffer();
+  for (var i = 0; i < digits.length; i += 1) {
+    if (i > 0 && (digits.length - i) % 3 == 0) grouped.write(' ');
+    grouped.write(digits[i]);
+  }
+
+  return '$grouped,${parts.last}';
+}
+
+/// `1 USD = 132,00 HTG`. Sa kliyan an bezwen pou l verifye kalkil la li menm.
+String _rateLine(DeliveryDetails delivery) {
+  return '1 ${delivery.rateCurrency} = ${_htg(delivery.rateToHtg)} HTG';
+}
+
+/// Frè a, epi KI MOUN ki peye l. Se la konfizyon an chita: san liy sa a, yon
+/// kliyan ki wè « Frè: 660 HTG » pa konnen si se nan lajan l li soti.
+String _feeLine(DeliveryDetails delivery) {
+  final montan = '${_htg(delivery.feeHtg)} HTG';
+  final pousan = delivery.feePercent > 0
+      ? ' (${delivery.feePercent.toStringAsFixed(2).replaceAll('.', ',')}%)'
+      : '';
+
+  return delivery.feePaidBySender
+      ? '$montan$pousan — ajan an peye l anplis, benefisyè a resevwa tout montan an'
+      : '$montan$pousan — retire nan montan an, benefisyè a resevwa mwens';
 }
 
 class _ReceiptRow extends StatelessWidget {

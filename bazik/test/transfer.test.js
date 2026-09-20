@@ -278,3 +278,35 @@ test("quote bay frè a san anyen pa deplase", async (t) => {
   assert.equal(quote.feePercent, 5);
   assert.equal(money.fromMinor(quote.debitMinor), 10.5);
 });
+
+test("liy lan sonje KI MOUN ki peye frè a", async (t) => {
+  const { service } = makeService({ autoComplete: true });
+  t.after(() => service.close());
+
+  const agent = await seedAgent(service.store, { balanceMinor: USD(500) });
+  const base = {
+    kind: "payout",
+    network: "moncash",
+    amountMinor: USD(10),
+    uid: agent.uid,
+    enterpriseId: agent.enterpriseId,
+    phone: "+509 3712 3456",
+  };
+
+  // Pa defo: ajan an peye frè a anplis.
+  const surAjan = await service.transfers.send({ ...base, idempotencySeed: "frè-sou-ajan" });
+  assert.equal(surAjan.transfer.feeChargedToWallet, true);
+  assert.equal(surAjan.transfer.debitMinor, USD(10.5), "montan an + 5%");
+
+  const nanMontan = await service.transfers.send({
+    ...base,
+    idempotencySeed: "frè-nan-montan",
+    chargeFeeToWallet: false,
+  });
+  assert.equal(nanMontan.transfer.feeChargedToWallet, false);
+  assert.equal(nanMontan.transfer.debitMinor, USD(10), "san frè a");
+
+  // Se sa resi a li: san li, yon kliyan pa ka konnen si frè a soti nan lajan l.
+  const relue = await service.store.getTransfer(nanMontan.transfer.transferId);
+  assert.equal(relue.feeChargedToWallet, false, "li siviv yon relekti nan baz la");
+});

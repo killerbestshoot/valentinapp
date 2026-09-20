@@ -142,3 +142,90 @@ test("yon ajan pa ka chanje estati pwòp tranzaksyon li", async () => {
   assert.equal((await call("PATCH", `/api/transactions/${txId}`, { role: "agent", body: { status: "delivered" } })).status, 403);
   assert.equal(statusOf(txId), "pending");
 });
+
+// --- Chif livrezon an sou resi a ---
+
+/**
+ * Yon transfè Bazik jan `openTransfer` ekri l. 10 USD a 132 HTG = 1 320 HTG
+ * pou benefisyè a, ak 5% frè = 66 HTG.
+ */
+function insertTransfer(txId, { feeChargedToWallet = 1 } = {}) {
+  const at = Date.now();
+  db.getDb()
+    .prepare(
+      `INSERT INTO bazik_transfers
+        (transfer_id, reference, kind, network, status, amount_minor, currency,
+         amount_htg_minor, fee_htg_minor, total_htg_minor, debit_minor,
+         fee_charged_to_wallet, rate_to_htg, wallet_currency, wallet_rate_to_htg,
+         tx_id, created_at, updated_at)
+       VALUES (?, ?, 'delivery', 'moncash', 'completed', 1000, 'USD',
+               132000, 6600, 138600, ?, ?, 132, 'USD', 132, ?, ?, ?)`
+    )
+    .run(
+      `TR_${txId}`,
+      `TR_${txId}`,
+      feeChargedToWallet ? 1050 : 1000,
+      feeChargedToWallet,
+      txId,
+      at,
+      at
+    );
+}
+
+test("resi a pote to echanj, montan an gouden ak frè a", async () => {
+  const txId = await create("Resi");
+  insertTransfer(txId);
+
+  const { json } = await call("GET", `/api/transactions/${txId}`, { role: "agent" });
+
+  assert.equal(json.delivery.rateToHtg, 132);
+  assert.equal(json.delivery.rateCurrency, "USD");
+  assert.equal(json.delivery.amountHtg, 1320, "sa benefisyè a resevwa");
+  assert.equal(json.delivery.feeHtg, 66);
+  assert.equal(json.delivery.feePercent, 5);
+  assert.equal(json.delivery.totalHtg, 1386);
+});
+
+test("resi a di ke ajan an peye frè a anplis", async () => {
+  const txId = await create("Frè sou ajan");
+  insertTransfer(txId, { feeChargedToWallet: 1 });
+
+  const { json } = await call("GET", `/api/transactions/${txId}`, { role: "agent" });
+
+  assert.equal(json.delivery.feePaidBy, "sender");
+  assert.equal(
+    json.delivery.amountHtg + json.delivery.feeHtg,
+    json.delivery.totalHtg,
+    "benefisyè a resevwa tout montan an, frè a anplis"
+  );
+});
+
+test("resi a di ke frè a retire nan montan an", async () => {
+  const txId = await create("Frè nan montan");
+  insertTransfer(txId, { feeChargedToWallet: 0 });
+
+  const { json } = await call("GET", `/api/transactions/${txId}`, { role: "agent" });
+
+  assert.equal(json.delivery.feePaidBy, "amount");
+});
+
+test("yon tranzaksyon san transfè pa gen chif livrezon", async () => {
+  const txId = await create("San transfè");
+
+  const { json } = await call("GET", `/api/transactions/${txId}`, { role: "agent" });
+
+  assert.equal(json.delivery, null, "resi a annik sote liy sa yo");
+  assert.equal(json.transaction.txId, txId);
+});
+
+test("yon transfè ki echwe pa parèt sou resi a", async () => {
+  const txId = await create("Echwe");
+  insertTransfer(txId);
+  db.getDb()
+    .prepare("UPDATE bazik_transfers SET status = 'failed' WHERE tx_id = ?")
+    .run(txId);
+
+  const { json } = await call("GET", `/api/transactions/${txId}`, { role: "agent" });
+
+  assert.equal(json.delivery, null, "lajan an pa janm rive: pa gen anyen pou di");
+});

@@ -277,6 +277,7 @@ function createTransferUseCases({ store, client, config, rates = createRateBook(
         feeHtgMinor: amounts.feeHtgMinor,
         totalHtgMinor: amounts.totalHtgMinor,
         debitMinor,
+        feeChargedToWallet: chargeFeeToWallet,
         rateToHtg: amounts.rateToHtg,
         walletCurrency,
         walletRateToHtg: amounts.walletRateToHtg,

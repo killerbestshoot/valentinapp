@@ -51,6 +51,54 @@ function linkedMoney(db, txId) {
   return null;
 }
 
+/**
+ * Chif livrezon an pou resi a: to echanj, sa benefisyè a resevwa an gouden, ak
+ * frè a.
+ *
+ * Tab `transactions` la pa kenbe anyen de sa: li konnen sèlman montan kliyan
+ * an peye ak deviz li. Se liy `bazik_transfers` la ki gen to jou a, montan HTG
+ * la ak frè pasrèl la — e se sa kliyan an bezwen wè sou papye a.
+ *
+ * To a soti nan liy lan, PA nan tab to jounen an: yon to ki chanje demen pa
+ * dwe chanje yon resi ki deja enprime.
+ *
+ * Retounen `null` pou yon tranzaksyon ki pa gen transfè (rechaj minit,
+ * livrezon an lajan kach deklare alamen).
+ */
+function deliveryOf(db, txId) {
+  const row = db
+    .prepare(
+      `SELECT * FROM bazik_transfers
+        WHERE tx_id = ? AND status != 'failed'
+        ORDER BY created_at DESC LIMIT 1`
+    )
+    .get(txId);
+
+  if (!row) return null;
+
+  return {
+    network: row.network,
+    /** Sa benefisyè a resevwa nan men l, an gouden. */
+    amountHtg: money.fromMinor(row.amount_htg_minor),
+    /** Konbyen HTG 1 inite deviz tranzaksyon an te vo lè transfè a fèt. */
+    rateToHtg: row.rate_to_htg,
+    rateCurrency: row.currency,
+    ratesUpdatedAt: row.rates_updated_at,
+    feeHtg: money.fromMinor(row.fee_htg_minor),
+    /** Frè a an pousan sou montan an, pou moun ki vle verifye kalkil la. */
+    feePercent:
+      row.amount_htg_minor > 0
+        ? Math.round((row.fee_htg_minor / row.amount_htg_minor) * 10000) / 100
+        : 0,
+    /**
+     * `sender` : ajan an peye frè a anplis, benefisyè a resevwa tout montan an
+     * `amount` : frè a soti nan montan an, benefisyè a resevwa mwens
+     */
+    feePaidBy: row.fee_charged_to_wallet !== 0 ? "sender" : "amount",
+    totalHtg: money.fromMinor(row.total_htg_minor),
+  };
+}
+
 function send(res, err) {
   const status = err.status || 400;
   if (status >= 500) console.error("[transactions]", err);
@@ -193,7 +241,11 @@ router.get("/:id", requireAuth, requireEnterprise, (req, res) => {
       return res.status(404).json({ ok: false, code: "not_found" });
     }
 
-    return res.json({ ok: true, transaction: toJson(row) });
+    return res.json({
+      ok: true,
+      transaction: toJson(row),
+      delivery: deliveryOf(getDb(), row.tx_id),
+    });
   } catch (err) {
     return send(res, err);
   }
