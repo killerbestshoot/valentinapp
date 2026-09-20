@@ -172,7 +172,7 @@ function insertTransfer(txId, { feeChargedToWallet = 1 } = {}) {
     );
 }
 
-test("resi a pote to echanj, montan an gouden ak frè a", async () => {
+test("resi a pote to echanj lan ak montan an gouden", async () => {
   const txId = await create("Resi");
   insertTransfer(txId);
 
@@ -181,32 +181,18 @@ test("resi a pote to echanj, montan an gouden ak frè a", async () => {
   assert.equal(json.delivery.rateToHtg, 132);
   assert.equal(json.delivery.rateCurrency, "USD");
   assert.equal(json.delivery.amountHtg, 1320, "sa benefisyè a resevwa");
-  assert.equal(json.delivery.feeHtg, 66);
-  assert.equal(json.delivery.feePercent, 5);
-  assert.equal(json.delivery.totalHtg, 1386);
 });
 
-test("resi a di ke ajan an peye frè a anplis", async () => {
-  const txId = await create("Frè sou ajan");
-  insertTransfer(txId, { feeChargedToWallet: 1 });
+test("resi a PA pote frè pasrèl la", async () => {
+  const txId = await create("San frè pasrèl");
+  insertTransfer(txId);
 
   const { json } = await call("GET", `/api/transactions/${txId}`, { role: "agent" });
 
-  assert.equal(json.delivery.feePaidBy, "sender");
-  assert.equal(
-    json.delivery.amountHtg + json.delivery.feeHtg,
-    json.delivery.totalHtg,
-    "benefisyè a resevwa tout montan an, frè a anplis"
-  );
-});
-
-test("resi a di ke frè a retire nan montan an", async () => {
-  const txId = await create("Frè nan montan");
-  insertTransfer(txId, { feeChargedToWallet: 0 });
-
-  const { json } = await call("GET", `/api/transactions/${txId}`, { role: "agent" });
-
-  assert.equal(json.delivery.feePaidBy, "amount");
+  // Frè Bazik la se yon depans antrepriz la. Montre l sou yon resi ta fè
+  // kliyan an kwè se nan lajan pa l li soti.
+  assert.equal(json.delivery.feeHtg, undefined);
+  assert.equal(json.delivery.feePaidBy, undefined);
 });
 
 test("yon tranzaksyon san transfè pa gen chif livrezon", async () => {
@@ -228,4 +214,86 @@ test("yon transfè ki echwe pa parèt sou resi a", async () => {
   const { json } = await call("GET", `/api/transactions/${txId}`, { role: "agent" });
 
   assert.equal(json.delivery, null, "lajan an pa janm rive: pa gen anyen pou di");
+});
+
+// --- Frè ANVWAYÈ a peye ---
+
+test("yon tranzaksyon san frè: anvwayè a peye montan an sèlman", async () => {
+  const txId = await create("San frè");
+
+  const { json } = await call("GET", `/api/transactions/${txId}`, { role: "agent" });
+
+  assert.equal(json.transaction.senderFee, 0);
+  assert.equal(json.transaction.paymentAmount, 10);
+  assert.equal(json.transaction.totalPaid, 10);
+});
+
+test("Jean voye 2000, li peye 2100: se 2000 ki pati", async () => {
+  const created = await call("POST", "/api/transactions", {
+    role: "agent",
+    body: {
+      serviceName: "MonCash",
+      customerName: "Vanessa",
+      customerPhone: "+50937123456",
+      paymentAmount: 2000,
+      paymentCurrency: "MXN",
+      senderFee: 100,
+    },
+  });
+
+  assert.equal(created.status, 200);
+
+  const { json } = await call("GET", `/api/transactions/${created.json.transaction.txId}`, {
+    role: "agent",
+  });
+
+  assert.equal(json.transaction.paymentAmount, 2000, "sa Vanessa resevwa");
+  assert.equal(json.transaction.senderFee, 100, "sa Jean peye anplis");
+  assert.equal(json.transaction.totalPaid, 2100, "sa Jean soti nan pòch li");
+});
+
+test("frè a pa antre nan kalkil komisyon an", async () => {
+  // Telefòn diferan: `tx_id` gen ladan l telefòn nan ak milisgond lan, donk
+  // de kreyasyon idantik nan menm milisgond lan antre an konfli.
+  const sanFrè = await call("POST", "/api/transactions", {
+    role: "agent",
+    body: {
+      serviceName: "MonCash", customerName: "A", customerPhone: "+50937123401",
+      paymentAmount: 2000, paymentCurrency: "MXN",
+    },
+  });
+
+  const akFrè = await call("POST", "/api/transactions", {
+    role: "agent",
+    body: {
+      serviceName: "MonCash", customerName: "B", customerPhone: "+50937123402",
+      paymentAmount: 2000, paymentCurrency: "MXN", senderFee: 100,
+    },
+  });
+
+  assert.equal(sanFrè.status, 200, JSON.stringify(sanFrè.json));
+  assert.equal(akFrè.status, 200, JSON.stringify(akFrè.json));
+
+  // Komisyon yo rete sou sa ki pati, jan yo te ye anvan.
+  assert.equal(
+    akFrè.json.transaction.commissionAgent,
+    sanFrè.json.transaction.commissionAgent
+  );
+});
+
+test("yon frè negatif oswa pa valid refize", async () => {
+  const body = {
+    serviceName: "MonCash", customerName: "C", customerPhone: "+50937123456",
+    paymentAmount: 2000, paymentCurrency: "MXN",
+  };
+
+  const negatif = await call("POST", "/api/transactions", {
+    role: "agent", body: { ...body, senderFee: -5 },
+  });
+  assert.equal(negatif.json.code, "invalid_fee");
+
+  const tèks = await call("POST", "/api/transactions", {
+    role: "agent", body: { ...body, senderFee: "abc" },
+  });
+  assert.equal(tèks.json.code, "invalid_fee");
 });

@@ -25,6 +25,7 @@ class _FakeTransactionApi extends TransactionApi {
     required String customerPhone,
     required double amount,
     required String currency,
+    double senderFee = 0,
     String country = '',
     String note = '',
   }) async {
@@ -36,6 +37,7 @@ class _FakeTransactionApi extends TransactionApi {
       amount: amount,
       currency: currency,
       status: 'pending',
+      senderFee: senderFee,
     );
     created.add(record);
     airtime.transactions[record.txId] = FakeAirtimeTransaction(
@@ -113,7 +115,10 @@ void main() {
   }) async {
     await tester.enterText(find.widgetWithText(TextFormField, 'Non kliyan'), name);
     await tester.enterText(find.widgetWithText(TextFormField, 'Telefòn'), phone);
-    await tester.enterText(find.widgetWithText(TextFormField, 'Montan'), amount);
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Montan').first,
+      amount,
+    );
     // Devi an dirèk la gen yon debounce 400 ms.
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
@@ -259,6 +264,85 @@ void main() {
 
       expect(find.text('Rechaj la pa pase'), findsOneWidget);
       expect(find.text('Wallet ou ranbouse otomatikman.'), findsOneWidget);
+    });
+  });
+
+  group('Nimewo telefòn nan', () {
+    testWidgets('prefiks +509 a afiche, ajan an tape 8 chif sèlman',
+        (tester) async {
+      await pumpPage(tester);
+
+      expect(find.text('+509 '), findsOneWidget);
+      expect(find.text('8 chif'), findsOneWidget);
+    });
+
+    testWidgets('yon nimewo konplè ki kole pèdi prefiks li', (tester) async {
+      await pumpPage(tester);
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Telefòn'),
+        '+509 3712 3456',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(TextFormField, '37123456'), findsOneWidget,
+          reason: 'san sa nou ta voye 509 de fwa');
+    });
+
+    testWidgets('yon nimewo ki twò kout bloke anrejistreman an', (tester) async {
+      await pumpPage(tester);
+      await chooseService(tester, 'MonCash');
+      await fill(tester, name: 'Vanessa', phone: '371234', amount: '2000');
+
+      await save(tester);
+
+      expect(find.text('Nimewo a dwe gen 8 chif.'), findsOneWidget);
+      expect(transactions.created, isEmpty);
+    });
+
+    testWidgets('nimewo a pati an fòm entènasyonal', (tester) async {
+      await pumpPage(tester);
+      await chooseService(tester, 'MonCash');
+      await fill(tester, name: 'Vanessa', phone: '37123456', amount: '2000');
+
+      await save(tester);
+
+      expect(transactions.created.single.customerPhone, '+50937123456');
+    });
+  });
+
+  group('Frè anvwayè a', () {
+    testWidgets('san frè: kliyan an peye menm montan an', (tester) async {
+      await pumpPage(tester);
+      await chooseService(tester, 'MonCash');
+      await fill(tester, name: 'Vanessa', phone: '37123456', amount: '2000');
+
+      expect(find.text('Pa gen frè'), findsOneWidget);
+      expect(find.text('Kliyan an peye an tou'), findsOneWidget);
+      expect(find.text('2000.00 MXN'), findsWidgets);
+    });
+
+    testWidgets('Jean voye 2000 ak 100 frè: li peye 2100, Vanessa resevwa 2000',
+        (tester) async {
+      await pumpPage(tester);
+      await chooseService(tester, 'MonCash');
+      await fill(tester, name: 'Vanessa', phone: '37123456', amount: '2000');
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Frè kliyan an peye (opsyonèl)'),
+        '100',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Vanessa resevwa'), findsOneWidget);
+      expect(find.text('2100.00 MXN'), findsOneWidget, reason: 'sa Jean peye');
+
+      await save(tester);
+
+      final created = transactions.created.single;
+      expect(created.amount, 2000, reason: 'se sa ki pati bay Vanessa');
+      expect(created.senderFee, 100);
+      expect(created.totalPaid, 2100);
     });
   });
 }

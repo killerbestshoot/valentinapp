@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/core/format/haiti_phone.dart';
 import 'package:mon_premye_app/features/airtime/data/airtime_gateway_provider.dart';
 import 'package:mon_premye_app/features/airtime/domain/airtime_gateway.dart';
 import 'package:mon_premye_app/features/airtime/domain/airtime_models.dart';
@@ -29,6 +30,7 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   final _formKey = GlobalKey<FormState>();
   final nameCtrl = TextEditingController();
   final phoneCtrl = TextEditingController();
+  final feeCtrl = TextEditingController();
   final amountCtrl = TextEditingController();
 
   String serviceName = 'MonCash';
@@ -73,6 +75,7 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
     _quoteDebounce?.cancel();
     nameCtrl.dispose();
     phoneCtrl.dispose();
+    feeCtrl.dispose();
     amountCtrl.dispose();
     super.dispose();
   }
@@ -89,13 +92,7 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   /// Sèvis ki livre otomatikman apre anrejistreman (Bazik oswa Reloadly).
   bool get _deliversAutomatically => _isGatewayService || _isAirtimeService;
 
-  bool get _hasHaitiPhone {
-    final digits = phoneCtrl.text.replaceAll(RegExp(r'\D'), '');
-    final local = digits.length == 11 && digits.startsWith('509')
-        ? digits.substring(3)
-        : digits;
-    return local.length == 8;
-  }
+  bool get _hasHaitiPhone => HaitiPhone.isValid(phoneCtrl.text);
 
   /// Devi an dirèk, ak yon ti delè pou nou pa rele serveur a sou chak lèt.
   void _scheduleQuote() {
@@ -146,7 +143,7 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   Future<void> _fetchQuote(double amount) async {
     if (_isAirtimeService) {
       final quote = await _airtime.quote(
-        phone: phoneCtrl.text.trim(),
+        phone: HaitiPhone.international(phoneCtrl.text),
         amount: amount,
         currency: paymentCurrency,
       );
@@ -185,7 +182,7 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
     if (!_formKey.currentState!.validate()) return;
 
     final name = nameCtrl.text.trim();
-    final phone = phoneCtrl.text.trim();
+    final phone = HaitiPhone.international(phoneCtrl.text);
     final amount = _num(amountCtrl.text);
 
     setState(() {
@@ -215,8 +212,11 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
         serviceName: serviceName,
         customerName: name,
         customerPhone: phone,
+        // `amount` se sa benefisyè a resevwa. Frè a ajoute sou li pou sa
+        // kliyan an peye — li pa retire nan sa ki pati.
         amount: amount,
         currency: paymentCurrency,
+        senderFee: _num(feeCtrl.text),
       );
 
       final txId = created.txId;
@@ -277,6 +277,7 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   void _clearForm() {
     nameCtrl.clear();
     phoneCtrl.clear();
+    feeCtrl.clear();
     amountCtrl.clear();
     setState(() {
       _quote = null;
@@ -444,12 +445,22 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
             enabled: !loading,
             keyboardType: TextInputType.phone,
             textInputAction: TextInputAction.next,
+            // Prefiks la se yon bagay app la konnen, se pa yon bagay ajan an
+            // tape. Formatè a retire l tou si moun nan kole yon nimewo
+            // konplè.
+            inputFormatters: const [HaitiPhoneInputFormatter()],
             decoration: _inputDecoration(
               label: 'Telefòn',
               icon: Icons.phone_outlined,
+              prefixText: '+${HaitiPhone.code} ',
+              helperText: '${HaitiPhone.localDigits} chif',
             ),
             validator: (value) {
-              if ((value ?? '').trim().isEmpty) return 'Telefòn obligatwa.';
+              final digits = HaitiPhone.localPart(value ?? '');
+              if (digits.isEmpty) return 'Telefòn obligatwa.';
+              if (digits.length != HaitiPhone.localDigits) {
+                return 'Nimewo a dwe gen ${HaitiPhone.localDigits} chif.';
+              }
               return null;
             },
             onChanged: (_) => setState(() {}),
@@ -504,6 +515,31 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: feeCtrl,
+            enabled: !loading,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textInputAction: TextInputAction.done,
+            decoration: _inputDecoration(
+              label: 'Frè kliyan an peye (opsyonèl)',
+              icon: Icons.receipt_long_outlined,
+              helperText: 'Kite l vid si kliyan an pa peye frè.',
+            ),
+            validator: (value) {
+              if ((value ?? '').trim().isEmpty) return null;
+              if (_num(value ?? '') < 0) return 'Frè a pa ka negatif.';
+              return null;
+            },
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 14),
+          _ClientTotal(
+            amount: _num(amountCtrl.text),
+            fee: _num(feeCtrl.text),
+            currency: paymentCurrency,
+            receiverName: nameCtrl.text,
           ),
           const SizedBox(height: 22),
           FilledButton.icon(
@@ -574,10 +610,14 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   InputDecoration _inputDecoration({
     required String label,
     required IconData icon,
+    String? prefixText,
+    String? helperText,
   }) {
     return InputDecoration(
       labelText: label,
       prefixIcon: Icon(icon),
+      prefixText: prefixText,
+      helperText: helperText,
       filled: true,
       fillColor: const Color(0xFFF9FCF7),
       border: OutlineInputBorder(
@@ -855,14 +895,66 @@ class _QuotePanel extends StatelessWidget {
             label: 'Benefisyè a resevwa',
             value: '${value.amountHtg.toStringAsFixed(2)} HTG',
           ),
+          // Frè pasrèl la se depans ANTREPRIZ la, se pa frè kliyan an. Resi a
+          // pa montre l: kliyan an wè sèlman sa li menm li peye.
           _QuoteLine(
-            label: 'Frè Bazik (${value.feePercent.toStringAsFixed(0)}%)',
+            label: 'Frè pasrèl la (sou kont ou)',
             value: '${value.feeHtg.toStringAsFixed(2)} HTG',
           ),
           const Divider(height: 18),
           _QuoteLine(
             label: 'Total nan wallet ou',
             value: '${value.debit.toStringAsFixed(2)} ${value.walletCurrency}',
+            bold: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Sa kliyan an peye, epi sa benefisyè a resevwa — de chif diferan depi gen frè.
+///
+/// Ajan an di sa a byen fò bay kliyan an anvan li peze bouton an. Si li rete
+/// nan tèt ajan an sèlman, se la malantandi yo kòmanse.
+class _ClientTotal extends StatelessWidget {
+  const _ClientTotal({
+    required this.amount,
+    required this.fee,
+    required this.currency,
+    required this.receiverName,
+  });
+
+  final double amount;
+  final double fee;
+  final String currency;
+  final String receiverName;
+
+  @override
+  Widget build(BuildContext context) {
+    if (amount <= 0) return const SizedBox.shrink();
+
+    final who = receiverName.trim().isEmpty ? 'Benefisyè a' : receiverName.trim();
+    String money(double value) => '${value.toStringAsFixed(2)} $currency';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F8F1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFDDE8D8)),
+      ),
+      child: Column(
+        children: [
+          _QuoteLine(label: '$who resevwa', value: money(amount)),
+          _QuoteLine(
+            label: fee > 0 ? 'Frè kliyan an peye' : 'Frè',
+            value: fee > 0 ? money(fee) : 'Pa gen frè',
+          ),
+          const Divider(height: 18),
+          _QuoteLine(
+            label: 'Kliyan an peye an tou',
+            value: money(amount + fee),
             bold: true,
           ),
         ],
@@ -893,8 +985,14 @@ class _QuoteLine extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [Text(label, style: style), Text(value, style: style)],
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Etikèt yo ka long (yo eksplike ki frè ki sou ki moun): san
+          // `Expanded` la yo depase sou ti ekran.
+          Expanded(child: Text(label, style: style)),
+          const SizedBox(width: 12),
+          Text(value, style: style),
+        ],
       ),
     );
   }

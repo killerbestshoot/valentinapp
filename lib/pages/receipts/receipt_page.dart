@@ -161,7 +161,7 @@ class ReceiptPage extends StatelessWidget {
                                                 CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                'Montan',
+                                                'Total anvwayè a peye',
                                                 style: theme
                                                     .textTheme.labelLarge
                                                     ?.copyWith(
@@ -172,7 +172,8 @@ class ReceiptPage extends StatelessWidget {
                                               ),
                                               const SizedBox(height: 6),
                                               Text(
-                                                '$amount $currency'.trim(),
+                                                '${tx.totalPaid.toStringAsFixed(2)} $currency'
+                                                    .trim(),
                                                 style: theme
                                                     .textTheme.headlineMedium
                                                     ?.copyWith(
@@ -213,27 +214,26 @@ class ReceiptPage extends StatelessWidget {
                                     ),
                                     _ReceiptRow(
                                       icon: Icons.payments_outlined,
-                                      label: 'Montan kliyan an peye',
+                                      label: '$customerName resevwa',
                                       value: '$amount $currency'.trim(),
                                     ),
-                                    if (delivery != null) ...[
+                                    if (delivery != null)
+                                      _ReceiptRow(
+                                        icon: Icons.account_balance_wallet_outlined,
+                                        label: 'Sa sa fè an gouden',
+                                        value: '${_htg(delivery.amountHtg)} HTG',
+                                      ),
+                                    if (delivery != null)
                                       _ReceiptRow(
                                         icon: Icons.currency_exchange,
                                         label: 'To echanj',
                                         value: _rateLine(delivery),
                                       ),
-                                      _ReceiptRow(
-                                        icon: Icons.account_balance_wallet_outlined,
-                                        label: 'Benefisyè a resevwa',
-                                        value: '${_htg(delivery.amountHtg)} HTG',
-                                      ),
-                                      if (delivery.hasFee)
-                                        _ReceiptRow(
-                                          icon: Icons.receipt_outlined,
-                                          label: 'Frè',
-                                          value: _feeLine(delivery),
-                                        ),
-                                    ],
+                                    _ReceiptRow(
+                                      icon: Icons.receipt_outlined,
+                                      label: 'Frè',
+                                      value: _senderFeeLine(tx),
+                                    ),
                                     const SizedBox(height: 18),
                                     Container(
                                       padding: const EdgeInsets.all(16),
@@ -285,6 +285,8 @@ class ReceiptPage extends StatelessWidget {
                                             amount: amount,
                                             currency: currency,
                                             status: status,
+                                            feeLine: _senderFeeLine(tx),
+                                            totalPaid: tx.totalPaid,
                                             delivery: delivery,
                                           ),
                                           icon:
@@ -320,6 +322,8 @@ class ReceiptPage extends StatelessWidget {
     required String amount,
     required String currency,
     required String status,
+    required String feeLine,
+    required double totalPaid,
     DeliveryDetails? delivery,
   }) async {
     final receipt = [
@@ -328,12 +332,13 @@ class ReceiptPage extends StatelessWidget {
       'Service: $service',
       'Kliyan: $customerName',
       'Telefòn: $phone',
-      'Montan kliyan an peye: ${'$amount $currency'.trim()}',
+      '$customerName resevwa: ${'$amount $currency'.trim()}',
       if (delivery != null) ...[
+        'Sa sa fè an gouden: ${_htg(delivery.amountHtg)} HTG',
         'To echanj: ${_rateLine(delivery)}',
-        'Benefisyè a resevwa: ${_htg(delivery.amountHtg)} HTG',
-        if (delivery.hasFee) 'Frè: ${_feeLine(delivery)}',
       ],
+      'Frè: $feeLine',
+      'Total anvwayè a peye: ${totalPaid.toStringAsFixed(2)} $currency',
       'Status: $status',
     ].join('\n');
 
@@ -367,17 +372,20 @@ String _rateLine(DeliveryDetails delivery) {
   return '1 ${delivery.rateCurrency} = ${_htg(delivery.rateToHtg)} HTG';
 }
 
-/// Frè a, epi KI MOUN ki peye l. Se la konfizyon an chita: san liy sa a, yon
-/// kliyan ki wè « Frè: 660 HTG » pa konnen si se nan lajan l li soti.
-String _feeLine(DeliveryDetails delivery) {
-  final montan = '${_htg(delivery.feeHtg)} HTG';
-  final pousan = delivery.feePercent > 0
-      ? ' (${delivery.feePercent.toStringAsFixed(2).replaceAll('.', ',')}%)'
-      : '';
+/// Frè ANVWAYÈ a peye — pa frè pasrèl la.
+///
+/// Frè pasrèl la (5% Bazik) se yon depans antrepriz la: li pa gade kliyan an,
+/// e montre l sou resi a ta fè l kwè se nan lajan pa l li soti. Sa resi a dwe
+/// di se yon sèl bagay: èske moun ki voye a peye yon bagay anplis, wi ou non.
+///
+/// Nan de ka yo, benefisyè a resevwa MENM montan an — se sa ki dwe klè.
+String _senderFeeLine(TransactionRecord tx) {
+  if (!tx.hasSenderFee) {
+    return 'Pa gen frè — anvwayè a peye montan an sèlman';
+  }
 
-  return delivery.feePaidBySender
-      ? '$montan$pousan — ajan an peye l anplis, benefisyè a resevwa tout montan an'
-      : '$montan$pousan — retire nan montan an, benefisyè a resevwa mwens';
+  return '${tx.senderFee.toStringAsFixed(2)} ${tx.currency} — '
+      'anvwayè a peye l anplis';
 }
 
 class _ReceiptRow extends StatelessWidget {

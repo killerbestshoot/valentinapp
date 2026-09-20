@@ -52,15 +52,18 @@ function linkedMoney(db, txId) {
 }
 
 /**
- * Chif livrezon an pou resi a: to echanj, sa benefisyè a resevwa an gouden, ak
- * frè a.
+ * Konvèsyon an pou resi a: to echanj lan ak sa benefisyè a resevwa an gouden.
  *
- * Tab `transactions` la pa kenbe anyen de sa: li konnen sèlman montan kliyan
- * an peye ak deviz li. Se liy `bazik_transfers` la ki gen to jou a, montan HTG
- * la ak frè pasrèl la — e se sa kliyan an bezwen wè sou papye a.
+ * Tab `transactions` la kenbe montan an nan deviz kliyan an (MXN, USD...).
+ * Benefisyè a, li menm, resevwa gouden: se liy `bazik_transfers` la ki gen to
+ * jou a ak montan HTG la.
  *
  * To a soti nan liy lan, PA nan tab to jounen an: yon to ki chanje demen pa
  * dwe chanje yon resi ki deja enprime.
+ *
+ * NOU PA VOYE FRÈ PASRÈL LA. Se yon depans antrepriz la, kliyan an pa gen
+ * anyen pou wè ladan l, e montre l sou yon resi ta fè l kwè se nan lajan pa l
+ * li soti. Frè resi a montre se `sender_fee_minor`, sa anvwayè a peye vre.
  *
  * Retounen `null` pou yon tranzaksyon ki pa gen transfè (rechaj minit,
  * livrezon an lajan kach deklare alamen).
@@ -84,18 +87,6 @@ function deliveryOf(db, txId) {
     rateToHtg: row.rate_to_htg,
     rateCurrency: row.currency,
     ratesUpdatedAt: row.rates_updated_at,
-    feeHtg: money.fromMinor(row.fee_htg_minor),
-    /** Frè a an pousan sou montan an, pou moun ki vle verifye kalkil la. */
-    feePercent:
-      row.amount_htg_minor > 0
-        ? Math.round((row.fee_htg_minor / row.amount_htg_minor) * 10000) / 100
-        : 0,
-    /**
-     * `sender` : ajan an peye frè a anplis, benefisyè a resevwa tout montan an
-     * `amount` : frè a soti nan montan an, benefisyè a resevwa mwens
-     */
-    feePaidBy: row.fee_charged_to_wallet !== 0 ? "sender" : "amount",
-    totalHtg: money.fromMinor(row.total_htg_minor),
   };
 }
 
@@ -122,8 +113,13 @@ function toJson(row) {
     customerName: row.client_name || "",
     customerPhone: row.phone || "",
     country: row.country || "",
+    /** Sa benefisyè a resevwa. */
     paymentAmount: money.fromMinor(row.amount_minor),
     paymentCurrency: row.currency,
+    /** Frè anvwayè a peye anplis (0 = san frè). */
+    senderFee: money.fromMinor(row.sender_fee_minor || 0),
+    /** Sa anvwayè a soti nan pòch li an tou. */
+    totalPaid: money.fromMinor(row.amount_minor + (row.sender_fee_minor || 0)),
     status: row.status,
     enterpriseId: row.enterprise_id,
     enterpriseName: row.enterprise_name || "",
@@ -275,6 +271,22 @@ router.post("/", requireAuth, requireEnterprise, (req, res) => {
       `${serviceName}:${customerPhone}:${req.user.uid}:${Date.now()}`
     );
 
+    // Frè anvwayè a: opsyonèl, 0 pa defo.
+    //
+    // Li PA antre nan kalkil komisyon an: komisyon yo rete sou montan
+    // benefisyè a resevwa a, jan yo te ye anvan.
+    let senderFeeMinor = 0;
+    if (body.senderFee !== undefined && body.senderFee !== null && `${body.senderFee}` !== "") {
+      try {
+        senderFeeMinor = money.toMinor(body.senderFee);
+      } catch (err) {
+        return send(res, { code: "invalid_fee", message: `Frè a pa valid: ${err.message}` });
+      }
+      if (senderFeeMinor < 0) {
+        return send(res, { code: "invalid_fee", message: "Frè a pa ka negatif." });
+      }
+    }
+
     // To komisyon an fikse KOUNYE A: si yon admin chanje to sèvis la pita, sa
     // pa modifye retwoaktivman sa tranzaksyon sa a te pwomèt.
     const commission = computeCommission({ amountMinor, serviceName });
@@ -286,10 +298,11 @@ router.post("/", requireAuth, requireEnterprise, (req, res) => {
         `INSERT INTO transactions
           (tx_id, enterprise_id, enterprise_name, staff_uid, staff_name, staff_role,
            client_name, phone, service, service_id, country, amount_minor, currency,
+           sender_fee_minor,
            status, gateway_ref, commission_applied, note, created_at, updated_at,
            commission_agent_minor, commission_owner_minor,
            agent_commission_pct, owner_commission_pct)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', 0, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', 0, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         txId,
@@ -305,6 +318,7 @@ router.post("/", requireAuth, requireEnterprise, (req, res) => {
         String(body.country || "").trim(),
         amountMinor,
         String(body.paymentCurrency || "USD").trim().toUpperCase(),
+        senderFeeMinor,
         String(body.note || "").trim(),
         now(),
         now(),

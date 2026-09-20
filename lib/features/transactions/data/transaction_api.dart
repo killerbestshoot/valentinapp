@@ -13,6 +13,7 @@ class TransactionRecord {
     required this.amount,
     required this.currency,
     required this.status,
+    this.senderFee = 0,
     this.staffName = '',
     this.staffUid = '',
     this.enterpriseName = '',
@@ -25,9 +26,20 @@ class TransactionRecord {
   final String serviceName;
   final String customerName;
   final String customerPhone;
+  /// Sa benefisyè a resevwa.
   final double amount;
   final String currency;
   final String status;
+
+  /// Frè ANVWAYÈ a peye anplis (0 = san frè).
+  ///
+  /// Se pa frè pasrèl la: sa a se yon depans antrepriz la, kliyan an pa wè l.
+  final double senderFee;
+
+  bool get hasSenderFee => senderFee > 0;
+
+  /// Sa anvwayè a soti nan pòch li an tou.
+  double get totalPaid => amount + senderFee;
   final String staffName;
   final String staffUid;
   final String enterpriseName;
@@ -51,6 +63,8 @@ class TransactionRecord {
           : 0,
       currency: '${json['paymentCurrency'] ?? 'USD'}',
       status: '${json['status'] ?? 'pending'}',
+      senderFee:
+          json['senderFee'] is num ? (json['senderFee'] as num).toDouble() : 0,
       staffName: '${json['staffName'] ?? ''}',
       staffUid: '${json['staffUid'] ?? ''}',
       enterpriseName: '${json['enterpriseName'] ?? ''}',
@@ -63,7 +77,10 @@ class TransactionRecord {
   }
 }
 
-/// Chif livrezon an, jan serveur a kalkile yo lè transfè a te fèt.
+/// Konvèsyon an, jan serveur a kalkile l lè transfè a te fèt.
+///
+/// Pa gen frè pasrèl isit la: resi a montre frè ANVWAYÈ a peye
+/// ([TransactionRecord.senderFee]), ki se yon lòt bagay nèt.
 ///
 /// Yo pa soti nan tab to jounen an: yo fikse sou liy transfè a. Konsa yon resi
 /// ki enprime jodi a bay menm chif yo nan yon mwa, menm si to a bouje.
@@ -72,10 +89,6 @@ class DeliveryDetails {
     required this.amountHtg,
     required this.rateToHtg,
     required this.rateCurrency,
-    required this.feeHtg,
-    required this.feePercent,
-    required this.feePaidBySender,
-    required this.totalHtg,
     this.network = '',
   });
 
@@ -86,17 +99,7 @@ class DeliveryDetails {
   final double rateToHtg;
   final String rateCurrency;
 
-  final double feeHtg;
-  final double feePercent;
-
-  /// Vre: ajan an peye frè a anplis, kliyan an resevwa tout montan an.
-  /// Fo: frè a soti nan montan an, kliyan an resevwa mwens.
-  final bool feePaidBySender;
-
-  final double totalHtg;
   final String network;
-
-  bool get hasFee => feeHtg > 0;
 
   static double _toDouble(Object? value) =>
       value is num ? value.toDouble() : 0;
@@ -106,10 +109,6 @@ class DeliveryDetails {
       amountHtg: _toDouble(json['amountHtg']),
       rateToHtg: _toDouble(json['rateToHtg']),
       rateCurrency: '${json['rateCurrency'] ?? ''}',
-      feeHtg: _toDouble(json['feeHtg']),
-      feePercent: _toDouble(json['feePercent']),
-      feePaidBySender: '${json['feePaidBy'] ?? 'sender'}' == 'sender',
-      totalHtg: _toDouble(json['totalHtg']),
       network: '${json['network'] ?? ''}',
     );
   }
@@ -261,6 +260,7 @@ class TransactionApi {
     required String customerPhone,
     required double amount,
     required String currency,
+    double senderFee = 0,
     String country = '',
     String note = '',
   }) async {
@@ -270,6 +270,7 @@ class TransactionApi {
       'customerPhone': customerPhone,
       'paymentAmount': amount,
       'paymentCurrency': currency,
+      if (senderFee > 0) 'senderFee': senderFee,
       if (country.isNotEmpty) 'country': country,
       if (note.isNotEmpty) 'note': note,
     });

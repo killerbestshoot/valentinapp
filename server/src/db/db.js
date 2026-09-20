@@ -34,6 +34,10 @@ const TRANSACTION_EXTRA_COLUMNS = [
   ["agent_commission_pct", "REAL NOT NULL DEFAULT 0"],
   ["owner_commission_pct", "REAL NOT NULL DEFAULT 0"],
   ["commission_applied_at", "INTEGER"],
+  // Frè ANVWAYÈ a peye, nan deviz tranzaksyon an. Se sa resi a montre — pa
+  // frè pasrèl la, ki se yon depans antrepriz la, envizib pou kliyan an.
+  // 0 = kliyan an pa peye anyen anplis; benefisyè a resevwa tout montan an.
+  ["sender_fee_minor", "INTEGER NOT NULL DEFAULT 0"],
 ];
 
 let db = null;
