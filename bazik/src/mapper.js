@@ -192,7 +192,20 @@ function readQuoteResponse(body) {
   };
 }
 
-/** Repons kreyasyon transfè (MonCash oswa NatCash). */
+/**
+ * Repons kreyasyon transfè (MonCash oswa NatCash), ak repons `GET /transfers/{id}`.
+ *
+ * `failureReason` se KOTE Bazik di poukisa. Egzanp reyèl, sou yon transfè ki
+ * echwe an pwodiksyon:
+ *
+ *   { "status": "failed", "failureReason": "Failed to obtain MonCash OAuth token",
+ *     "description": "Livrezon MonCash", ... }
+ *
+ * ATANSYON SOU `description`: se TÈKS PA NOU an, ke Bazik voye tounen jan nou
+ * te ba li l. Anvan, `message` te li l lè `message` pa t la, donk nou te
+ * anrejistre «Livrezon MonCash» kòm rezon echèk — sa pa di anyen, epi vrè
+ * rezon an (`failureReason`) te jete. Nou pa li `description` ankò.
+ */
 function readTransferResponse(body) {
   const data = pick(body, ["transfer", "data", "transaction"], body);
 
@@ -201,7 +214,10 @@ function readTransferResponse(body) {
       pick(data, ["transactionId", "transaction_id", "transferId", "transfer_id", "id", "reference", "referenceId"], "")
     ),
     status: normalizeStatus(pick(data, ["status", "state"], "processing")),
-    message: String(pick(data, ["message", "description", "detail"], "")),
+    failureReason: String(
+      pick(data, ["failureReason", "failure_reason", "reason"], "")
+    ),
+    message: String(pick(data, ["message", "detail"], "")),
     raw: body,
   };
 }
@@ -273,6 +289,12 @@ function readWebhookEvent(body) {
     gatewayId: String(pick(data, ["transactionId", "transaction_id", "transferId", "id"], "")),
     status,
     amountHtg: Number(pick(data, ["gdes", "amount", "value"], 0)),
+    // Menm chan ak repons `GET /transfers/{id}` la: webhook la gen menm fòm
+    // (`type: "transfer.failed"`). San li, yon echèk ki rive pa webhook te
+    // anrejistre kòm «webhook: transfè echwe», ki pa di anyen bay ajan an.
+    failureReason: String(
+      pick(data, ["failureReason", "failure_reason", "reason"], "")
+    ),
     raw: body,
   };
 }

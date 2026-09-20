@@ -50,11 +50,13 @@ class PaymentErrorInfo {
         );
 
       case 'insufficient_balance':
-        return const PaymentErrorInfo(
+        return PaymentErrorInfo(
           title: 'Bazik refize: pwovizyon an pa ase',
-          detail:
-              'Bazik refize transfè a paske kont lan pa gen ase kòb '
-              '(montan an plis 5% frè).',
+          // Mesaj Bazik la pote chif egzak yo (sòld disponib ak sa ki nesesè).
+          // Yon tèks fiks ta kache yo.
+          detail: error.message.isEmpty
+              ? 'Kont Bazik la pa gen ase kòb (montan an plis 5% frè).'
+              : error.message,
           action: 'Wallet ou ranbouse. Avèti administratè a pou l chaje kont Bazik la.',
           severity: PaymentErrorSeverity.blocking,
         );
@@ -203,6 +205,22 @@ class PaymentErrorInfo {
           detail: error.message,
           action: 'Pa gen anyen pou livre. Kreye yon nouvo tranzaksyon si sa nesesè.',
           severity: PaymentErrorSeverity.blocking,
+        );
+
+      // --- Pann bò pasrèl la ---
+      //
+      // Egzanp reyèl: «Failed to obtain MonCash OAuth token» — Bazik pa rive
+      // idantifye tèt li devan MonCash. Pa gen anyen ajan an ka korije, e
+      // wallet la ranbouse.
+      case 'transfer_failed':
+      case 'provider_error':
+        return PaymentErrorInfo(
+          title: 'Pasrèl la pa rive voye l',
+          detail: error.message,
+          action:
+              'Wallet ou ranbouse. Eseye ankò nan kèk minit; si li kontinye, '
+              'avèti administratè a — se bò Bazik pwoblèm nan ye.',
+          severity: PaymentErrorSeverity.retryable,
         );
 
       // --- Konfigirasyon / kont ---

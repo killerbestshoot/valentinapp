@@ -127,7 +127,10 @@ function createWebhookHandler({ store, client, config, transfers, topups }) {
         status: event.status,
         gatewayId: event.gatewayId,
         gatewayStatus: event.status,
-        failureReason: event.status === "failed" ? "webhook: transfè echwe" : "",
+        failureReason:
+          event.status === "failed"
+            ? event.failureReason || "webhook: transfè echwe san rezon"
+            : "",
       });
 
       await store.markEventProcessed(event.eventId, {
@@ -157,7 +160,10 @@ function createWebhookHandler({ store, client, config, transfers, topups }) {
         status: event.status,
         gatewayId: event.gatewayId,
         gatewayStatus: event.status,
-        failureReason: event.status === "failed" ? "webhook: peman echwe" : "",
+        failureReason:
+          event.status === "failed"
+            ? event.failureReason || "webhook: peman echwe san rezon"
+            : "",
       });
 
       await store.markEventProcessed(event.eventId, {

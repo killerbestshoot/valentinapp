@@ -182,7 +182,22 @@ function createTransferUseCases({ store, client, config, rates = createRateBook(
    * - 4xx metye (`insufficient_balance`, `amount_too_low`...) ak 429:
    *   Bazik refize demann lan klèman. Nou ka ranbouse san risk.
    */
+  /**
+   * Poukisa yon transfè echwe, nan lòd sa a: sa Bazik di (`failureReason`),
+   * apre sa nenpòt lòt mesaj. Si nou pa jwenn anyen, nou di sa klèman olye nou
+   * kite chan an vid — yon rezon vid voye ajan an poze kesyon bay administratè.
+   */
+  function reasonOf(result) {
+    return result.failureReason || result.message || "Bazik pa bay yon rezon.";
+  }
+
   function isAmbiguous(err) {
+    // Erè PA NOU (non benefisyè a manke, montan pa valid...): li leve lè n ap
+    // konstwi demann lan, AVAN okenn apèl rezo. Bazik pa janm wè anyen, donk
+    // pa gen anyen ki ambigu — e san sa nou kite wallet ajan an debite pou yon
+    // transfè ki pa t janm pati.
+    if (err instanceof DomainError) return false;
+
     if (!(err instanceof BazikError)) return true;
     if (err.code === "network_error") return true;
     return err.status >= 500;
@@ -338,7 +353,7 @@ function createTransferUseCases({ store, client, config, rates = createRateBook(
 
         throw new DomainError(
           "transfer_pending_verification",
-          "Nou pa rive konfime transfè a ak Bazik. Li an verifikasyon — pa voye l ankò.",
+          `Nou pa rive konfime transfè a ak Bazik (${reason}). Li an verifikasyon — pa voye l ankò.`,
           { transfer: pending }
         );
       }
@@ -350,8 +365,11 @@ function createTransferUseCases({ store, client, config, rates = createRateBook(
         failureReason: reason,
       });
 
+      // Nou KENBE kòd orijinal la (`missing_receiver_name`,
+      // `insufficient_balance`...): se li ki bay ajan an yon mesaj ki di sa
+      // pou l fè. `transfer_failed` tonbe nan mesaj jenerik la.
       throw new DomainError(
-        err instanceof BazikError ? err.code : "transfer_failed",
+        err.code || "transfer_failed",
         `Transfè a pa pase, wallet la ranbouse. ${reason}`,
         { transfer: settled.transfer }
       );
@@ -364,7 +382,7 @@ function createTransferUseCases({ store, client, config, rates = createRateBook(
         status: result.status,
         gatewayId: result.gatewayId,
         gatewayStatus: result.status,
-        failureReason: result.status === "failed" ? result.message : "",
+        failureReason: result.status === "failed" ? reasonOf(result) : "",
       });
       return { transfer: settled.transfer, duplicate: false, refund: settled.refund, mode: client.mode };
     }
@@ -411,7 +429,7 @@ function createTransferUseCases({ store, client, config, rates = createRateBook(
       status: result.status,
       gatewayId: result.gatewayId,
       gatewayStatus: result.status,
-      failureReason: result.status === "failed" ? result.message : "",
+      failureReason: result.status === "failed" ? reasonOf(result) : "",
     });
 
     return { transfer: settled.transfer, changed: !settled.duplicate, refund: settled.refund };

@@ -310,3 +310,76 @@ test("liy lan sonje KI MOUN ki peye frè a", async (t) => {
   const relue = await service.store.getTransfer(nanMontan.transfer.transferId);
   assert.equal(relue.feeChargedToWallet, false, "li siviv yon relekti nan baz la");
 });
+
+// --- Poukisa yon transfè echwe ---
+
+/**
+ * Vre repons Bazik la, kopye sou yon transfè ki echwe an pwodiksyon
+ * (TRF_1789875312_5926344d, 2026-09-20). Se referans nou.
+ *
+ * Remake `description`: se TÈKS PA NOU an ke Bazik voye tounen. Anvan, se li
+ * nou te anrejistre kòm rezon echèk — «Livrezon MonCash», ki pa di anyen.
+ */
+const REPONS_ECHEK = {
+  type: "transfer.failed",
+  transactionId: "TRF_1789875312_5926344d",
+  status: "failed",
+  amount: 15276.22,
+  fees: 763.81,
+  total: 16040.03,
+  currency: "HTG",
+  wallet: "48465325",
+  description: "Livrezon MonCash",
+  referenceId: "TRF_97dce9d2-cd98-5ed9-aefa-7580f6d94d28",
+  failureReason: "Failed to obtain MonCash OAuth token",
+  timestamp: "2026-09-20T03:35:11.840376+00:00",
+  provider: "moncash",
+  environment: "production",
+};
+
+test("nou li vrè rezon Bazik la, pa tèks pa nou an", () => {
+  const { readTransferResponse, readWebhookEvent } = require("../src/mapper");
+
+  const read = readTransferResponse(REPONS_ECHEK);
+  assert.equal(read.status, "failed");
+  assert.equal(read.failureReason, "Failed to obtain MonCash OAuth token");
+  assert.notEqual(read.message, "Livrezon MonCash", "`description` se tèks pa nou");
+
+  // Webhook la gen menm fòm nan.
+  const event = readWebhookEvent(REPONS_ECHEK);
+  assert.equal(event.failureReason, "Failed to obtain MonCash OAuth token");
+  assert.equal(event.reference, "TRF_97dce9d2-cd98-5ed9-aefa-7580f6d94d28");
+  assert.equal(event.status, "failed");
+});
+
+test("yon erè PA NOU ranbouse wallet la tou swit", async (t) => {
+  const { service } = makeService({ autoComplete: true });
+  t.after(() => service.close());
+
+  const agent = await seedAgent(service.store, { balanceMinor: USD(500) });
+  const avan = await balanceOf(service.store, agent);
+
+  // NatCash mande non AK siyati. `buildNatcashTransferRequest` leve erè a
+  // anvan okenn apèl rezo: Bazik pa janm wè anyen.
+  await assert.rejects(
+    service.transfers.send({
+      kind: "payout",
+      network: "natcash",
+      amountMinor: USD(50),
+      uid: agent.uid,
+      enterpriseId: agent.enterpriseId,
+      phone: "+509 3712 3456",
+      receiverName: "Junette", // yon sèl mo
+      idempotencySeed: "yon-sel-mo",
+    }),
+    { code: "missing_receiver_name" }
+  );
+
+  // Anvan koreksyon an, erè sa a te pase pou «ambigu»: transfè a te rete
+  // `processing` e wallet la te rete debite pou yon transfè ki pa t janm pati.
+  assert.equal(
+    await balanceOf(service.store, agent),
+    avan,
+    "sòld la dwe retounen jan l te ye"
+  );
+});

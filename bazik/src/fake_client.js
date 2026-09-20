@@ -16,7 +16,8 @@
  */
 
 const { BazikError } = require("./errors");
-const { Status } = require("./mapper");
+const mapper = require("./mapper");
+const { Status } = mapper;
 const {
   fromMinor,
   feeMinor,
@@ -79,7 +80,8 @@ function createFakeBazikClient({
       };
     },
 
-    async createTransfer(network, { reference, amountHtgMinor, phone, receiverName }) {
+    async createTransfer(network, params) {
+      const { reference, amountHtgMinor, phone, receiverName } = params;
       const limits = NETWORK_LIMITS[network];
       const htg = fromMinor(amountHtgMinor);
 
@@ -99,10 +101,14 @@ function createFakeBazikClient({
         );
       }
 
-      if (network === "natcash" && !String(receiverName || "").trim()) {
-        throw new BazikError("invalid_request", "Required fields: customerFirstName, customerLastName", {
-          status: 400,
-        });
+      // Nou pase pa MENM konstriktè demann ak vrè kliyan an, konsa fo a refize
+      // egzakteman sa pwodiksyon refize. Anvan, li te teste sèlman si non an
+      // vid: yon non ak yon sèl mo te pase isit la men li te kraze an
+      // pwodiksyon (NatCash mande non AK siyati), e okenn tès pa t wè l.
+      if (network === "natcash") {
+        mapper.buildNatcashTransferRequest(params);
+      } else {
+        mapper.buildMoncashTransferRequest(params);
       }
 
       const cost = totalCostMinor(amountHtgMinor);
