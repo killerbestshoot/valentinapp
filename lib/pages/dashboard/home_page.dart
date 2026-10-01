@@ -5,6 +5,7 @@ import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
 import 'package:mon_premye_app/features/transactions/data/transaction_api.dart';
 import 'package:mon_premye_app/features/payments/presentation/widgets/gateway_status_card.dart';
+import 'package:mon_premye_app/features/wallet/presentation/widgets/exchange_rates_card.dart';
 import 'package:mon_premye_app/pages/agent/agents_page.dart';
 import 'package:mon_premye_app/pages/transactions/create_transaction_page.dart';
 import 'package:mon_premye_app/pages/payout/payouts_page.dart';
@@ -157,6 +158,8 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(height: 18),
                   const GatewayStatusCard(),
+                  const SizedBox(height: 18),
+                  const ExchangeRatesCard(),
                   const SizedBox(height: 18),
                   FutureBuilder<_DashboardStats>(
                     future: _statsFuture,

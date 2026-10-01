@@ -1,5 +1,29 @@
 import '../../../core/network/api_client.dart';
 
+/// To echanj yo vè HTG (majin owner an deja soustrè), ak dat yo.
+class ExchangeRatesSnapshot {
+  const ExchangeRatesSnapshot({
+    required this.rates,
+    this.updatedAt,
+    this.stale = false,
+  });
+
+  /// `currency` -> konbyen HTG pou 1 inite.
+  final Map<String, double> rates;
+  final DateTime? updatedAt;
+
+  /// To yo pa soti nan API a, oswa yo depase 24 è.
+  final bool stale;
+
+  /// Konbyen `to` pou 1 `from`, atravè HTG. `null` si youn manke.
+  double? cross(String from, String to) {
+    final a = from == 'HTG' ? 1.0 : rates[from];
+    final b = to == 'HTG' ? 1.0 : rates[to];
+    if (a == null || b == null || b == 0) return null;
+    return a / b;
+  }
+}
+
 class WalletSummary {
   const WalletSummary({
     required this.uid,
@@ -151,6 +175,27 @@ class WalletApi {
     });
 
     return rates;
+  }
+
+  /// To yo + dat mizajou yo, pou kat to echanj ekran prensipal la.
+  Future<ExchangeRatesSnapshot> ratesSnapshot() async {
+    final json = await _client.get('/api/wallets/rates');
+    final raw = (json['rates'] as Map?) ?? const {};
+    final meta = (json['meta'] as Map?) ?? const {};
+
+    final rates = <String, double>{};
+    raw.forEach((key, value) {
+      if (value is num) rates['$key'] = value.toDouble();
+    });
+
+    final updatedAt = meta['updatedAt'];
+    return ExchangeRatesSnapshot(
+      rates: rates,
+      updatedAt: updatedAt is num
+          ? DateTime.fromMillisecondsSinceEpoch(updatedAt.toInt())
+          : null,
+      stale: meta['stale'] == true,
+    );
   }
 
   /// Majin owner an sou to echanj yo (an HTG pa inite). Retounen 0 si pa gen.

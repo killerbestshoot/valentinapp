@@ -1,5 +1,6 @@
 import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/features/wallet/data/wallet_api.dart';
+import 'package:mon_premye_app/features/wallet/presentation/widgets/exchange_rates_card.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mon_premye_app/core/config/app_environment.dart';
@@ -120,6 +121,8 @@ class _AgentDashboardContent extends StatelessWidget {
         ),
         const SizedBox(height: 18),
         _AgentMetrics(balance: balance, currency: currency),
+        const SizedBox(height: 18),
+        const ExchangeRatesCard(),
         const SizedBox(height: 18),
         const DashboardPanel(
           child: Column(
