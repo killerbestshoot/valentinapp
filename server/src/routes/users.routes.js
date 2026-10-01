@@ -8,13 +8,14 @@
  *   POST  /api/users              kreye yon staff (owner/admin)
  *   PATCH /api/users/:uid         aktive / dezaktive / chanje wòl
  *   POST  /api/users/:uid/password  admin reinisyalize yon modpas
+ *   DELETE /api/users/:uid        efase yon staff ki poko janm fè okenn mouvman
  *
  * Kreye yon kont PA konekte moun k ap kreye l la — kontrèman ak Firebase Auth.
  */
 
 const express = require("express");
 
-const { getDb, now } = require("../db/db");
+const { getDb, transaction, now } = require("../db/db");
 const users = require("../auth/users");
 const { requireAuth, requireRole, requireEnterprise } = require("../auth/middleware");
 const { money } = require("../../../bazik/index.js");
@@ -231,6 +232,108 @@ router.post(
       );
 
       return res.json({ ok: true, user: updated });
+    } catch (err) {
+      return send(res, err);
+    }
+  }
+);
+
+/**
+ * Tab ki pote tras yon staff. Si youn ladan yo gen yon liy, kont lan gen yon
+ * istwa finansye: efase l t ap kase odit la (rejis san pwopriyetè). Lè sa a,
+ * se DEZAKTIVE, pa efase.
+ */
+const HISTORY_TABLES = [
+  ["transactions", "staff_uid"],
+  ["wallet_ledger", "uid"],
+  ["bazik_transfers", "uid"],
+  ["airtime_topups", "uid"],
+  ["payout_requests", "staff_uid"],
+  ["commission_logs", "staff_uid"],
+];
+
+function historyCount(uid) {
+  const db = getDb();
+  return HISTORY_TABLES.reduce(
+    (total, [table, column]) =>
+      total + db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?`).get(uid).n,
+    0
+  );
+}
+
+router.delete(
+  "/:uid",
+  requireAuth,
+  requireEnterprise,
+  requireRole("owner", "admin"),
+  (req, res) => {
+    try {
+      const enterpriseId = req.user.enterpriseId;
+      const target = listStaff(enterpriseId).find((u) => u.uid === req.params.uid);
+      if (!target) return res.status(404).json({ ok: false, code: "not_found" });
+
+      if (target.uid === req.user.uid) {
+        return send(res, {
+          status: 403,
+          code: "cannot_modify_self",
+          message: "Ou pa ka efase pwòp kont ou.",
+        });
+      }
+
+      if (rankOf(target.role) >= rankOf(req.user.role)) {
+        return send(res, {
+          status: 403,
+          code: "target_too_high",
+          message: "Ou pa ka efase yon kont ki gen yon wòl egal oswa pi wo pase pa ou.",
+        });
+      }
+
+      if (historyCount(target.uid) > 0) {
+        return send(res, {
+          status: 409,
+          code: "has_history",
+          message:
+            "Kont sa a deja fè tranzaksyon: nou pa ka efase l san kase istorik la. Dezaktive l pito.",
+        });
+      }
+
+      transaction((db) => {
+        // Re-verifye anndan tranzaksyon an: yon kredi ka antre ant de etap yo.
+        const wallet = db
+          .prepare("SELECT balance_minor FROM wallets WHERE uid = ? AND enterprise_id = ?")
+          .get(target.uid, enterpriseId);
+        if (wallet && wallet.balance_minor !== 0) {
+          throw Object.assign(
+            new Error("Kont sa a gen yon sòld. Li dwe a 0 anvan nou efase l."),
+            { status: 409, code: "has_balance" }
+          );
+        }
+
+        db.prepare("DELETE FROM wallets WHERE uid = ? AND enterprise_id = ?").run(
+          target.uid,
+          enterpriseId
+        );
+        // Demann rechaj ki poko trete yo tonbe ak kont lan.
+        db.prepare(
+          "DELETE FROM wallet_topup_requests WHERE target_uid = ? AND enterprise_id = ? AND processed = 0"
+        ).run(target.uid, enterpriseId);
+        db.prepare("DELETE FROM enterprise_users WHERE uid = ? AND enterprise_id = ?").run(
+          target.uid,
+          enterpriseId
+        );
+
+        // Kont `users` la se global: nou efase l sèlman si li pa nan okenn lòt
+        // antrepriz. `sessions` tonbe pa CASCADE.
+        const others = db
+          .prepare("SELECT COUNT(*) AS n FROM enterprise_users WHERE uid = ?")
+          .get(target.uid).n;
+        if (others === 0) {
+          db.prepare("DELETE FROM sessions WHERE uid = ?").run(target.uid);
+          db.prepare("DELETE FROM users WHERE uid = ?").run(target.uid);
+        }
+      });
+
+      return res.json({ ok: true, deleted: target.uid });
     } catch (err) {
       return send(res, err);
     }

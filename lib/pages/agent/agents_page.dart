@@ -49,6 +49,42 @@ class _AgentsPageState extends State<AgentsPage> {
     }
   }
 
+  Future<void> _delete(StaffMember staff) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Efase kont sa a?'),
+        content: Text(
+          '${staff.label} (${staff.email}) pral efase nèt. '
+          'Sa posib sèlman si kont lan poko janm fè okenn tranzaksyon.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Anile'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB91C1C),
+            ),
+            child: const Text('Efase'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await UsersApi.instance.delete(staff.uid);
+      _toast('${staff.label} efase.');
+      _reload();
+    } on ApiException catch (err) {
+      _toast(err.message);
+    }
+  }
+
   void _toast(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
@@ -269,6 +305,7 @@ class _AgentsPageState extends State<AgentsPage> {
                           staff: member,
                           onToggle: () => _toggleActive(member),
                           onAddFunds: () => _addFunds(member),
+                          onDelete: () => _delete(member),
                         ))
                     .toList(),
               );
@@ -285,11 +322,13 @@ class _StaffRow extends StatelessWidget {
     required this.staff,
     required this.onToggle,
     required this.onAddFunds,
+    required this.onDelete,
   });
 
   final StaffMember staff;
   final VoidCallback onToggle;
   final VoidCallback onAddFunds;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -420,6 +459,17 @@ class _StaffRow extends StatelessWidget {
               ),
             ),
           ],
+          // Owner an pa efasab depi isit la; serveur a refize tou si kont lan
+          // deja gen istorik.
+          if (staff.role != 'owner')
+            IconButton(
+              tooltip: 'Efase',
+              onPressed: onDelete,
+              icon: const Icon(
+                Icons.delete_outline,
+                color: Color(0xFFB91C1C),
+              ),
+            ),
         ],
       ),
     );

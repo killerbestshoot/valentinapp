@@ -120,6 +120,12 @@ class UsersApi {
     return StaffMember.fromJson(json['user'] as Map<String, dynamic>);
   }
 
+  /// Efase yon staff nèt. Serveur a refize (`has_history`) si kont lan deja
+  /// fè tranzaksyon: lè sa a, se dezaktive pou n dezaktive l.
+  Future<void> delete(String uid) async {
+    await _client.delete('/api/users/$uid');
+  }
+
   Future<void> resetPassword(String uid, String password) async {
     await _client.post('/api/users/$uid/password', {'password': password});
   }

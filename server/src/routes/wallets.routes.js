@@ -26,8 +26,39 @@ const { requireAuth, requireRole, requireEnterprise } = require("../auth/middlew
 const { money } = require("../../../bazik/index.js");
 const AppIds = require("../../../bazik/src/ids");
 const { getExchangeMargin, applyMargin } = require("../settings/settings");
+const { checkCreditCapacity, withCreditLock } = require("../solvency");
 
 const router = express.Router();
+
+/**
+ * Kredite yon demann rechaj SÈLMAN si pwovizyon Bazik la ka kouvri l (wè
+ * `checkCreditCapacity`). Verifikasyon + kredi pase anba yon kadna pa
+ * antrepriz: de apwobasyon paralèl pa ka tou de konte sou menm kòb la.
+ */
+function settleIfCovered({ row, gatewayStatus }) {
+  return withCreditLock(row.enterprise_id, async () => {
+    const capacity = await checkCreditCapacity({
+      enterpriseId: row.enterprise_id,
+      creditMinor: row.amount_minor,
+      currency: row.currency,
+      targetRole: row.target_role,
+    });
+
+    if (!capacity.allowed) {
+      throw Object.assign(new Error(capacity.message), {
+        status: capacity.status,
+        code: capacity.code,
+        maxCreditHtg: capacity.maxCreditHtg,
+      });
+    }
+
+    return getBazikService().store.settleTopup({
+      topupId: row.request_id,
+      status: "completed",
+      gatewayStatus,
+    });
+  });
+}
 
 function send(res, err) {
   const status = err.status || 400;
@@ -37,6 +68,7 @@ function send(res, err) {
     ok: false,
     code: err.code || "error",
     message: err.message,
+    ...(err.maxCreditHtg !== undefined ? { maxCreditHtg: err.maxCreditHtg } : {}),
   });
 }
 
@@ -235,11 +267,29 @@ router.post(
       // Nou pase pa MENM chemen an (`settleTopup`), donk rejis la ekri menm
       // jan an: pa gen "rakousi" ki sote tras la.
       if (body.autoApprove === true) {
-        const settled = await getBazikService().store.settleTopup({
-          topupId: requestId,
-          status: "completed",
-          gatewayStatus: "direct_credit",
-        });
+        let settled;
+        try {
+          settled = await settleIfCovered({
+            row: {
+              request_id: requestId,
+              enterprise_id: req.user.enterpriseId,
+              amount_minor: creditMinor,
+              currency,
+              target_role: target.role,
+            },
+            gatewayStatus: "direct_credit",
+          });
+        } catch (err) {
+          // Pa kite yon demann "pending" ki pa t janm ka pase.
+          getDb()
+            .prepare(
+              `UPDATE wallet_topup_requests
+                  SET status = 'rejected', processed = 1, failure_reason = ?, updated_at = ?
+                WHERE request_id = ? AND processed = 0`
+            )
+            .run(err.code || "error", now(), requestId);
+          throw err;
+        }
 
         return res.json({
           ok: true,
@@ -281,11 +331,7 @@ router.post(
 
       // `settleTopup` kredite wallet la ak ekri rejis la ann ATOMIK, epi li
       // pwoteje kont doub kredi gras ak yon kle idempotans.
-      const settled = await getBazikService().store.settleTopup({
-        topupId: row.request_id,
-        status: "completed",
-        gatewayStatus: "manual_approval",
-      });
+      const settled = await settleIfCovered({ row, gatewayStatus: "manual_approval" });
 
       return res.json({
         ok: true,

@@ -195,4 +195,97 @@ function solvencyNotification(result) {
   };
 }
 
-module.exports = { checkSolvency, solvencyNotification, DEFAULT_BUFFER };
+/**
+ * Yon kredi pa ka fè dèt ajan yo depase sa Bazik ka peye.
+ *
+ * Owner an kredite yon ajan = antrepriz la PWOMÈT kòb sa a. Si pwovizyon Bazik
+ * la pa kouvri tout float yo + nouvo kredi a, nou t ap vann kòb nou pa genyen.
+ * Nou konte SÈLMAN Bazik (HTG): se li ki peye MonCash/NatCash, e se la ajan yo
+ * depanse plis. Reloadly pa antre — HTG Bazik la pa ka peye yon rechaj minit,
+ * men USD Reloadly a pa ka peye yon transfè MonCash non plis.
+ *
+ * Si nou pa ka mezire (Bazik pa reponn, to manke), nou REFIZE: pa gen kredi
+ * "pou granmesi".
+ *
+ * @returns {Promise<{allowed: boolean, code?: string, message?: string, status?: number,
+ *   debtHtg?: number, bazikHtg?: number, creditHtg?: number, maxCreditHtg?: number}>}
+ */
+async function checkCreditCapacity({ enterpriseId, creditMinor, currency, targetRole }) {
+  // Wallet owner an se antrepriz la menm: se pa yon dèt.
+  if (String(targetRole || "").toLowerCase() === "owner") {
+    return { allowed: true };
+  }
+
+  const rates = getBazikService().rates;
+  const [debt, bazik] = await Promise.all([liabilities(enterpriseId, rates), bazikCoverage()]);
+
+  const unknown = (detail) => ({
+    allowed: false,
+    status: 503,
+    code: "solvency_unknown",
+    message: `Nou pa ka verifye pwovizyon Bazik la (${detail}). Kredi a refize pou pwoteje antrepriz la.`,
+  });
+
+  if (debt.reasons.length) return unknown(debt.reasons.join("; "));
+  if (!bazik.ok) return unknown(bazik.error);
+  if (bazik.htgMinor === null) return unknown(`Bazik an ${bazik.currency}, pa HTG`);
+
+  let creditHtgMinor;
+  try {
+    creditHtgMinor = (await rates.convert(creditMinor, currency, "HTG")).amountMinor;
+  } catch (err) {
+    return unknown(`${currency}: ${err.code || err.message}`);
+  }
+
+  const maxCreditHtgMinor = Math.max(0, bazik.htgMinor - debt.htgMinor);
+  const result = {
+    debtHtg: money.fromMinor(debt.htgMinor),
+    bazikHtg: money.fromMinor(bazik.htgMinor),
+    creditHtg: money.fromMinor(creditHtgMinor),
+    maxCreditHtg: money.fromMinor(maxCreditHtgMinor),
+  };
+
+  if (creditHtgMinor > maxCreditHtgMinor) {
+    const fmt = (minor) =>
+      `${money.fromMinor(minor).toLocaleString("fr-FR", { minimumFractionDigits: 2 })} HTG`;
+    return {
+      ...result,
+      allowed: false,
+      status: 409,
+      code: "insufficient_coverage",
+      message:
+        `Pwovizyon Bazik la pa ka kouvri kredi sa a: ${fmt(bazik.htgMinor)} disponib, ` +
+        `${fmt(debt.htgMinor)} deja pwomèt bay staff la. ` +
+        `Maksimòm ou ka kredite kounye a: ${fmt(maxCreditHtgMinor)} ` +
+        `(ou mande ${fmt(creditHtgMinor)}).`,
+    };
+  }
+
+  return { ...result, allowed: true };
+}
+
+/**
+ * Seri tout kredi yon antrepriz: de apwobasyon an menm tan pa dwe tou de wè
+ * menm pwovizyon an, epi tou de pase. Yon sèl pwosesis Node, donk yon chèn
+ * promès pa antrepriz ase.
+ */
+const creditLocks = new Map();
+
+function withCreditLock(enterpriseId, fn) {
+  const previous = creditLocks.get(enterpriseId) || Promise.resolve();
+  const run = previous.catch(() => {}).then(fn);
+  const tail = run.catch(() => {});
+  creditLocks.set(enterpriseId, tail);
+  tail.then(() => {
+    if (creditLocks.get(enterpriseId) === tail) creditLocks.delete(enterpriseId);
+  });
+  return run;
+}
+
+module.exports = {
+  checkSolvency,
+  solvencyNotification,
+  checkCreditCapacity,
+  withCreditLock,
+  DEFAULT_BUFFER,
+};
