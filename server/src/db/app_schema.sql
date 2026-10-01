@@ -152,3 +152,12 @@ CREATE TABLE IF NOT EXISTS exchange_rate_fetches (
 );
 
 CREATE INDEX IF NOT EXISTS idx_rate_fetches_time ON exchange_rate_fetches (attempted_at DESC);
+
+-- Konfigirasyon antrepriz la (kle/valè). `exchange_margin_htg` se majin owner
+-- an mete sou to echanj yo: li soustrè de chak to brit avan konvèsyon.
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  updated_by TEXT NOT NULL DEFAULT ''
+);

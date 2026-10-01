@@ -25,6 +25,7 @@ const { getBazikService } = require("../bazik_service");
 const { requireAuth, requireRole, requireEnterprise } = require("../auth/middleware");
 const { money } = require("../../../bazik/index.js");
 const AppIds = require("../../../bazik/src/ids");
+const { getExchangeMargin, applyMargin } = require("../settings/settings");
 
 const router = express.Router();
 
@@ -68,19 +69,31 @@ router.get("/me", requireAuth, requireEnterprise, async (req, res) => {
   }
 });
 
-/** To echanj yo — UI a sèvi ak sa pou montre konvèsyon an anvan validasyon. */
+/** To echanj yo — UI a sèvi ak sa pou montre konvèsyon an anvan validasyon.
+ *  Nou aplike majin owner an isit la tou pou UI a montre menm valè ak sa
+ *  serveur a pral itilize nan konvèsyon aktyèl la. */
 router.get("/rates", requireAuth, (req, res) => {
   try {
     const rows = getDb()
       .prepare("SELECT currency, rate_to_htg FROM exchange_rates ORDER BY currency")
       .all();
 
+    const margin = getExchangeMargin();
     const rates = {};
-    for (const row of rows) rates[row.currency] = row.rate_to_htg;
+    for (const row of rows) {
+      rates[row.currency] =
+        row.currency === "HTG" ? row.rate_to_htg : applyMargin(row.rate_to_htg, margin);
+    }
 
     // `meta`: sous ak dat to yo. UI a ka montre "to jounen an" oswa avèti si
-    // yo pa ajou. Kle API a pa janm la.
-    return res.json({ ok: true, rates, meta: getRatesRefresher().status() });
+    // yo pa ajou. Kle API a pa janm la. Nou ajoute majin aktyèl la pou UI a
+    // ka siyale konbyen soustrè sou chak to.
+    return res.json({
+      ok: true,
+      rates,
+      margin,
+      meta: getRatesRefresher().status(),
+    });
   } catch (err) {
     return send(res, err);
   }

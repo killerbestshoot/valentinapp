@@ -139,7 +139,8 @@ class WalletApi {
   static void reset() => _instance = null;
 
   /// To echanj yo (vè HTG). UI a sèvi ak sa pou montre konvèsyon an anvan
-  /// validasyon; se serveur a ki fè konvèsyon ki konte a.
+  /// validasyon; se serveur a ki fè konvèsyon ki konte a. To ki retounen la
+  /// deja gen majin owner an soustrè.
   Future<Map<String, double>> rates() async {
     final json = await _client.get('/api/wallets/rates');
     final raw = (json['rates'] as Map?) ?? const {};
@@ -150,6 +151,21 @@ class WalletApi {
     });
 
     return rates;
+  }
+
+  /// Majin owner an sou to echanj yo (an HTG pa inite). Retounen 0 si pa gen.
+  Future<double> exchangeMargin() async {
+    final json = await _client.get('/api/settings/exchange-margin');
+    final value = json['margin'];
+    return value is num ? value.toDouble() : 0;
+  }
+
+  /// Mete ajou majin owner an. Owner sèlman ka rele sa a.
+  Future<double> setExchangeMargin(double margin) async {
+    final json =
+        await _client.patch('/api/settings/exchange-margin', {'margin': margin});
+    final value = json['margin'];
+    return value is num ? value.toDouble() : 0;
   }
 
   Future<WalletSummary> mine() async {

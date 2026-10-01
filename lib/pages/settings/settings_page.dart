@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:mon_premye_app/core/models/app_role.dart';
 import 'package:mon_premye_app/core/network/api_base.dart';
 import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
 import 'package:mon_premye_app/features/auth/data/http_auth_repository.dart';
+import 'package:mon_premye_app/features/wallet/data/wallet_api.dart';
 import 'package:mon_premye_app/pages/notifications/notifications_page.dart';
 import 'package:mon_premye_app/widgets/dashboard_ui.dart';
 
@@ -158,6 +160,7 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = AuthRepositoryProvider.instance.currentUser;
+    final isOwner = user?.role == AppRole.owner;
 
     return DashboardPage(
       title: 'Paramèt',
@@ -174,6 +177,10 @@ class SettingsPage extends StatelessWidget {
           subtitle: 'Chanje modpas ou',
           onTap: () => _changePassword(context),
         ),
+        if (isOwner) ...[
+          const SizedBox(height: 12),
+          const _ExchangeMarginTile(),
+        ],
         const SizedBox(height: 12),
         DashboardActionTile(
           icon: Icons.notifications_outlined,
@@ -202,6 +209,155 @@ class SettingsPage extends StatelessWidget {
           color: const Color(0xFFB91C1C),
         ),
       ],
+    );
+  }
+}
+
+/// Owner an sèlman: majin an HTG ki soustrè de chak to echanj. Egzanp: to
+/// MXN 7.60, majin 0.80 → to efektif 6.80. Antrepriz la kenbe diferans la.
+class _ExchangeMarginTile extends StatefulWidget {
+  const _ExchangeMarginTile();
+
+  @override
+  State<_ExchangeMarginTile> createState() => _ExchangeMarginTileState();
+}
+
+class _ExchangeMarginTileState extends State<_ExchangeMarginTile> {
+  static const double _maxMargin = 0.80;
+  double? _current;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final value = await WalletApi.instance.exchangeMargin();
+      if (!mounted) return;
+      setState(() {
+        _current = value;
+        _loading = false;
+      });
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _error = err.message;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _openEditor() async {
+    final current = _current ?? 0;
+    final controller = TextEditingController(text: current.toStringAsFixed(2));
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Majin to echanj'),
+            content: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Montan an HTG ki soustrè de chak to echanj (max 0.80).\n'
+                    'Egzanp: 7.60 HTG → 6.80 HTG si majin an 0.80.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF607064)),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: controller,
+                    autofocus: true,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Majin (HTG)',
+                      prefixIcon: Icon(Icons.percent),
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      final text = (value ?? '').replaceAll(',', '.').trim();
+                      final number = double.tryParse(text);
+                      if (number == null || number < 0) {
+                        return 'Antre yon valè ki pa negatif.';
+                      }
+                      if (number > _maxMargin) {
+                        return 'Pa plis pase ${_maxMargin.toStringAsFixed(2)} HTG.';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Anile'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (formKey.currentState!.validate()) {
+                    Navigator.pop(dialogContext, true);
+                  }
+                },
+                child: const Text('Anrejistre'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    final newValue = double.tryParse(
+      controller.text.replaceAll(',', '.').trim(),
+    );
+    controller.dispose();
+
+    if (!confirmed || newValue == null) return;
+
+    try {
+      final saved = await WalletApi.instance.setExchangeMargin(newValue);
+      if (!mounted) return;
+      setState(() => _current = saved);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Majin an mete sou ${saved.toStringAsFixed(2)} HTG.',
+          ),
+        ),
+      );
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(err.message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = _current;
+    final subtitle = _loading
+        ? 'Chaje…'
+        : _error != null
+            ? _error!
+            : value == null || value <= 0
+                ? 'Pa gen majin aktive (to brit la itilize)'
+                : 'Majin aktyèl: ${value.toStringAsFixed(2)} HTG pa inite';
+
+    return DashboardActionTile(
+      icon: Icons.swap_horiz_outlined,
+      title: 'Majin to echanj',
+      subtitle: subtitle,
+      onTap: _loading ? null : _openEditor,
+      color: const Color(0xFF0F766E),
     );
   }
 }

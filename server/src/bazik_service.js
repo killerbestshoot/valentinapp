@@ -13,9 +13,35 @@
 
 const path = require("node:path");
 
-const { createSqliteService } = require("../../bazik/index.js");
+const {
+  createBazikService,
+  createSqliteStore,
+} = require("../../bazik/index.js");
+const { applyMargin } = require("./settings/settings");
 
 let service = null;
+
+/**
+ * Entèsepte lekti to echanj pou soustrè majin owner an. Ekriti rete sou valè
+ * brit API a: majin lan se yon politik aplikasyon, pa yon pwopriyete done yo.
+ */
+function wrapStoreWithMargin(store) {
+  return {
+    ...store,
+    async getRateToHtg(currency) {
+      const rate = await store.getRateToHtg(currency);
+      const code = String(currency || "").toUpperCase().trim();
+      if (code === "HTG") return rate;
+      return applyMargin(rate);
+    },
+    async getRateInfo(currency) {
+      const info = await store.getRateInfo(currency);
+      const code = String(currency || "").toUpperCase().trim();
+      if (code === "HTG" || !info) return info;
+      return { ...info, rateToHtg: applyMargin(info.rateToHtg) };
+    },
+  };
+}
 
 function getBazikService() {
   if (service) return service;
@@ -31,8 +57,8 @@ function getBazikService() {
   // An pwodiksyon, yon konvèsyon ant de deviz mande to jounen an (API), pa
   // valè fiks `seed` yo. Gade `bazik/src/rates.js`.
   const maxAgeHours = Number(process.env.RATES_MAX_AGE_HOURS || 168);
-  service = createSqliteService({
-    file,
+  service = createBazikService({
+    store: wrapStoreWithMargin(createSqliteStore({ file })),
     ratesPolicy: {
       requireFresh: process.env.NODE_ENV === "production",
       maxAgeMs: maxAgeHours * 3600 * 1000,
