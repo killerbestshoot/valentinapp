@@ -293,6 +293,8 @@ class _StaffRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pending = staff.isPendingApproval;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -301,12 +303,20 @@ class _StaffRow extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: DashboardColors.soft,
+              color: pending
+                  ? const Color(0xFFFFF4E5)
+                  : DashboardColors.soft,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
-              staff.isActive ? Icons.person_outline : Icons.person_off_outlined,
-              color: DashboardColors.brand,
+              pending
+                  ? Icons.hourglass_bottom
+                  : (staff.isActive
+                      ? Icons.person_outline
+                      : Icons.person_off_outlined),
+              color: pending
+                  ? const Color(0xFFB45309)
+                  : DashboardColors.brand,
             ),
           ),
           const SizedBox(width: 12),
@@ -314,15 +324,45 @@ class _StaffRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  staff.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: DashboardColors.ink,
-                    fontWeight: FontWeight.w900,
-                    decoration: staff.isActive ? null : TextDecoration.lineThrough,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        staff.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: DashboardColors.ink,
+                          fontWeight: FontWeight.w900,
+                          decoration: staff.isActive
+                              ? null
+                              : TextDecoration.lineThrough,
+                        ),
+                      ),
+                    ),
+                    if (pending) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF4E5),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFF59E0B)),
+                        ),
+                        child: const Text(
+                          'Tann apwobasyon',
+                          style: TextStyle(
+                            color: Color(0xFFB45309),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 Text(
                   '${staff.email} | ${staff.role}',
@@ -337,29 +377,49 @@ class _StaffRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            '${staff.balance.toStringAsFixed(2)} ${staff.currency}',
-            style: const TextStyle(
-              color: DashboardColors.brand,
-              fontWeight: FontWeight.w900,
+          if (!pending)
+            Text(
+              '${staff.balance.toStringAsFixed(2)} ${staff.currency}',
+              style: const TextStyle(
+                color: DashboardColors.brand,
+                fontWeight: FontWeight.w900,
+              ),
             ),
-          ),
-          IconButton(
-            tooltip: 'Ajoute fon',
-            onPressed: onAddFunds,
-            icon: const Icon(
-              Icons.add_card_outlined,
-              color: DashboardColors.brand,
+          if (pending)
+            FilledButton.icon(
+              onPressed: onToggle,
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('Apwouve'),
+              style: FilledButton.styleFrom(
+                backgroundColor: DashboardColors.brand,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+              ),
+            )
+          else ...[
+            IconButton(
+              tooltip: 'Ajoute fon',
+              onPressed: onAddFunds,
+              icon: const Icon(
+                Icons.add_card_outlined,
+                color: DashboardColors.brand,
+              ),
             ),
-          ),
-          IconButton(
-            tooltip: staff.isActive ? 'Dezaktive' : 'Aktive',
-            onPressed: onToggle,
-            icon: Icon(
-              staff.isActive ? Icons.toggle_on : Icons.toggle_off_outlined,
-              color: staff.isActive ? DashboardColors.brand : DashboardColors.muted,
+            IconButton(
+              tooltip: staff.isActive ? 'Dezaktive' : 'Aktive',
+              onPressed: onToggle,
+              icon: Icon(
+                staff.isActive
+                    ? Icons.toggle_on
+                    : Icons.toggle_off_outlined,
+                color: staff.isActive
+                    ? DashboardColors.brand
+                    : DashboardColors.muted,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

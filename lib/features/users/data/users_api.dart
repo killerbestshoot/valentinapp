@@ -12,6 +12,7 @@ class StaffMember {
     required this.currency,
     this.enterpriseId = '',
     this.enterpriseName = '',
+    this.createdBy = '',
   });
 
   final String uid;
@@ -23,6 +24,13 @@ class StaffMember {
   final String currency;
   final String enterpriseId;
   final String enterpriseName;
+
+  /// Ki moun ki te kreye kont la: `bootstrap`, `self_register`, oswa `uid`
+  /// yon admin. Nou sèvi ak sa pou distenge yon kont ki tann apwobasyon
+  /// pou yon kont owner te dezaktive.
+  final String createdBy;
+
+  bool get isPendingApproval => !isActive && createdBy == 'self_register';
 
   String get label => displayName.isEmpty ? email : displayName;
 
@@ -37,6 +45,7 @@ class StaffMember {
       currency: '${json['currency'] ?? 'USD'}',
       enterpriseId: '${json['enterpriseId'] ?? ''}',
       enterpriseName: '${json['enterpriseName'] ?? ''}',
+      createdBy: '${json['createdBy'] ?? ''}',
     );
   }
 }
@@ -83,6 +92,22 @@ class UsersApi {
     });
 
     return StaffMember.fromJson(json['user'] as Map<String, dynamic>);
+  }
+
+  /// Enskripsyon libè pou yon ajan. Kont lan rete bloke jiskaske yon owner
+  /// apwouve l nan ekran Agents.
+  Future<void> registerAgent({
+    required String email,
+    required String password,
+    required String displayName,
+    String currency = 'USD',
+  }) async {
+    await _client.post('/api/auth/register-agent', {
+      'email': email,
+      'password': password,
+      'displayName': displayName,
+      'currency': currency,
+    });
   }
 
   Future<StaffMember> setActive(String uid, bool isActive) async {

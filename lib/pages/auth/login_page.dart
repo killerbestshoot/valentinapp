@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mon_premye_app/core/session/session_store.dart';
 import 'package:mon_premye_app/features/auth/domain/auth_repository.dart';
 import 'package:mon_premye_app/features/auth/domain/login_use_case.dart';
+import 'package:mon_premye_app/features/users/data/users_api.dart';
 import 'package:mon_premye_app/services/auth/remember_me_service.dart';
 
 enum _AuthMode { login, register }
@@ -32,6 +33,11 @@ class _LoginPageState extends State<LoginPage> {
   bool _showPassword = false;
   bool _showConfirmPassword = false;
   bool _rememberMe = false;
+
+  /// Deviz wallet pou kont ajan k ap enskri a. Li fikse apre kreyasyon, menm
+  /// jan ak sa ki fèt nan `CreateAgentScreen`.
+  static const _registrationCurrencies = ['HTG', 'MXN', 'USD'];
+  String _registrationCurrency = 'USD';
 
   bool get _isLogin => _mode == _AuthMode.login;
 
@@ -82,6 +88,7 @@ class _LoginPageState extends State<LoginPage> {
 
     final email = _emailCtrl.text.trim();
     final password = _passCtrl.text;
+    final displayName = _nameCtrl.text.trim();
 
     setState(() => _loading = true);
 
@@ -91,20 +98,21 @@ class _LoginPageState extends State<LoginPage> {
           email: email,
           password: password,
         );
+
+        await RememberMeService.instance.save(
+          rememberMe: _rememberMe,
+          email: email,
+        );
+
+        if (!mounted) return;
+        context.go('/');
       } else {
-        await _loginUseCase.signUp(
+        await _registerAgent(
           email: email,
           password: password,
+          displayName: displayName,
         );
       }
-
-      await RememberMeService.instance.save(
-        rememberMe: _rememberMe,
-        email: email,
-      );
-
-      if (!mounted) return;
-      context.go('/');
     } catch (e) {
       _showMessage(_authErrorMessage(e));
     } finally {
@@ -112,6 +120,56 @@ class _LoginPageState extends State<LoginPage> {
         setState(() => _loading = false);
       }
     }
+  }
+
+  /// Enskripsyon ajan: nou eseye `/register-agent` dabò. Si sistèm nan poko
+  /// bootstrap (okenn owner), nou tonbe sou `/bootstrap` pou kreye premye
+  /// owner an — se menm pakouran "Kreye kont" lan te genyen anvan.
+  Future<void> _registerAgent({
+    required String email,
+    required String password,
+    required String displayName,
+  }) async {
+    try {
+      await UsersApi.instance.registerAgent(
+        email: email,
+        password: password,
+        displayName: displayName,
+        currency: _registrationCurrency,
+      );
+    } on ApiException catch (err) {
+      if (err.code == 'no_enterprise') {
+        // Premye demaraj: pa gen antrepriz toujou, kreye owner an.
+        await _loginUseCase.signUp(email: email, password: password);
+
+        await RememberMeService.instance.save(
+          rememberMe: _rememberMe,
+          email: email,
+        );
+
+        if (!mounted) return;
+        context.go('/');
+        return;
+      }
+      rethrow;
+    }
+
+    await RememberMeService.instance.save(
+      rememberMe: _rememberMe,
+      email: email,
+    );
+
+    if (!mounted) return;
+
+    _showMessage(
+      'Kont ou kreye. Yon owner dwe apwouve l anvan ou ka konekte.',
+    );
+    setState(() {
+      _mode = _AuthMode.login;
+      _passCtrl.clear();
+      _confirmCtrl.clear();
+      _nameCtrl.clear();
+    });
   }
 
   Future<void> _sendPasswordReset() async {
@@ -197,7 +255,8 @@ class _LoginPageState extends State<LoginPage> {
         case 'invalid_credentials':
           return 'Imel oswa modpas pa bon.';
         case 'account_disabled':
-          return 'Kont sa a dezaktive. Kontakte administratè a.';
+          return 'Kont sa a poko aktif. Owner an dwe apwouve l oswa '
+              'reaktive l.';
         case 'too_many_attempts':
           return error.message;
         case 'email_taken':
@@ -305,7 +364,8 @@ class _LoginPageState extends State<LoginPage> {
               Text(
                 _isLogin
                     ? 'Antre nan kont VOUPVAPCASH ou pou jere tranzaksyon yo.'
-                    : 'Kreye yon kont client ak yon userId UUID v4.',
+                    : 'Enskri kòm ajan. Yon owner ap apwouve kont ou anvan '
+                        'premye koneksyon ou.',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: const Color(0xFF607064),
                 ),
@@ -371,12 +431,9 @@ class _LoginPageState extends State<LoginPage> {
                 TextFormField(
                   controller: _confirmCtrl,
                   obscureText: !_showConfirmPassword,
-                  textInputAction: TextInputAction.done,
+                  textInputAction: TextInputAction.next,
                   autofillHints: const [AutofillHints.newPassword],
                   validator: _validateConfirmPassword,
-                  onFieldSubmitted: (_) {
-                    if (!_loading) _submit();
-                  },
                   decoration: const InputDecoration(
                     labelText: 'Konfime modpas',
                     prefixIcon: Icon(Icons.lock_reset_outlined),
@@ -398,6 +455,29 @@ class _LoginPageState extends State<LoginPage> {
                       },
                     ),
                   ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: _registrationCurrency,
+                  decoration: const InputDecoration(
+                    labelText: 'Deviz wallet la',
+                    prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+                    helperText:
+                        'Li pa ka chanje apre. Rechaj nan yon lòt deviz ap konvèti.',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _registrationCurrencies
+                      .map((code) => DropdownMenuItem(
+                            value: code,
+                            child: Text(code),
+                          ))
+                      .toList(),
+                  onChanged: _loading
+                      ? null
+                      : (value) => setState(
+                            () =>
+                                _registrationCurrency = value ?? 'USD',
+                          ),
                 ),
               ],
               const SizedBox(height: 10),

@@ -75,6 +75,7 @@ async function createUser({
   createdBy = "",
   mustChangePassword = false,
   currency = "USD",
+  isActive = true,
 }) {
   const normalizedEmail = normalizeEmail(email);
 
@@ -122,9 +123,10 @@ async function createUser({
       `INSERT INTO users
         (uid, email, password_hash, password_salt, display_name, role, is_active,
          must_change_password, created_at, updated_at, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       uid, normalizedEmail, hash, salt, displayName, role,
+      isActive ? 1 : 0,
       mustChangePassword ? 1 : 0, timestamp, timestamp, createdBy
     );
 

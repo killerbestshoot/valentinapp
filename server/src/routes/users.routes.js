@@ -51,7 +51,7 @@ function listStaff(enterpriseId) {
   return getDb()
     .prepare(
       `SELECT u.uid, u.email, u.display_name, u.role, u.is_active,
-              u.last_login_at, u.created_at,
+              u.last_login_at, u.created_at, u.created_by,
               eu.enterprise_id, eu.enterprise_name,
               w.balance_minor, w.currency
          FROM enterprise_users eu
@@ -73,6 +73,7 @@ function listStaff(enterpriseId) {
       currency: row.currency || "USD",
       lastLoginAt: row.last_login_at,
       createdAt: row.created_at,
+      createdBy: row.created_by || "",
     }));
 }
 

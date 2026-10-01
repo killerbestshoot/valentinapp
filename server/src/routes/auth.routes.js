@@ -116,6 +116,69 @@ router.post("/bootstrap", async (req, res) => {
   }
 });
 
+/**
+ * Enskripsyon libè pou yon ajan: li kreye kont la san sesyon, epi li rete
+ * `is_active = 0` jiskaske yon owner (oswa admin) apwouve l nan ekran Agents.
+ *
+ * Nou tache ajan an sou PREMYE antrepriz ki egziste a. Si pa gen okenn
+ * (sistèm pa bootstrap toujou), nou refize ak yon mesaj klè.
+ */
+router.post("/register-agent", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const email = String(body.email || "");
+
+    const gate = throttle(email);
+    if (!gate.allowed) {
+      return res.status(429).json({
+        ok: false,
+        code: "too_many_attempts",
+        message: `Twòp tantativ. Tann ${gate.retryAfterSeconds} segond.`,
+        retryAfterSeconds: gate.retryAfterSeconds,
+      });
+    }
+
+    const enterprise = getDb()
+      .prepare(
+        `SELECT enterprise_id, name FROM enterprises
+          WHERE is_active = 1 ORDER BY created_at ASC LIMIT 1`
+      )
+      .get();
+
+    if (!enterprise) {
+      return res.status(409).json({
+        ok: false,
+        code: "no_enterprise",
+        message:
+          "Sistèm nan poko konfigire. Owner an dwe kreye antrepriz la anvan.",
+      });
+    }
+
+    await users.createUser({
+      email,
+      password: String(body.password || ""),
+      displayName: String(body.displayName || "").trim(),
+      role: "agent",
+      enterpriseId: enterprise.enterprise_id,
+      enterpriseName: enterprise.name,
+      createdBy: "self_register",
+      mustChangePassword: false,
+      currency: String(body.currency || "USD").toUpperCase(),
+      // Kont lan rete bloke jiskaske yon owner apwouve l nan ekran Agents.
+      isActive: false,
+    });
+
+    return res.json({
+      ok: true,
+      pending: true,
+      message:
+        "Kont ou kreye. Yon owner dwe apwouve l anvan ou ka konekte.",
+    });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
 router.post("/login", async (req, res) => {
   const email = String(req.body?.email || "");
   const password = String(req.body?.password || "");
