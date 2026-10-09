@@ -4,7 +4,7 @@ require("dotenv").config();
 
 const otpRoutes = require("./routes/otp.routes");
 const bazikRoutes = require("./routes/bazik.routes");
-const pslRoutes = require("./routes/psl.routes");
+const { router: pslRoutes } = require("./routes/psl.routes");
 const airtimeRoutes = require("./routes/airtime.routes");
 const authRoutes = require("./routes/auth.routes");
 const transactionRoutes = require("./routes/transactions.routes");
