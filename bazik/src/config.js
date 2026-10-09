@@ -55,6 +55,7 @@ function loadConfig(env = process.env) {
     psl: {
       enabled: Boolean(readEnv(env, "PSL_API_KEY")),
       apiKey: readEnv(env, "PSL_API_KEY"),
+      webhookSecret: readEnv(env, "PSL_WEBHOOK_SECRET"),
       baseUrl: readEnv(env, "PSL_BASE_URL") || "https://api.pslwallet.com",
       requestTimeoutMs: Number(readEnv(env, "PSL_TIMEOUT_MS") || 20000),
     },

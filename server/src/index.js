@@ -4,6 +4,7 @@ require("dotenv").config();
 
 const otpRoutes = require("./routes/otp.routes");
 const bazikRoutes = require("./routes/bazik.routes");
+const pslRoutes = require("./routes/psl.routes");
 const airtimeRoutes = require("./routes/airtime.routes");
 const authRoutes = require("./routes/auth.routes");
 const transactionRoutes = require("./routes/transactions.routes");
@@ -82,6 +83,7 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/system", systemRoutes);
 app.use("/api/otp", otpRoutes);
 app.use("/api/bazik", bazikRoutes);
+app.use("/api/psl", pslRoutes);
 app.use("/api/airtime", airtimeRoutes);
 
 const PORT = Number(process.env.PORT || 4700);
