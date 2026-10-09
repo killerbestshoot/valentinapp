@@ -52,6 +52,12 @@ function loadConfig(env = process.env) {
     /** Limit Bazik: 100 req/min. Nou rete anba pou nou pa pran 429. */
     maxRequestsPerMinute: Number(readEnv(env, "BAZIK_MAX_RPM") || 90),
     requestTimeoutMs: Number(readEnv(env, "BAZIK_TIMEOUT_MS") || 20000),
+    psl: {
+      enabled: Boolean(readEnv(env, "PSL_API_KEY")),
+      apiKey: readEnv(env, "PSL_API_KEY"),
+      baseUrl: readEnv(env, "PSL_BASE_URL") || "https://api.pslwallet.com",
+      requestTimeoutMs: Number(readEnv(env, "PSL_TIMEOUT_MS") || 20000),
+    },
   };
 }
 

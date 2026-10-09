@@ -15,6 +15,7 @@ const { createTopupUseCases } = require("./topup");
 const { createWebhookHandler } = require("./webhook");
 const { assertStore } = require("./store/port");
 const { createRateBook } = require("./rates");
+const { createPslClient } = require("./psl_client");
 
 /**
  * @param {object} options
@@ -26,15 +27,25 @@ const { createRateBook } = require("./rates");
  * @param {object} [options.ratesPolicy] `{ requireFresh, maxAgeMs }` — serveur a
  *   mande to fre an pwodiksyon (gade `rates.js`).
  */
-function createBazikService({ store, client, config, env, ratesPolicy = {} } = {}) {
+function createBazikService({ store, client, pslClient, config, env, ratesPolicy = {}, isPslFallbackEnabled } = {}) {
   assertStore(store);
   const rates = createRateBook({ store, ...ratesPolicy });
 
   const resolvedConfig = config || loadConfig(env);
   const resolvedClient =
     client || (resolvedConfig.isFake ? createFakeBazikClient() : createBazikClient(resolvedConfig));
+  // Pa voye lajan reyèl bay PSL lè Bazik nan similasyon lokal la.
+  const resolvedPslClient = pslClient ||
+    (!resolvedConfig.isFake && resolvedConfig.psl?.enabled ? createPslClient(resolvedConfig.psl) : null);
 
-  const transfers = createTransferUseCases({ store, client: resolvedClient, config: resolvedConfig, rates });
+  const transfers = createTransferUseCases({
+    store,
+    client: resolvedClient,
+    pslClient: resolvedPslClient,
+    config: resolvedConfig,
+    rates,
+    isPslFallbackEnabled,
+  });
   const topups = createTopupUseCases({ store, client: resolvedClient, config: resolvedConfig, rates });
   const webhooks = createWebhookHandler({
     store,

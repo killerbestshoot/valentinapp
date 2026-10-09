@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS wallet_topup_requests (
 );
 
 -- Transfè soti (payout bay yon staff, oswa livrezon bay yon benefisyè).
--- `fee_htg_minor` / `total_htg_minor`: Bazik pran 5% (gade docs/contract.md).
+-- `fee_htg_minor` / `total_htg_minor`: provider rate (Bazik 5%, PSL 7%).
 CREATE TABLE IF NOT EXISTS bazik_transfers (
   transfer_id      TEXT PRIMARY KEY,
   reference        TEXT NOT NULL UNIQUE,    -- referenceId nou voye bay Bazik
@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS bazik_transfers (
   status           TEXT NOT NULL DEFAULT 'pending',
   gateway_id       TEXT NOT NULL DEFAULT '',
   gateway_status   TEXT NOT NULL DEFAULT '',
+  provider         TEXT NOT NULL DEFAULT 'bazik',
   amount_minor     INTEGER NOT NULL,        -- montan an, nan deviz demann lan
   currency         TEXT NOT NULL DEFAULT 'USD',
   amount_htg_minor INTEGER NOT NULL,        -- sa benefisyè a resevwa

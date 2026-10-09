@@ -17,7 +17,7 @@ const {
   createBazikService,
   createSqliteStore,
 } = require("../../bazik/index.js");
-const { applyMargin } = require("./settings/settings");
+const { applyMargin, getPslFallbackEnabled } = require("./settings/settings");
 
 let service = null;
 
@@ -63,6 +63,9 @@ function getBazikService() {
       requireFresh: process.env.NODE_ENV === "production",
       maxAgeMs: maxAgeHours * 3600 * 1000,
     },
+    isPslFallbackEnabled: () =>
+      Boolean(service?.config.psl?.enabled && !service.config.isFake) &&
+      getPslFallbackEnabled(Boolean(service?.config.psl?.enabled && !service.config.isFake)),
   });
 
   console.log(`[bazik] mòd=${service.config.mode} db=${file}`);

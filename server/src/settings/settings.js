@@ -11,7 +11,32 @@
 const { getDb, now } = require("../db/db");
 
 const EXCHANGE_MARGIN_KEY = "exchange_margin_htg";
+const PSL_FALLBACK_KEY = "psl_moncash_fallback_enabled";
 const MAX_EXCHANGE_MARGIN = 0.8;
+
+function getPslFallbackEnabled(defaultEnabled = false) {
+  const row = getDb().prepare("SELECT value FROM app_settings WHERE key = ?").get(PSL_FALLBACK_KEY);
+  if (!row) return Boolean(defaultEnabled);
+  return row.value === "true";
+}
+
+function setPslFallbackEnabled(enabled, updatedBy = "") {
+  if (typeof enabled !== "boolean") {
+    const err = new Error("Valè fallback PSL la dwe vre oswa fo.");
+    err.code = "invalid_psl_fallback";
+    err.status = 400;
+    throw err;
+  }
+  getDb()
+    .prepare(
+      `INSERT INTO app_settings (key, value, updated_at, updated_by)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+         updated_at = excluded.updated_at, updated_by = excluded.updated_by`
+    )
+    .run(PSL_FALLBACK_KEY, String(enabled), now(), updatedBy);
+  return enabled;
+}
 
 function getExchangeMargin() {
   const row = getDb()
@@ -62,8 +87,11 @@ function applyMargin(rate, margin = getExchangeMargin()) {
 
 module.exports = {
   EXCHANGE_MARGIN_KEY,
+  PSL_FALLBACK_KEY,
   MAX_EXCHANGE_MARGIN,
   getExchangeMargin,
+  getPslFallbackEnabled,
   setExchangeMargin,
+  setPslFallbackEnabled,
   applyMargin,
 };

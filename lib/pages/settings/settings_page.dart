@@ -78,9 +78,8 @@ class SettingsPage extends StatelessWidget {
                       labelText: 'Nouvo modpas',
                       helperText: 'Omwen 8 karaktè.',
                     ),
-                    validator: (v) => (v ?? '').length < 8
-                        ? 'Omwen 8 karaktè.'
-                        : null,
+                    validator: (v) =>
+                        (v ?? '').length < 8 ? 'Omwen 8 karaktè.' : null,
                   ),
                   const SizedBox(height: 8),
                   const Text(
@@ -154,7 +153,8 @@ class SettingsPage extends StatelessWidget {
   }
 
   void _toast(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -180,6 +180,8 @@ class SettingsPage extends StatelessWidget {
         if (isOwner) ...[
           const SizedBox(height: 12),
           const _ExchangeMarginTile(),
+          const SizedBox(height: 12),
+          const _PslFallbackTile(),
         ],
         const SizedBox(height: 12),
         DashboardActionTile(
@@ -209,6 +211,104 @@ class SettingsPage extends StatelessWidget {
           color: const Color(0xFFB91C1C),
         ),
       ],
+    );
+  }
+}
+
+/// Owner sèlman: pèmèt oswa koupe manyèlman PSL kòm fallback pou MonCash.
+class _PslFallbackTile extends StatefulWidget {
+  const _PslFallbackTile();
+
+  @override
+  State<_PslFallbackTile> createState() => _PslFallbackTileState();
+}
+
+class _PslFallbackTileState extends State<_PslFallbackTile> {
+  PslFallbackSettings? _settings;
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final settings = await WalletApi.instance.pslFallbackSettings();
+      if (!mounted) return;
+      setState(() {
+        _settings = settings;
+        _loading = false;
+        _error = null;
+      });
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = err.message;
+      });
+    }
+  }
+
+  Future<void> _setEnabled(bool enabled) async {
+    final previous = _settings;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final saved = await WalletApi.instance.setPslFallbackEnabled(enabled);
+      if (!mounted) return;
+      setState(() {
+        _settings = saved;
+        _saving = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(saved.enabled
+              ? 'Fallback PSL MonCash aktive.'
+              : 'Fallback PSL MonCash dezaktive.'),
+        ),
+      );
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _settings = previous;
+        _saving = false;
+        _error = err.message;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = _settings;
+    final configured = settings?.configured ?? false;
+    final subtitle = _loading
+        ? 'Chaje…'
+        : _error != null
+            ? _error!
+            : !configured
+                ? 'PSL pa konfigire sou sèvè a.'
+                : settings!.enabled
+                    ? 'Si Bazik pa ka voye MonCash, PSL pran relè a (frè 7%).'
+                    : 'Fallback dezaktive; se Bazik sèlman k ap sèvi.';
+
+    return DashboardPanel(
+      padding: EdgeInsets.zero,
+      child: SwitchListTile(
+        secondary: const Icon(Icons.swap_horiz, color: Color(0xFF0F766E)),
+        title: const Text(
+          'Fallback MonCash via PSL',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(subtitle),
+        value: configured && settings?.enabled == true,
+        onChanged: _loading || _saving || !configured ? null : _setEnabled,
+      ),
     );
   }
 }

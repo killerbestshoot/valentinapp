@@ -16,10 +16,18 @@
 
 const AppIds = require("./ids");
 const { DomainError, BazikError } = require("./errors");
+const { PslError } = require("./psl_client");
 const { assertNetworkAmount, feeMinor, fromMinor, DEFAULT_FEE_PERCENT } = require("./money");
 const { createRateBook } = require("./rates");
 
-function createTransferUseCases({ store, client, config, rates = createRateBook({ store }) }) {
+function createTransferUseCases({
+  store,
+  client,
+  pslClient = null,
+  config,
+  rates = createRateBook({ store }),
+  isPslFallbackEnabled = () => Boolean(pslClient),
+}) {
   /**
    * Sòld Bazik la chanje dousman; nou kenbe l yon ti moman pou nou pa boule
    * kota 100 req/min nan ak yon apèl anplis sou chak transfè.
@@ -191,6 +199,114 @@ function createTransferUseCases({ store, client, config, rates = createRateBook(
     return result.failureReason || result.message || "Bazik pa bay yon rezon.";
   }
 
+  async function sendPslFallback({ transferId, amounts, walletCurrency, chargeFeeToWallet, phone, note, kind }) {
+    if (!pslClient) return null;
+
+    // PSL facture 7 %, contre 5 % provisionnés au départ pour Bazik.
+    const pslFeeHtgMinor = Math.round(amounts.amountHtgMinor * 0.07);
+    const previouslyChargedFee = chargeFeeToWallet ? amounts.feeHtgMinor : 0;
+    const extraHtgMinor = Math.max(0, pslFeeHtgMinor - previouslyChargedFee);
+    const transferBeforeFallback = await store.getTransfer(transferId);
+    try {
+      const extraDebit = extraHtgMinor
+        ? await rates.convert(extraHtgMinor, "HTG", walletCurrency)
+        : { amountMinor: 0 };
+      await store.increaseTransferDebit({
+        transferId,
+        amountMinor: extraDebit.amountMinor,
+        feeHtgMinor: pslFeeHtgMinor,
+        totalHtgMinor: amounts.amountHtgMinor + pslFeeHtgMinor,
+        move: {
+          uid: transferBeforeFallback.uid,
+          enterpriseId: transferBeforeFallback.enterpriseId,
+          enterpriseName: transferBeforeFallback.enterpriseName,
+          amountMinor: extraDebit.amountMinor,
+          currency: walletCurrency,
+          type: `${kind}_psl_fee`,
+          note: "Ajisteman frè PSL Wallet (7%)",
+          sourceCollection: "bazik_transfers",
+          sourceId: transferId,
+          txId: transferBeforeFallback.txId,
+          serviceName: "moncash",
+          createdBy: "psl",
+          createdByRole: "system",
+          idempotencyKey: `transfer:psl-fee:${transferId}`,
+        },
+      });
+    } catch (err) {
+      const settled = await store.settleTransfer({
+        transferId,
+        status: "failed",
+        gatewayStatus: "psl_fee_unfunded",
+        failureReason: `Bazik echwe; ajisteman frè PSL pa pase: ${err.message}`,
+      });
+      throw new DomainError(
+        err.code || "insufficient_funds",
+        `Bazik echwe epi sòld la pa kouvri frè PSL yo. Wallet la ranbouse. ${err.message}`,
+        { transfer: settled.transfer }
+      );
+    }
+
+    await store.updateTransfer(transferId, {
+      provider: "psl",
+      status: "processing",
+      gatewayStatus: "psl_submitting",
+    });
+
+    let result;
+    try {
+      result = await pslClient.createPayout({
+        amountHtgMinor: amounts.amountHtgMinor,
+        phone,
+        reference: transferId,
+        description: note || `VOUPVAPCASH ${kind}`,
+      });
+    } catch (err) {
+      const reason = `${err.code || "psl_error"}: ${err.message}`;
+      if (err instanceof PslError && (err.status === 0 || err.status >= 500)) {
+        const pending = await store.updateTransfer(transferId, {
+          status: "processing",
+          gatewayStatus: "psl_unknown",
+          failureReason: `PSL an verifikasyon: ${reason}`,
+        });
+        throw new DomainError(
+          "transfer_pending_verification",
+          `Bazik pa t pase; PSL pa konfime repons li (${reason}). Transfè a an verifikasyon — pa voye l ankò.`,
+          { transfer: pending }
+        );
+      }
+
+      const settled = await store.settleTransfer({
+        transferId,
+        status: "failed",
+        gatewayStatus: "psl_rejected",
+        failureReason: `Bazik echwe; PSL: ${reason}`,
+      });
+      throw new DomainError(
+        err.code || "transfer_failed",
+        `Transfè a pa pase, wallet la ranbouse. Bazik echwe; PSL: ${reason}`,
+        { transfer: settled.transfer }
+      );
+    }
+
+    if (result.status === "failed") {
+      const settled = await store.settleTransfer({
+        transferId,
+        status: "failed",
+        gatewayId: result.gatewayId,
+        gatewayStatus: result.rawStatus,
+        failureReason: `PSL: ${result.failureReason || result.rawStatus}`,
+      });
+      return { transfer: settled.transfer, duplicate: false, refund: settled.refund, mode: client.mode };
+    }
+    const transfer = await store.updateTransfer(transferId, {
+      status: result.status,
+      gatewayId: result.gatewayId,
+      gatewayStatus: result.rawStatus,
+    });
+    return { transfer, duplicate: false, mode: client.mode, provider: "psl" };
+  }
+
   function isAmbiguous(err) {
     // Erè PA NOU (non benefisyè a manke, montan pa valid...): li leve lè n ap
     // konstwi demann lan, AVAN okenn apèl rezo. Bazik pa janm wè anyen, donk
@@ -358,6 +474,10 @@ function createTransferUseCases({ store, client, config, rates = createRateBook(
         );
       }
 
+      if (network === "moncash" && pslClient && isPslFallbackEnabled()) {
+        return sendPslFallback({ transferId, amounts, walletCurrency, chargeFeeToWallet, phone, note, kind });
+      }
+
       // Refi klè: ranbousman san risk.
       const settled = await store.settleTransfer({
         transferId,
@@ -377,6 +497,9 @@ function createTransferUseCases({ store, client, config, rates = createRateBook(
 
     // --- 3) Bazik aksepte ---
     if (result.status === "completed" || result.status === "failed") {
+      if (result.status === "failed" && network === "moncash" && pslClient && isPslFallbackEnabled()) {
+        return sendPslFallback({ transferId, amounts, walletCurrency, chargeFeeToWallet, phone, note, kind });
+      }
       const settled = await store.settleTransfer({
         transferId,
         status: result.status,
@@ -406,6 +529,44 @@ function createTransferUseCases({ store, client, config, rates = createRateBook(
 
     if (transfer.status === "completed" || transfer.status === "failed") {
       return { transfer, changed: false };
+    }
+
+    if (transfer.provider === "psl") {
+      if (!pslClient) throw new DomainError("psl_not_configured", "Kle PSL Wallet pa konfigire sou sèvè a.");
+      let payout;
+      try {
+        payout = await pslClient.payoutStatus(transfer.gatewayId || transfer.reference);
+      } catch (err) {
+        if (err instanceof PslError && err.status === 404) {
+          // PSL garantit l'idempotence sur reference + montant + téléphone :
+          // rejouer la création résout les timeouts sans créer un second payout.
+          payout = await pslClient.createPayout({
+            amountHtgMinor: transfer.amountHtgMinor,
+            phone: transfer.phone,
+            reference: transfer.reference,
+            description: transfer.note || `VOUPVAPCASH ${transfer.kind}`,
+          });
+        } else {
+          throw err;
+        }
+      }
+      if (payout.status !== "completed" && payout.status !== "failed") {
+        const updated = await store.updateTransfer(transferId, {
+          status: "processing",
+          gatewayId: payout.gatewayId,
+          gatewayStatus: payout.rawStatus,
+          failureReason: "",
+        });
+        return { transfer: updated, changed: updated.gatewayId !== transfer.gatewayId };
+      }
+      const settled = await store.settleTransfer({
+        transferId,
+        status: payout.status,
+        gatewayId: payout.gatewayId,
+        gatewayStatus: payout.rawStatus,
+        failureReason: payout.status === "failed" ? `PSL: ${payout.failureReason || payout.rawStatus}` : "",
+      });
+      return { transfer: settled.transfer, changed: !settled.duplicate, refund: settled.refund };
     }
 
     const lookupId = transfer.gatewayId || transfer.reference;

@@ -101,6 +101,7 @@ function mapTransfer(row) {
     status: row.status,
     gatewayId: row.gateway_id,
     gatewayStatus: row.gateway_status,
+    provider: row.provider || "bazik",
     amountMinor: row.amount_minor,
     currency: row.currency,
     amountHtgMinor: row.amount_htg_minor,
@@ -165,6 +166,7 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
     // Ansyen liy yo: frè a te TOUJOU sou wallet la, okenn apelan pa t janm
     // pase `chargeFeeToWallet: false`. Donk 1 se bon pou yo.
     ["fee_charged_to_wallet", "INTEGER NOT NULL DEFAULT 1"],
+    ["provider", "TEXT NOT NULL DEFAULT 'bazik'"],
   ]);
 
   if (seedRates) {
@@ -549,6 +551,7 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
         status: "status",
         gatewayId: "gateway_id",
         gatewayStatus: "gateway_status",
+        provider: "provider",
         failureReason: "failure_reason",
         walletDebited: "wallet_debited",
         refunded: "refunded",
@@ -567,6 +570,20 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
 
       db.prepare(`UPDATE bazik_transfers SET ${sets.join(", ")} WHERE transfer_id = ?`).run(...values);
       return getTransferSync(id);
+    },
+
+    /** Ajoute le supplément de frais PSL et le débit correspondant atomiquement. */
+    async increaseTransferDebit({ transferId, amountMinor, feeHtgMinor, totalHtgMinor, move }) {
+      return tx(() => {
+        const transfer = getTransferSync(transferId);
+        if (!transfer) throw new DomainError("transfer_not_found", `Transfè ${transferId} pa egziste.`);
+        if (amountMinor > 0) moveSync("debit", move);
+        db.prepare(
+          `UPDATE bazik_transfers SET debit_minor = debit_minor + ?, fee_htg_minor = ?,
+             total_htg_minor = ?, fee_charged_to_wallet = 1, updated_at = ? WHERE transfer_id = ?`
+        ).run(amountMinor, feeHtgMinor, totalHtgMinor, now(), transferId);
+        return getTransferSync(transferId);
+      });
     },
 
     /**

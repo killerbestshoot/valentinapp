@@ -35,6 +35,7 @@
  * @property {(id: string) => Promise<object|null>} getTransfer
  * @property {(ref: string) => Promise<object|null>} findTransferByReference
  * @property {(id: string, patch: object) => Promise<object>} updateTransfer
+ * @property {(args: object) => Promise<object>} increaseTransferDebit
  * @property {(args: object) => Promise<object>} settleTransfer ATOMIK: make + ranbouse si echk
  * @property {(limit?: number) => Promise<object[]>} listPendingTransfers
  * @property {(e: object) => Promise<boolean>} recordEvent  false = deja wè (rejwe)
@@ -60,6 +61,7 @@ const REQUIRED_METHODS = [
   "getTransfer",
   "findTransferByReference",
   "updateTransfer",
+  "increaseTransferDebit",
   "settleTransfer",
   "listPendingTransfers",
   "recordEvent",

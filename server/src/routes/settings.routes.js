@@ -8,11 +8,14 @@
  */
 
 const express = require("express");
+const { getBazikService } = require("../bazik_service");
 
 const { requireAuth, requireRole } = require("../auth/middleware");
 const {
   getExchangeMargin,
+  getPslFallbackEnabled,
   setExchangeMargin,
+  setPslFallbackEnabled,
   MAX_EXCHANGE_MARGIN,
 } = require("../settings/settings");
 
@@ -59,5 +62,37 @@ router.patch(
     }
   }
 );
+
+router.get("/psl-fallback", requireAuth, requireRole("owner", "admin"), (req, res) => {
+  try {
+    const config = getBazikService().config;
+    const configured = Boolean(config.psl?.enabled && !config.isFake);
+    return res.json({
+      ok: true,
+      configured,
+      enabled: configured && getPslFallbackEnabled(configured),
+    });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+router.patch("/psl-fallback", requireAuth, requireRole("owner"), (req, res) => {
+  try {
+    const config = getBazikService().config;
+    const configured = Boolean(config.psl?.enabled && !config.isFake);
+    if (req.body?.enabled === true && !configured) {
+      return res.status(409).json({
+        ok: false,
+        code: "psl_not_configured",
+        message: "PSL API pa konfigire sou sèvè a.",
+      });
+    }
+    const saved = setPslFallbackEnabled(req.body?.enabled, req.user.uid);
+    return res.json({ ok: true, configured, enabled: configured && saved });
+  } catch (err) {
+    return send(res, err);
+  }
+});
 
 module.exports = router;

@@ -89,6 +89,13 @@ presque impossibles à provoquer sur la sandbox.
 Les clés vivent dans **`server/.env`**, couvert par `.gitignore` (`*.env`).
 C'est la source unique : le serveur et les scripts y lisent tous les deux.
 
+Pour activer le fournisseur de secours MonCash, renseigner `PSL_API_KEY` dans
+`server/.env`. PSL n'est appelé qu'après un refus/échec Bazik confirmé ; une
+réponse Bazik ambiguë reste en vérification pour éviter un double paiement.
+PSL facture 7 % : le wallet est ajusté au moment du basculement, et les statuts
+PSL sont réconciliés par `POST /api/bazik/transfers/:id/refresh` ou le polling
+existant. NatCash continue d'utiliser Bazik uniquement.
+
 ## Ce qui est réellement possible aujourd'hui
 
 Le contrat a été relevé sur la sandbox : voir [`docs/contract.md`](docs/contract.md).

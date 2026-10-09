@@ -52,6 +52,13 @@ class WalletSummary {
   }
 }
 
+class PslFallbackSettings {
+  const PslFallbackSettings({required this.configured, required this.enabled});
+
+  final bool configured;
+  final bool enabled;
+}
+
 /// Yon mouvman nan rejis la.
 class LedgerEntry {
   const LedgerEntry({
@@ -207,10 +214,29 @@ class WalletApi {
 
   /// Mete ajou majin owner an. Owner sèlman ka rele sa a.
   Future<double> setExchangeMargin(double margin) async {
-    final json =
-        await _client.patch('/api/settings/exchange-margin', {'margin': margin});
+    final json = await _client
+        .patch('/api/settings/exchange-margin', {'margin': margin});
     final value = json['margin'];
     return value is num ? value.toDouble() : 0;
+  }
+
+  Future<PslFallbackSettings> pslFallbackSettings() async {
+    final json = await _client.get('/api/settings/psl-fallback');
+    return PslFallbackSettings(
+      configured: json['configured'] == true,
+      enabled: json['enabled'] == true,
+    );
+  }
+
+  Future<PslFallbackSettings> setPslFallbackEnabled(bool enabled) async {
+    final json = await _client.patch(
+      '/api/settings/psl-fallback',
+      {'enabled': enabled},
+    );
+    return PslFallbackSettings(
+      configured: json['configured'] == true,
+      enabled: json['enabled'] == true,
+    );
   }
 
   Future<WalletSummary> mine() async {
