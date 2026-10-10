@@ -391,11 +391,16 @@ router.post("/:uid/adjust", requireAuth, requireEnterprise, requireRole("owner")
       return send(res, { code: "note_required", message: "Ekri poukisa (omwen 5 karaktè): se tras ajisteman an." });
     }
 
+    // `money.toMinor` refize 0 (yon transfè pa ka 0); yon sòld, li menm, ka 0.
     let targetMinor;
-    try {
-      targetMinor = money.toMinor(body.balance);
-    } catch (err) {
-      return send(res, { code: "invalid_amount", message: err.message });
+    if (body.balance !== "" && body.balance !== null && Number(body.balance) === 0) {
+      targetMinor = 0;
+    } else {
+      try {
+        targetMinor = money.toMinor(body.balance);
+      } catch (err) {
+        return send(res, { code: "invalid_amount", message: err.message });
+      }
     }
     if (targetMinor < 0) return send(res, { code: "invalid_amount", message: "Sòld la pa ka negatif." });
 

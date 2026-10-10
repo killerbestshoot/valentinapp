@@ -85,6 +85,13 @@ test("6000 → 15 MXN: yon liy ajisteman nan rejis la", async () => {
   assert.match(line.note, /korije sòld tès/);
 });
 
+test("mete yon wallet a 0", async () => {
+  const ok = await adjust(uids.agent, { balance: 0, note: "mete wallet la a zewo" });
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  assert.equal(ok.json.wallet.balance, 0);
+  await adjust(uids.agent, { balance: 15, note: "remèt 15 pou lòt tès yo" });
+});
+
 test("menm sòld: anyen pa chanje; negatif refize; lòt antrepriz 404", async () => {
   const same = await adjust(uids.agent, { balance: 15, note: "pa gen chanjman" });
   assert.equal(same.json.adjustment, 0);
