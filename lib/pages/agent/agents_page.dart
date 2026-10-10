@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/core/models/app_role.dart';
 import 'package:mon_premye_app/core/network/api_client.dart';
+import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
 import 'package:mon_premye_app/features/admin/presentation/pages/create_agent_screen.dart';
 import 'package:mon_premye_app/features/users/data/users_api.dart';
 import 'package:mon_premye_app/features/wallet/data/wallet_api.dart';
@@ -27,6 +29,28 @@ class _AgentsPageState extends State<AgentsPage> {
   void initState() {
     super.initState();
     _future = UsersApi.instance.list();
+  }
+
+  bool get _isOwner => AuthRepositoryProvider.instance.currentUser?.role == AppRole.owner;
+
+  /// Owner a mete sòld la sou yon montan egzak (korije yon erè). Tras nan rejis la.
+  Future<void> _adjust(StaffMember staff) async {
+    final result = await showDialog<({double balance, String note})>(
+      context: context,
+      builder: (_) => _AdjustDialog(staff: staff),
+    );
+    if (result == null) return;
+    try {
+      final wallet = await WalletApi.instance.adjust(staff.uid, balance: result.balance, note: result.note);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Sòld ${staff.displayName.isEmpty ? staff.email : staff.displayName}: ${wallet.label}'),
+      ));
+      _reload();
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err.message)));
+    }
   }
 
   void _reload() {
@@ -305,6 +329,7 @@ class _AgentsPageState extends State<AgentsPage> {
                           staff: member,
                           onToggle: () => _toggleActive(member),
                           onAddFunds: () => _addFunds(member),
+                          onAdjust: _isOwner && !member.isPendingApproval ? () => _adjust(member) : null,
                           onDelete: () => _delete(member),
                         ))
                     .toList(),
@@ -323,12 +348,16 @@ class _StaffRow extends StatelessWidget {
     required this.onToggle,
     required this.onAddFunds,
     required this.onDelete,
+    this.onAdjust,
   });
 
   final StaffMember staff;
   final VoidCallback onToggle;
   final VoidCallback onAddFunds;
   final VoidCallback onDelete;
+
+  /// Owner sèlman.
+  final VoidCallback? onAdjust;
 
   @override
   Widget build(BuildContext context) {
@@ -446,6 +475,12 @@ class _StaffRow extends StatelessWidget {
                 color: DashboardColors.brand,
               ),
             ),
+            if (onAdjust != null)
+              IconButton(
+                tooltip: 'Ajiste sòld',
+                onPressed: onAdjust,
+                icon: const Icon(Icons.edit_note, color: DashboardColors.brand),
+              ),
             IconButton(
               tooltip: staff.isActive ? 'Dezaktive' : 'Aktive',
               onPressed: onToggle,
@@ -472,6 +507,102 @@ class _StaffRow extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Nouvo sòld + rezon. Li posede chan li yo (yo libere apre animasyon fèmen an).
+class _AdjustDialog extends StatefulWidget {
+  const _AdjustDialog({required this.staff});
+
+  final StaffMember staff;
+
+  @override
+  State<_AdjustDialog> createState() => _AdjustDialogState();
+}
+
+class _AdjustDialogState extends State<_AdjustDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final _balanceCtrl = TextEditingController(text: widget.staff.balance.toStringAsFixed(2));
+  final _noteCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _balanceCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  double? get _target => double.tryParse(_balanceCtrl.text.replaceAll(',', '.').trim());
+
+  @override
+  Widget build(BuildContext context) {
+    final staff = widget.staff;
+    final target = _target;
+    final diff = target == null ? null : target - staff.balance;
+    return AlertDialog(
+      title: Text('Ajiste sòld — ${staff.displayName.isEmpty ? staff.email : staff.displayName}'),
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Sòld aktyèl: ${staff.balance.toStringAsFixed(2)} ${staff.currency}',
+                    style: const TextStyle(color: DashboardColors.muted)),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _balanceCtrl,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(labelText: 'Nouvo sòld', suffixText: staff.currency),
+                  onChanged: (_) => setState(() {}),
+                  validator: (v) {
+                    final n = double.tryParse((v ?? '').replaceAll(',', '.').trim());
+                    if (n == null || n < 0) return 'Antre yon montan 0 oswa plis.';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _noteCtrl,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Poukisa? (tras nan rejis la)',
+                    hintText: 'Egz. Korije sòld tès',
+                  ),
+                  validator: (v) => (v ?? '').trim().length < 5 ? 'Omwen 5 karaktè.' : null,
+                ),
+                if (diff != null && diff != 0) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    diff > 0
+                        ? 'Wallet la ap resevwa +${diff.toStringAsFixed(2)} ${staff.currency}.'
+                        : 'Wallet la ap pèdi ${(-diff).toStringAsFixed(2)} ${staff.currency}.',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: diff > 0 ? DashboardColors.brand : DashboardColors.danger,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Anile')),
+        FilledButton(
+          onPressed: () {
+            if (!_formKey.currentState!.validate()) return;
+            Navigator.pop(context, (balance: _target!, note: _noteCtrl.text.trim()));
+          },
+          child: const Text('Anrejistre'),
+        ),
+      ],
     );
   }
 }

@@ -87,10 +87,14 @@ class ReconciliationApi {
   }
 
   /// Lajan an PA JANM pati: ajan an ranbouse (montan + frè).
-  Future<void> markFailed(String transferId, {required String note}) async {
+  ///
+  /// [reverseCommissions]: tranzaksyon an te make livre pa erè, komisyon ki te
+  /// peye yo dwe retire tou.
+  Future<void> markFailed(String transferId, {required String note, bool reverseCommissions = false}) async {
     await _client.post('/api/bazik/transfers/$transferId/resolve', {
       'action': 'failed',
       'note': note,
+      if (reverseCommissions) 'reverseCommissions': true,
     });
   }
 }

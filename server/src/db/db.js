@@ -64,6 +64,8 @@ const COMMISSION_LOG_EXTRA_COLUMNS = [
   ["gateway_cost_minor", "INTEGER NOT NULL DEFAULT 0"],
   // Pati owner a apre frè pasrèl la. Ka negatif si frè a pa kouvri pasrèl la.
   ["owner_net_minor", "INTEGER NOT NULL DEFAULT 0"],
+  // Komisyon yo anile: tranzaksyon an te make livre pa erè, lajan an pa t pati.
+  ["reversed_at", "INTEGER"],
 ];
 
 let db = null;

@@ -310,7 +310,8 @@ router.get("/transfers/review", requireAuth, requireEnterprise, requireRole("own
  *       OBLIGATWA, e Bazik dwe konfime l `completed` — pa gen livrezon sou
  *       pawòl sèlman.
  *   { action: "failed", note }  lajan an pa janm pati: ajan an ranbouse
- *       (montan + frè). Refize si tranzaksyon an deja make livre.
+ *       (montan + frè). Si tranzaksyon an te make livre (alamen, pa erè),
+ *       `reverseCommissions: true` obligatwa: komisyon ki te peye yo retire.
  *
  * Yon sèl desizyon pa transfè (`transfer_resolutions`), ak non moun nan ak rezon an.
  */
@@ -380,11 +381,13 @@ router.post("/transfers/:id/resolve", requireAuth, requireEnterprise, requireRol
       const tx = transfer.txId
         ? db.prepare("SELECT status FROM transactions WHERE tx_id = ?").get(transfer.txId)
         : null;
-      if (tx?.status === "delivered") {
+      if (tx?.status === "delivered" && body.reverseCommissions !== true) {
         return res.status(409).json({
           ok: false,
           code: "transaction_delivered",
-          message: "Tranzaksyon an deja make livre (komisyon ka deja peye): konfime l ak ID Bazik la oswa kontakte sipò.",
+          message:
+            "Tranzaksyon an make livre e komisyon yo peye. Si lajan an pa t janm pati, " +
+            "konfime pou anile komisyon yo tou.",
         });
       }
     }
@@ -408,11 +411,50 @@ router.post("/transfers/:id/resolve", requireAuth, requireEnterprise, requireRol
       failureReason: action === "failed" ? `Rekonsilye alamen: ${note}` : "",
     });
 
+    // Tranzaksyon an te make livre pa erè: komisyon ki te peye yo retire,
+    // yon sèl fwa (kle idempotans), nan menm deviz yo te kredite a.
+    const reversed = [];
+    if (action === "failed" && transfer.txId && body.reverseCommissions === true) {
+      const log = db
+        .prepare("SELECT * FROM commission_logs WHERE tx_id = ? AND reversed_at IS NULL")
+        .get(transfer.txId);
+      if (log) {
+        for (const [who, uid, minor] of [
+          ["agent", log.staff_uid, log.agent_credit_minor],
+          ["owner", log.owner_uid, log.owner_credit_minor],
+        ]) {
+          if (!uid || !(minor > 0)) continue;
+          const wallet = await service.store.getWallet({ uid, enterpriseId: transfer.enterpriseId });
+          if (!wallet) continue;
+          await service.store.debitWallet({
+            uid,
+            enterpriseId: transfer.enterpriseId,
+            enterpriseName: transfer.enterpriseName || "",
+            role: who,
+            amountMinor: minor,
+            currency: wallet.currency,
+            type: `commission_${who}_reversal`,
+            note: `Komisyon anile: transfè pa t pati (${note})`,
+            sourceCollection: "transactions",
+            sourceId: transfer.txId,
+            txId: transfer.txId,
+            serviceName: transfer.network,
+            createdBy: req.user.uid,
+            createdByRole: "owner",
+            idempotencyKey: `commission:${transfer.txId}:${who}:reversal`,
+          });
+          reversed.push({ who, amount: money.fromMinor(minor), currency: wallet.currency });
+        }
+        db.prepare("UPDATE commission_logs SET reversed_at = ? WHERE tx_id = ?").run(Date.now(), transfer.txId);
+      }
+    }
+
     await settleCommissions(req.user.enterpriseId);
 
     return res.json({
       ok: true,
       transfer: { transferId: settled.transfer.transferId, status: settled.transfer.status },
+      commissionsReversed: reversed,
       refunded: settled.refund
         ? { amount: money.fromMinor(transfer.debitMinor), currency: transfer.walletCurrency }
         : null,

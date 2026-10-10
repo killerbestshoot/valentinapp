@@ -273,6 +273,13 @@ class WalletApi {
 
   /// Mande yon rechaj.
   ///
+  /// Owner sèlman: mete sòld wallet [uid] sou [balance] egzakteman (nan deviz
+  /// wallet la). Diferans lan ekri nan rejis la kòm yon ajisteman ak [note].
+  Future<WalletSummary> adjust(String uid, {required double balance, required String note}) async {
+    final json = await _client.post('/api/wallets/$uid/adjust', {'balance': balance, 'note': note});
+    return WalletSummary.fromJson(json['wallet'] as Map<String, dynamic>);
+  }
+
   /// `autoApprove: true` = owner/admin mete kòb la dirèkteman, san de etap.
   /// Li pase pa menm chemen an: rejis la ekri menm jan an.
   Future<String> requestTopup({

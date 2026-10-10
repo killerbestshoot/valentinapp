@@ -26,7 +26,12 @@ class _FakeApi extends ReconciliationApi {
       ];
 
   @override
-  Future<void> markFailed(String transferId, {required String note}) async => failed.add(transferId);
+  Future<void> markFailed(String transferId, {required String note, bool reverseCommissions = false}) async {
+    failed.add(transferId);
+    reversals.add(reverseCommissions);
+  }
+
+  final reversals = <bool>[];
 
   @override
   Future<void> confirmDelivered(String transferId, {required String gatewayId, required String note}) async =>
@@ -81,6 +86,7 @@ void main() {
     await tester.tap(find.text('Make echwe epi ranbouse'));
     await tester.pumpAndSettle();
     expect(api.failed, ['TRF_1']);
+    expect(api.reversals, [false], reason: 'tranzaksyon an pa t make livre');
     expect(find.text('Pa gen transfè bloke.'), findsOneWidget);
   });
 

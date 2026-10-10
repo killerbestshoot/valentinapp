@@ -85,11 +85,12 @@ class _ExchangeRatesCardState extends State<ExchangeRatesCard> {
               const SizedBox(height: 12),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final wide = constraints.maxWidth >= 600;
+                  final wide = constraints.maxWidth >= 480;
                   final tiles = pairs.map((p) => _RateTile(pair: p)).toList();
 
                   if (!wide) {
                     return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         for (final tile in tiles) ...[
                           tile,

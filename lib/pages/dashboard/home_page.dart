@@ -172,7 +172,7 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-/// Paj "Tablo": analiz owner a, epi eta pasrèl yo ak to jounen an anba.
+/// Paj "Tablo": float Bazik la ak to jounen an an tèt, epi analiz owner a.
 class _DashboardBody extends StatelessWidget {
   const _DashboardBody({required this.analyticsKey, required this.onOpenReceipt});
 
@@ -186,22 +186,23 @@ class _DashboardBody extends StatelessWidget {
       return ListView(
         padding: EdgeInsets.fromLTRB(isWide ? 28 : 16, 18, isWide ? 28 : 16, 32),
         children: [
-          OwnerAnalyticsSection(key: analyticsKey, isWide: isWide, onOpenReceipt: onOpenReceipt),
-          const SizedBox(height: 18),
+          // An tèt: sa owner a gade anvan tout bagay — float Bazik la ak to jounen an.
           if (isWide)
             const Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(child: GatewayStatusCard()),
                 SizedBox(width: 16),
-                Expanded(child: ExchangeRatesCard()),
+                Expanded(flex: 2, child: ExchangeRatesCard()),
               ],
             )
           else ...const [
             GatewayStatusCard(),
-            SizedBox(height: 16),
+            SizedBox(height: 12),
             ExchangeRatesCard(),
           ],
+          const SizedBox(height: 18),
+          OwnerAnalyticsSection(key: analyticsKey, isWide: isWide, onOpenReceipt: onOpenReceipt),
         ],
       );
     });

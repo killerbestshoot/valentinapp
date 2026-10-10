@@ -375,6 +375,87 @@ router.post(
 
 // --- Sòld yon staff + rejis ---
 
+/**
+ * Owner a mete sòld yon wallet sou yon montan egzak (korije yon erè, aliyen ak
+ * Bazik...). Se pa yon UPDATE: diferans lan pase nan rejis la kòm yon liy
+ * `adjustment`, ak non owner a ak rezon an.
+ *
+ * Yon ogmantasyon sou wallet yon staff se yon nouvo dèt: li pase menm kontwòl
+ * solvabilite ak yon rechaj.
+ */
+router.post("/:uid/adjust", requireAuth, requireEnterprise, requireRole("owner"), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const note = String(body.note || "").trim();
+    if (note.length < 5) {
+      return send(res, { code: "note_required", message: "Ekri poukisa (omwen 5 karaktè): se tras ajisteman an." });
+    }
+
+    let targetMinor;
+    try {
+      targetMinor = money.toMinor(body.balance);
+    } catch (err) {
+      return send(res, { code: "invalid_amount", message: err.message });
+    }
+    if (targetMinor < 0) return send(res, { code: "invalid_amount", message: "Sòld la pa ka negatif." });
+
+    const enterpriseId = req.user.enterpriseId;
+    const target = getDb()
+      .prepare("SELECT uid, role, display_name FROM users WHERE uid = ?")
+      .get(req.params.uid);
+    const member = getDb()
+      .prepare("SELECT 1 FROM enterprise_users WHERE uid = ? AND enterprise_id = ?")
+      .get(req.params.uid, enterpriseId);
+    if (!target || !member) return res.status(404).json({ ok: false, code: "staff_not_found" });
+
+    const store = getBazikService().store;
+    const result = await withCreditLock(enterpriseId, async () => {
+      const wallet = await store.getWallet({ uid: target.uid, enterpriseId });
+      if (!wallet) throw Object.assign(new Error("Wallet sa a pa egziste."), { status: 404, code: "wallet_not_found" });
+
+      const diff = targetMinor - wallet.balanceMinor;
+      if (diff === 0) return { wallet, diff };
+
+      if (diff > 0) {
+        const capacity = await checkCreditCapacity({
+          enterpriseId, creditMinor: diff, currency: wallet.currency, targetRole: target.role,
+        });
+        if (!capacity.allowed) {
+          throw Object.assign(new Error(capacity.message), { status: capacity.status, code: capacity.code });
+        }
+      }
+
+      const move = {
+        uid: target.uid,
+        enterpriseId,
+        enterpriseName: req.user.enterpriseName,
+        role: target.role,
+        amountMinor: Math.abs(diff),
+        currency: wallet.currency,
+        type: "adjustment",
+        note: `Ajisteman owner: ${note}`,
+        sourceCollection: "wallet_adjustments",
+        sourceId: `${target.uid}:${now()}`,
+        createdBy: req.user.uid,
+        createdByRole: req.user.role,
+        idempotencyKey: `adjust:${target.uid}:${wallet.balanceMinor}:${targetMinor}:${now()}`,
+      };
+      if (diff > 0) await store.creditWallet(move);
+      else await store.debitWallet(move);
+
+      return { wallet: await store.getWallet({ uid: target.uid, enterpriseId }), diff };
+    });
+
+    return res.json({
+      ok: true,
+      wallet: { ...result.wallet, balance: money.fromMinor(result.wallet.balanceMinor) },
+      adjustment: money.fromMinor(result.diff),
+    });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
 router.get("/:uid", requireAuth, requireEnterprise, async (req, res) => {
   try {
     if (req.params.uid !== req.user.uid && req.user.role === "agent") {

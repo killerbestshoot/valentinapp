@@ -209,11 +209,28 @@ test("konfime livre: ID Bazik obligatwa, Bazik dwe di completed", async () => {
   }
 });
 
-test("make echwe refize si tranzaksyon an deja make livre", async () => {
+test("tranzaksyon make livre pa erè: refize san konfimasyon, epi komisyon yo anile", async () => {
   const lost = await lostTransfer({ txStatus: "delivered" });
   const r = await call("POST", `/api/bazik/transfers/${lost.transferId}/resolve`, {
     role: "owner", body: { action: "failed", note: "pa sou dashboard" },
   });
   assert.equal(r.status, 409);
   assert.equal(r.json.code, "transaction_delivered");
+
+  // Komisyon yo te peye lè yo te make l livre alamen.
+  const { applyCommissionToTx } = require("../src/commission/engine");
+  await applyCommissionToTx(lost.txId);
+  const log = db.getDb().prepare("SELECT agent_credit_minor FROM commission_logs WHERE tx_id = ?").get(lost.txId);
+  assert.ok(log.agent_credit_minor > 0);
+  const before = await balance();
+
+  const ok = await call("POST", `/api/bazik/transfers/${lost.transferId}/resolve`, {
+    role: "owner", body: { action: "failed", note: "pa sou dashboard Bazik", reverseCommissions: true },
+  });
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  assert.equal(ok.json.commissionsReversed[0].who, "agent");
+  const debit = db.getDb().prepare("SELECT debit_minor FROM bazik_transfers WHERE transfer_id = ?").get(lost.transferId).debit_minor;
+  assert.equal(await balance() - before, debit - log.agent_credit_minor, "ranbouse debi a, mwens komisyon an");
+  assert.equal(db.getDb().prepare("SELECT status FROM transactions WHERE tx_id = ?").get(lost.txId).status, "failed");
+  assert.ok(db.getDb().prepare("SELECT reversed_at FROM commission_logs WHERE tx_id = ?").get(lost.txId).reversed_at);
 });

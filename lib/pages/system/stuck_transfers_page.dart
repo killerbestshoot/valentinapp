@@ -65,7 +65,11 @@ class _StuckTransfersPageState extends State<StuckTransfersPage> {
         await ReconciliationApi.instance.confirmDelivered(t.transferId, gatewayId: decision.gatewayId, note: decision.note);
         _toast('Transfè a make livre.');
       } else {
-        await ReconciliationApi.instance.markFailed(t.transferId, note: decision.note);
+        await ReconciliationApi.instance.markFailed(
+          t.transferId,
+          note: decision.note,
+          reverseCommissions: t.txStatus == 'delivered',
+        );
         _toast('Transfè a make echwe. Ajan an ranbouse ${_money(t.debit)} ${t.walletCurrency}.');
       }
       _reload();
@@ -303,6 +307,18 @@ class _ResolveDialogState extends State<_ResolveDialog> {
                           'antrepriz la ap pèdi l.',
                   style: TextStyle(fontSize: 13, color: delivered ? DashboardColors.muted : _warn),
                 ),
+                if (!delivered && t.txStatus == 'delivered') ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: _warnBg, borderRadius: BorderRadius.circular(8)),
+                    child: const Text(
+                      'Tranzaksyon sa a te make livre alamen e komisyon yo te peye. '
+                      'Si w konfime, tranzaksyon an pase echwe epi komisyon yo retire tou.',
+                      style: TextStyle(fontSize: 12.5, color: _warn, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 if (delivered) ...[
                   TextFormField(
