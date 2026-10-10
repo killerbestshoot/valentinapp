@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/pages/dashboard/owner_analytics_section.dart';
 import 'package:mon_premye_app/core/config/app_environment.dart';
 import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
@@ -41,6 +42,7 @@ class _HomePageState extends State<HomePage> {
   /// relanse tout rekèt agregasyon yo.
   late Future<_DashboardStats> _statsFuture;
   late Future<List<TransactionRecord>> _recentFuture;
+  final _analyticsKey = GlobalKey<OwnerAnalyticsSectionState>();
 
   @override
   void initState() {
@@ -74,6 +76,7 @@ class _HomePageState extends State<HomePage> {
       _statsFuture = _loadStats();
       _recentFuture = _loadRecent();
     });
+    _analyticsKey.currentState?.reload();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Estatistik yo rechaje.'),
@@ -152,6 +155,12 @@ class _HomePageState extends State<HomePage> {
                     onCreate: () => _openCreateTransaction(context),
                   ),
                   const SizedBox(height: 18),
+                  OwnerAnalyticsSection(
+                    key: _analyticsKey,
+                    isWide: isWide,
+                    onOpenReceipt: (id) => _openReceipt(context, id),
+                  ),
+                  const SizedBox(height: 18),
                   _AdminCommandCenter(
                     isWide: isWide,
                     onOpen: (page) => _open(context, page),
@@ -160,19 +169,6 @@ class _HomePageState extends State<HomePage> {
                   const GatewayStatusCard(),
                   const SizedBox(height: 18),
                   const ExchangeRatesCard(),
-                  const SizedBox(height: 18),
-                  FutureBuilder<_DashboardStats>(
-                    future: _statsFuture,
-                    builder: (context, statsSnap) {
-                      return _StatsGrid(
-                        stats: statsSnap.data ?? _DashboardStats.empty,
-                        isWide: isWide,
-                        loading: statsSnap.connectionState ==
-                            ConnectionState.waiting,
-                        error: statsSnap.error?.toString(),
-                      );
-                    },
-                  ),
                   const SizedBox(height: 18),
                   isWide
                       ? Row(
@@ -753,54 +749,37 @@ class _CreateButton extends StatelessWidget {
 }
 
 class _StatsGrid extends StatelessWidget {
-  const _StatsGrid({
-    required this.stats,
-    required this.isWide,
-    this.loading = false,
-    this.error,
-  });
+  const _StatsGrid({required this.stats, required this.isWide});
 
   final _DashboardStats stats;
   final bool isWide;
-  final bool loading;
-  final String? error;
 
   @override
   Widget build(BuildContext context) {
-    // Yon estatistik ki pa chaje pa dwe parèt kòm yon zewo: sa fè admin nan
-    // kwè pa gen tranzaksyon.
-    if (error != null) {
-      return _StateMessage(
-        icon: Icons.error_outline,
-        title: 'Nou pa ka chaje estatistik yo',
-        message: error!,
-      );
-    }
-
     final cards = [
       _MetricCard(
         icon: Icons.receipt_long_outlined,
         label: 'Transactions',
-        value: loading ? '...' : '${stats.total}',
+        value: '${stats.total}',
         accent: const Color(0xFF1565C0),
       ),
       _MetricCard(
         icon: Icons.schedule_outlined,
         label: 'Pending',
-        value: loading ? '...' : '${stats.pending}',
+        value: '${stats.pending}',
         accent: const Color(0xFFF57F17),
       ),
       _MetricCard(
         icon: Icons.check_circle_outline,
         label: 'Delivered',
-        value: loading ? '...' : '${stats.delivered}',
+        value: '${stats.delivered}',
         accent: const Color(0xFF2E7D32),
       ),
       _MetricCard(
         icon: Icons.account_balance_wallet_outlined,
         label: 'Volume',
-        value: loading ? '...' : stats.primaryVolume,
-        footnote: loading ? '' : stats.secondaryVolume,
+        value: stats.primaryVolume,
+        footnote: stats.secondaryVolume,
         accent: const Color(0xFF6A1B9A),
       ),
     ];

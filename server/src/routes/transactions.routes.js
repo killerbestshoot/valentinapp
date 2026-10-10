@@ -3,7 +3,7 @@
 /**
  * Tranzaksyon yo — ranplase koleksyon Firestore `transactions`.
  *
- *   GET    /api/transactions            lis (limit, status)
+ *   GET    /api/transactions            lis (limit, status, q = non/nimewo/referans)
  *   GET    /api/transactions/stats      total / pending / delivered / volim
  *   GET    /api/transactions/:id
  *   POST   /api/transactions/quote      devi frè a (pou ekran an, anyen pa anrejistre)
@@ -30,6 +30,7 @@ const AppIds = require("../../../bazik/src/ids");
 const { applyCommissionToTx } = require("../commission/engine");
 const { computeFee } = require("../commission/fees");
 const { getBazikService } = require("../bazik_service");
+const { receiptInfo } = require("./receipts.routes");
 
 const router = express.Router();
 
@@ -216,6 +217,26 @@ router.get("/", requireAuth, requireEnterprise, (req, res) => {
       params.push(status);
     }
 
+    // Rechèch: non benefisyè a, nimewo (menm yon moso, san +509), referans
+    // oswa non ajan an. `ESCAPE`: yon `%` oswa `_` nan rechèch la se yon
+    // karaktè, pa yon jokè.
+    const q = String(req.query.q || "").trim().slice(0, 60);
+    if (q) {
+      const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      const digits = q.replace(/\D/g, "");
+      const parts = [
+        "client_name LIKE ? ESCAPE '\\'",
+        "tx_id LIKE ? ESCAPE '\\'",
+        "staff_name LIKE ? ESCAPE '\\'",
+      ];
+      params.push(like, like, like);
+      if (digits.length >= 3) {
+        parts.push("REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') LIKE ?");
+        params.push(`%${digits}%`);
+      }
+      filters.push(`(${parts.join(" OR ")})`);
+    }
+
     // Yon ajan wè pwòp tranzaksyon li sèlman.
     if (req.user.role === "agent") {
       filters.push("staff_uid = ?");
@@ -249,6 +270,7 @@ router.get("/:id", requireAuth, requireEnterprise, (req, res) => {
       ok: true,
       transaction: toJson(row),
       delivery: deliveryOf(getDb(), row.tx_id),
+      receipt: receiptInfo(req, row),
     });
   } catch (err) {
     return send(res, err);

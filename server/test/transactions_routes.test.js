@@ -299,3 +299,27 @@ test("yon chanjman to pita pa chanje frè yon tranzaksyon ki deja kreye", async 
   assert.equal(after.json.transaction.fee, 100);
   setPolicy();
 });
+
+// --- Lis: filtre estati + rechèch ---
+
+test("rechèch pa non, nimewo (moso), referans; ak filtre estati", async () => {
+  const mk = async (name, phone) =>
+    (await call("POST", "/api/transactions", {
+      role: "agent",
+      body: { serviceName: "MonCash", customerName: name, customerPhone: phone, paymentAmount: 10, paymentCurrency: "USD" },
+    })).json.transaction.txId;
+  const mirlande = await mk("Mirlande Jean", "+50937124589");
+  const wesner = await mk("Wesner Louis", "+50941887720");
+  db.getDb().prepare("UPDATE transactions SET status = 'failed' WHERE tx_id = ?").run(wesner);
+
+  const ids = async (query) =>
+    (await call("GET", `/api/transactions?limit=200&${query}`, { role: "owner" })).json.transactions.map((t) => t.txId);
+
+  assert.deepEqual(await ids("q=mirlande"), [mirlande], "non, san konsidere majiskil");
+  assert.deepEqual(await ids("q=4589"), [mirlande], "4 dènye chif nimewo a");
+  assert.deepEqual(await ids("q=%2B509%2041%2088"), [wesner], "nimewo ak +509 ak espas");
+  assert.deepEqual(await ids(`q=${wesner.slice(-6)}`), [wesner], "moso referans lan");
+  assert.deepEqual(await ids("q=Wesner&status=failed"), [wesner]);
+  assert.deepEqual(await ids("q=Wesner&status=delivered"), []);
+  assert.deepEqual(await ids("q=%25"), [], "yon % se yon karaktè, pa yon jokè");
+});

@@ -14,6 +14,8 @@ const { commissions: commissionRoutes, services: serviceRoutes } = require("./ro
 const payoutRoutes = require("./routes/payouts.routes");
 const settingsRoutes = require("./routes/settings.routes");
 const systemRoutes = require("./routes/system.routes");
+const analyticsRoutes = require("./routes/analytics.routes");
+const { router: receiptRoutes } = require("./routes/receipts.routes");
 const { attachUser } = require("./auth/middleware");
 const { getDb, resetDb } = require("./db/db");
 const { checkProductionConfig } = require("./preflight");
@@ -81,6 +83,8 @@ app.use("/api/services", serviceRoutes);
 app.use("/api/payouts", payoutRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/system", systemRoutes);
+app.use("/api/analytics", analyticsRoutes);
+app.use("/api/receipts", receiptRoutes);
 app.use("/api/otp", otpRoutes);
 app.use("/api/bazik", bazikRoutes);
 app.use("/api/psl", pslRoutes);

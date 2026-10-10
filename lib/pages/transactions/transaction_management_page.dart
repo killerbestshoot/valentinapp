@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:mon_premye_app/core/network/api_client.dart';
@@ -25,8 +27,18 @@ class TransactionManagementPage extends StatefulWidget {
 class _TransactionManagementPageState extends State<TransactionManagementPage> {
   late Future<List<TransactionRecord>> _future;
   String _statusFilter = '';
+  final _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
 
-  static const _filters = ['', 'pending', 'delivered', 'failed'];
+  /// Estati serveur a ↔ sa ajan an li.
+  static const _filters = {
+    '': 'Tout',
+    'pending': 'An atant',
+    'sending': 'Ap voye',
+    'delivered': 'Livre',
+    'failed': 'Echwe',
+    'canceled': 'Anile',
+  };
 
   @override
   void initState() {
@@ -34,11 +46,26 @@ class _TransactionManagementPageState extends State<TransactionManagementPage> {
     _future = _load();
   }
 
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
   Future<List<TransactionRecord>> _load() {
     return TransactionApi.instance.list(
-      limit: 50,
+      limit: 100,
       status: _statusFilter.isEmpty ? null : _statusFilter,
+      search: _searchCtrl.text,
     );
+  }
+
+  /// Rechèch la pati 350 ms apre dènye lèt la, pa sou chak lèt.
+  void _onSearchChanged(String _) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), _reload);
+    setState(() {});
   }
 
   void _reload() {
@@ -141,33 +168,59 @@ class _TransactionManagementPageState extends State<TransactionManagementPage> {
         ),
         const SizedBox(height: 18),
         DashboardPanel(
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Estati: ',
-                style: TextStyle(color: DashboardColors.muted),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: _onSearchChanged,
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (_) => _reload(),
+                      decoration: InputDecoration(
+                        hintText: 'Chèche pa non, nimewo oswa referans',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _searchCtrl.text.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Efase rechèch la',
+                                icon: const Icon(Icons.close),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  _searchDebounce?.cancel();
+                                  _reload();
+                                },
+                              ),
+                        isDense: true,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Rafrechi',
+                    onPressed: _reload,
+                    icon: const Icon(Icons.refresh),
+                  ),
+                ],
               ),
-              Expanded(
-                child: DropdownButton<String>(
-                  isExpanded: true,
-                  value: _statusFilter,
-                  underline: const SizedBox.shrink(),
-                  items: _filters
-                      .map((value) => DropdownMenuItem(
-                            value: value,
-                            child: Text(value.isEmpty ? 'Tout' : value),
-                          ))
-                      .toList(),
-                  onChanged: (value) {
-                    setState(() => _statusFilter = value ?? '');
-                    _reload();
-                  },
-                ),
-              ),
-              IconButton(
-                tooltip: 'Rafrechi',
-                onPressed: _reload,
-                icon: const Icon(Icons.refresh),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _filters.entries
+                    .map((e) => ChoiceChip(
+                          label: Text(e.value),
+                          selected: _statusFilter == e.key,
+                          showCheckmark: false,
+                          onSelected: (_) {
+                            setState(() => _statusFilter = e.key);
+                            _reload();
+                          },
+                        ))
+                    .toList(),
               ),
             ],
           ),
@@ -191,7 +244,10 @@ class _TransactionManagementPageState extends State<TransactionManagementPage> {
 
               final transactions = snap.data ?? const <TransactionRecord>[];
               if (transactions.isEmpty) {
-                return const Text('Pa gen tranzaksyon.');
+                final filtered = _statusFilter.isNotEmpty || _searchCtrl.text.trim().isNotEmpty;
+                return Text(filtered
+                    ? 'Okenn tranzaksyon pa koresponn ak filtre sa yo.'
+                    : 'Pa gen tranzaksyon.');
               }
 
               return Column(

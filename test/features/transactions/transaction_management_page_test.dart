@@ -11,7 +11,12 @@ class _ListOnlyTransactionApi extends TransactionApi {
   final List<TransactionRecord> records;
 
   @override
-  Future<List<TransactionRecord>> list({int limit = 25, String? status}) async => records;
+  Future<List<TransactionRecord>> list({int limit = 25, String? status, String? search}) async {
+    calls.add((status: status, search: search));
+    return records;
+  }
+
+  final calls = <({String? status, String? search})>[];
 }
 
 TransactionRecord _tx(String id, String service, {String status = 'pending'}) => TransactionRecord(
@@ -69,5 +74,29 @@ void main() {
       );
       expect(button.onPressed, isNull, reason: label);
     }
+  });
+
+  testWidgets('filtre estati ak rechèch voye bay serveur a', (tester) async {
+    final api = _ListOnlyTransactionApi([_tx('TX_M', 'MonCash')]);
+    TransactionApi.override(api);
+    await tester.binding.setSurfaceSize(const Size(1000, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(const MaterialApp(home: TransactionManagementPage()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Echwe'));
+    await tester.pumpAndSettle();
+    expect(api.calls.last.status, 'failed');
+
+    await tester.enterText(find.byType(TextField), '4589');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(api.calls.last.search, '4589');
+    expect(api.calls.last.status, 'failed', reason: 'de filtre yo mache ansanm');
+
+    await tester.tap(find.byTooltip('Efase rechèch la'));
+    await tester.pumpAndSettle();
+    expect(api.calls.last.search, '');
   });
 }

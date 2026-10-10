@@ -210,10 +210,12 @@ class TransactionApi {
   static void override(TransactionApi api) => _instance = api;
   static void reset() => _instance = null;
 
-  Future<List<TransactionRecord>> list({int limit = 25, String? status}) async {
+  /// [search]: non benefisyè a, nimewo (menm yon moso), referans oswa ajan.
+  Future<List<TransactionRecord>> list({int limit = 25, String? status, String? search}) async {
     final json = await _client.get('/api/transactions', query: {
       'limit': limit,
       if (status != null && status.isNotEmpty) 'status': status,
+      if (search != null && search.trim().isNotEmpty) 'q': search.trim(),
     });
 
     final items = (json['transactions'] as List?) ?? const [];
@@ -254,6 +256,23 @@ class TransactionApi {
         delivery: delivery is Map<String, dynamic>
             ? DeliveryDetails.fromJson(delivery)
             : null,
+      );
+    } on ApiException catch (err) {
+      if (err.code == 'not_found' || err.status == 404) return null;
+      rethrow;
+    }
+  }
+
+  /// Tout sa resi a bezwen: tranzaksyon an, konvèsyon an, ak siyati QR la.
+  Future<ReceiptData?> findReceipt(String txId) async {
+    try {
+      final json = await _client.get('/api/transactions/$txId');
+      final delivery = json['delivery'];
+      final receipt = json['receipt'];
+      return ReceiptData(
+        record: TransactionRecord.fromJson(json['transaction'] as Map<String, dynamic>),
+        delivery: delivery is Map<String, dynamic> ? DeliveryDetails.fromJson(delivery) : null,
+        receipt: receipt is Map<String, dynamic> ? ReceiptInfo.fromJson(receipt) : null,
       );
     } on ApiException catch (err) {
       if (err.code == 'not_found' || err.status == 404) return null;
@@ -384,4 +403,28 @@ class FeeQuote {
       walletCurrency: j['walletCurrency'] as String?,
     );
   }
+}
+
+/// Siyati resi a. QR kòd la mennen sou [verifyUrl]: sèvè a konfime referans
+/// lan ak montan an, konsa yon resi modifye nan yon editè foto pa pase.
+class ReceiptInfo {
+  const ReceiptInfo({required this.reference, required this.signature, required this.verifyUrl});
+
+  final String reference;
+  final String signature;
+  final String verifyUrl;
+
+  factory ReceiptInfo.fromJson(Map<String, dynamic> j) => ReceiptInfo(
+        reference: '${j['reference'] ?? ''}',
+        signature: '${j['signature'] ?? ''}',
+        verifyUrl: '${j['verifyUrl'] ?? ''}',
+      );
+}
+
+class ReceiptData {
+  const ReceiptData({required this.record, this.delivery, this.receipt});
+
+  final TransactionRecord record;
+  final DeliveryDetails? delivery;
+  final ReceiptInfo? receipt;
 }
