@@ -20,6 +20,7 @@ import 'package:mon_premye_app/pages/services/service_catalog_page.dart';
 import 'package:mon_premye_app/pages/settings/settings_page.dart';
 import 'package:mon_premye_app/pages/transactions/transaction_management_page.dart';
 import 'package:mon_premye_app/pages/wallet/wallet_topup_approval_page.dart';
+import 'package:mon_premye_app/pages/airtime/airtime_recharge_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -88,6 +89,13 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.fact_check_outlined,
           section: 'Operasyon',
           builder: (_) => const WalletTopupApprovalPage(),
+        ),
+        ShellDestination(
+          id: 'airtime-recharge',
+          label: 'Rechaj Airtime',
+          icon: Icons.phone_android_outlined,
+          section: 'Operasyon',
+          builder: (_) => const AirtimeRechargePage(),
         ),
         ShellDestination(
           id: 'agents',

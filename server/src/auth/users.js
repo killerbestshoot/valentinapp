@@ -227,6 +227,31 @@ async function changePassword(uid, { currentPassword, newPassword }) {
   return publicUser(findByUid(uid));
 }
 
+/**
+ * Itilizatè a reinisyalize pwòp modpas li apre verifikasyon OTP.
+ * Pa mete `must_change_password`: moun nan chwazi li li menm.
+ */
+async function resetPasswordSelf(email, newPassword) {
+  const user = findByEmail(email);
+  if (!user) throw new AuthError("user_not_found", "Itilizatè a pa egziste.", 404);
+  if (user.is_active !== 1) throw new AuthError("account_disabled", "Kont sa a dezaktive.", 403);
+
+  const check = validatePassword(newPassword);
+  if (!check.ok) throw new AuthError("weak_password", check.reason);
+
+  const { hash, salt } = await hashPassword(newPassword);
+
+  getDb()
+    .prepare(
+      `UPDATE users SET password_hash = ?, password_salt = ?,
+         must_change_password = 0, updated_at = ? WHERE uid = ?`
+    )
+    .run(hash, salt, now(), user.uid);
+
+  destroyAllSessions(user.uid);
+  return publicUser(findByUid(user.uid));
+}
+
 /** Yon admin reinisyalize modpas yon staff (li pa bezwen ansyen an). */
 async function resetPasswordAsAdmin(uid, newPassword) {
   const user = findByUid(uid);
@@ -283,6 +308,7 @@ module.exports = {
   createUser,
   authenticate,
   changePassword,
+  resetPasswordSelf,
   resetPasswordAsAdmin,
   setActive,
   findByEmail,

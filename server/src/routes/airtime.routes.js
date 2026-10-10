@@ -16,11 +16,14 @@
 const express = require("express");
 
 const { getAirtimeService } = require("../airtime_service");
-const { getDb } = require("../db/db");
+const { getDb, now } = require("../db/db");
 const { requireAuth, requireRole, requireEnterprise } = require("../auth/middleware");
 const { money, DomainError } = require("../../../bazik/index.js");
 const { ReloadlyError } = require("../../../reloadly/index.js");
 const { applyPendingCommissions } = require("../commission/engine");
+const AppIds = require("../../../bazik/src/ids");
+const { getBazikService } = require("../bazik_service");
+const { checkCreditCapacity, withCreditLock } = require("../solvency");
 
 const router = express.Router();
 
@@ -277,6 +280,260 @@ router.post(
       const updated = await getAirtimeService().topups.pollPending();
       await settleCommissions(null);
       return res.json({ ok: true, updated });
+    } catch (err) {
+      return send(res, err);
+    }
+  }
+);
+
+// ---- Rechaj airtime -------------------------------------------------------
+
+/**
+ * GET /api/airtime/recharge
+ * Lis demann rechaj airtime yo.
+ *   - Ajan: pa li sèlman
+ *   - Owner/Admin: tout antrepriz la
+ */
+router.get("/recharge", requireAuth, requireEnterprise, (req, res) => {
+  try {
+    const isManager = req.user.role === "owner" || req.user.role === "admin";
+    const filters = ["enterprise_id = ?"];
+    const params = [req.user.enterpriseId];
+
+    if (!isManager) {
+      filters.push("agent_uid = ?");
+      params.push(req.user.uid);
+    }
+
+    const status = String(req.query.status || "").trim();
+    if (status) {
+      filters.push("status = ?");
+      params.push(status);
+    }
+
+    const rows = getDb()
+      .prepare(
+        `SELECT * FROM airtime_recharge_requests
+          WHERE ${filters.join(" AND ")}
+          ORDER BY created_at DESC LIMIT 100`
+      )
+      .all(...params);
+
+    return res.json({
+      ok: true,
+      recharges: rows.map((r) => ({
+        requestId: r.request_id,
+        agentUid: r.agent_uid,
+        agentName: r.agent_name,
+        amount: money.fromMinor(r.amount_minor),
+        currency: r.currency,
+        note: r.note,
+        status: r.status,
+        decidedBy: r.decided_by,
+        decidedAt: r.decided_at,
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+/**
+ * POST /api/airtime/recharge
+ * Ajan kreye yon demann rechaj airtime.
+ */
+router.post("/recharge", requireAuth, requireEnterprise, async (req, res) => {
+  try {
+    const body = req.body || {};
+
+    let amountMinor;
+    try {
+      amountMinor = money.toMinor(body.amount);
+    } catch (err) {
+      return send(res, { code: "invalid_amount", message: err.message });
+    }
+
+    if (amountMinor <= 0) {
+      return send(res, { code: "invalid_amount", message: "Montan an dwe pi gran pase 0." });
+    }
+
+    // Deviz la se sa wallet la pou evite konfizyon konvèsyon.
+    const wallet = await getBazikService().store.getWallet({
+      uid: req.user.uid,
+      enterpriseId: req.user.enterpriseId,
+    });
+
+    const currency = wallet?.currency || "USD";
+    const requestId = AppIds.generate("AR", `airtime_recharge:${req.user.enterpriseId}:${req.user.uid}:${Date.now()}`);
+
+    getDb()
+      .prepare(
+        `INSERT INTO airtime_recharge_requests
+          (request_id, enterprise_id, agent_uid, agent_name, amount_minor, currency, note, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+      )
+      .run(
+        requestId, req.user.enterpriseId, req.user.uid,
+        req.user.displayName || "", amountMinor, currency,
+        String(body.note || ""), now(), now()
+      );
+
+    const row = getDb()
+      .prepare("SELECT * FROM airtime_recharge_requests WHERE request_id = ?")
+      .get(requestId);
+
+    return res.json({
+      ok: true,
+      recharge: {
+        requestId: row.request_id,
+        agentUid: row.agent_uid,
+        agentName: row.agent_name,
+        amount: money.fromMinor(row.amount_minor),
+        currency: row.currency,
+        note: row.note,
+        status: row.status,
+        createdAt: row.created_at,
+      },
+    });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+/**
+ * POST /api/airtime/recharge/:id/approve
+ * Owner/Admin kredite wallet ajan an.
+ */
+router.post(
+  "/recharge/:id/approve",
+  requireAuth,
+  requireEnterprise,
+  requireRole("owner", "admin"),
+  async (req, res) => {
+    const db = getDb();
+
+    try {
+      const row = db
+        .prepare(
+          "SELECT * FROM airtime_recharge_requests WHERE request_id = ? AND enterprise_id = ?"
+        )
+        .get(req.params.id, req.user.enterpriseId);
+
+      if (!row) return res.status(404).json({ ok: false, code: "not_found" });
+
+      if (row.status !== "pending") {
+        return send(res, {
+          code: "already_processed",
+          message: `Demann sa a deja ${row.status}.`,
+        });
+      }
+
+      // Klame an atomik: evite de admin apwouve menm demann lan.
+      const claimed = db
+        .prepare(
+          `UPDATE airtime_recharge_requests
+            SET status = 'approved', decided_by = ?, decided_at = ?, updated_at = ?
+            WHERE request_id = ? AND status = 'pending'`
+        )
+        .run(req.user.uid, now(), now(), row.request_id);
+
+      if (claimed.changes === 0) {
+        return send(res, { code: "already_processed", message: "Yon lòt moun deja apwouve demann sa a." });
+      }
+
+      // Cherche nom antrepriz la pou ledger la.
+      const enterprise = db
+        .prepare("SELECT name FROM enterprises WHERE enterprise_id = ?")
+        .get(row.enterprise_id);
+
+      await withCreditLock(row.enterprise_id, async () => {
+        const capacity = await checkCreditCapacity({
+          enterpriseId: row.enterprise_id,
+          creditMinor: row.amount_minor,
+          currency: row.currency,
+          targetRole: "agent",
+        });
+
+        if (!capacity.allowed) {
+          // Annule apwobasyon an si solvabilite pa pèmèt la.
+          db.prepare(
+            `UPDATE airtime_recharge_requests
+              SET status = 'pending', decided_by = '', decided_at = NULL, updated_at = ?
+              WHERE request_id = ?`
+          ).run(now(), row.request_id);
+
+          throw Object.assign(new Error(capacity.message), {
+            status: capacity.status,
+            code: capacity.code,
+          });
+        }
+
+        await getBazikService().store.creditWallet({
+          uid: row.agent_uid,
+          enterpriseId: row.enterprise_id,
+          enterpriseName: enterprise?.name || "",
+          role: "agent",
+          amountMinor: row.amount_minor,
+          currency: row.currency,
+          type: "airtime_recharge",
+          note: `Rechaj airtime${row.note ? `: ${row.note}` : ""}`,
+          sourceCollection: "airtime_recharge_requests",
+          sourceId: row.request_id,
+          createdBy: req.user.uid,
+          createdByRole: req.user.role,
+          idempotencyKey: `airtime_recharge:${row.request_id}`,
+        });
+      });
+
+      const updated = db
+        .prepare("SELECT * FROM airtime_recharge_requests WHERE request_id = ?")
+        .get(row.request_id);
+
+      return res.json({
+        ok: true,
+        recharge: {
+          requestId: updated.request_id,
+          agentName: updated.agent_name,
+          amount: money.fromMinor(updated.amount_minor),
+          currency: updated.currency,
+          status: updated.status,
+          decidedAt: updated.decided_at,
+        },
+      });
+    } catch (err) {
+      return send(res, err);
+    }
+  }
+);
+
+/**
+ * POST /api/airtime/recharge/:id/reject
+ * Owner/Admin refize demann lan.
+ */
+router.post(
+  "/recharge/:id/reject",
+  requireAuth,
+  requireEnterprise,
+  requireRole("owner", "admin"),
+  (req, res) => {
+    try {
+      const result = getDb()
+        .prepare(
+          `UPDATE airtime_recharge_requests
+            SET status = 'rejected', decided_by = ?, decided_at = ?, updated_at = ?
+            WHERE request_id = ? AND enterprise_id = ? AND status = 'pending'`
+        )
+        .run(req.user.uid, now(), now(), req.params.id, req.user.enterpriseId);
+
+      if (result.changes === 0) {
+        return send(res, {
+          code: "not_found_or_processed",
+          message: "Demann lan pa egziste oswa li deja trete.",
+        });
+      }
+
+      return res.json({ ok: true });
     } catch (err) {
       return send(res, err);
     }

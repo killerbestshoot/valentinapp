@@ -17,6 +17,7 @@ import 'package:mon_premye_app/pages/payout/payouts_page.dart';
 import 'package:mon_premye_app/pages/settings/settings_page.dart';
 import 'package:mon_premye_app/pages/transactions/transaction_management_page.dart';
 import 'package:mon_premye_app/pages/wallet/wallet_history_page.dart';
+import 'package:mon_premye_app/pages/airtime/airtime_recharge_page.dart';
 
 class AgentDashboard extends StatelessWidget {
   const AgentDashboard({super.key});
@@ -102,6 +103,13 @@ class _AgentShellState extends State<_AgentShell> {
           icon: Icons.account_balance_wallet_outlined,
           section: 'Lajan',
           builder: (_) => const WalletHistoryPage(),
+        ),
+        ShellDestination(
+          id: 'airtime',
+          label: 'Rechaj Airtime',
+          icon: Icons.phone_android_outlined,
+          section: 'Lajan',
+          builder: (_) => const AirtimeRechargePage(),
         ),
         ShellDestination(
           id: 'payout',

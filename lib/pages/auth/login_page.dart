@@ -184,21 +184,26 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _resettingPassword = true);
 
     try {
-      await RememberMeService.instance.save(
-        rememberMe: true,
-        email: email,
-      );
+      await ApiClient.instance.post('/api/auth/forgot-password', {'email': email});
 
       if (!mounted) return;
-      setState(() => _rememberMe = true);
-      _showMessage(
-          'Reset modpas la pa branche sou nouvo auth service la ankò.');
-    } catch (e) {
-      _showMessage(_authErrorMessage(e));
-    } finally {
-      if (mounted) {
-        setState(() => _resettingPassword = false);
+      _showMessage('Si imel sa a gen yon kont, yon kòd voye sou li.');
+
+      final ok = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _ResetPasswordDialog(email: email),
+      );
+
+      if (ok == true && mounted) {
+        _showMessage('Modpas reinisyalize. Konekte ankò.');
       }
+    } on ApiException catch (err) {
+      _showMessage(err.message);
+    } catch (e) {
+      _showMessage('Yon erè rive. Eseye ankò.');
+    } finally {
+      if (mounted) setState(() => _resettingPassword = false);
     }
   }
 
@@ -672,6 +677,168 @@ class _BrandMetric extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Reinisyalizasyon modpas — etap 2: OTP + nouvo modpas
+// ---------------------------------------------------------------------------
+
+class _ResetPasswordDialog extends StatefulWidget {
+  const _ResetPasswordDialog({required this.email});
+
+  final String email;
+
+  @override
+  State<_ResetPasswordDialog> createState() => _ResetPasswordDialogState();
+}
+
+class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _otpCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  bool _loading = false;
+  bool _showPass = false;
+  String? _errorMsg;
+
+  @override
+  void dispose() {
+    _otpCtrl.dispose();
+    _passCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() { _loading = true; _errorMsg = null; });
+    try {
+      await ApiClient.instance.post('/api/auth/reset-password', {
+        'email': widget.email,
+        'otp': _otpCtrl.text.trim(),
+        'newPassword': _passCtrl.text,
+      });
+      if (mounted) Navigator.pop(context, true);
+    } on ApiException catch (err) {
+      setState(() => _errorMsg = _msg(err.code, err.message));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _msg(String code, String fallback) => switch (code) {
+    'not_found' => 'Pa gen kòd pou imel sa a. Fèmen epi mande yon lòt.',
+    'expired' => 'Kòd la ekspire. Fèmen epi mande yon lòt.',
+    'too_many_attempts' => 'Twòp tantativ. Fèmen epi mande yon nouvo kòd.',
+    'invalid' => 'Kòd la pa bon.',
+    'weak_password' || 'account_disabled' || 'user_not_found' => fallback,
+    _ => fallback,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reinisyalize modpas'),
+      content: Form(
+        key: _formKey,
+        child: SizedBox(
+          width: 380,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Antre kòd 6 chif nou voye sou ${widget.email}, epi chwazi nouvo modpas ou.',
+                style: const TextStyle(fontSize: 13, color: Color(0xFF607064)),
+              ),
+              const SizedBox(height: 16),
+              if (_errorMsg != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFBE4E4),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.error_outline, color: Color(0xFFB91C1C), size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(_errorMsg!,
+                          style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 13)),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextFormField(
+                controller: _otpCtrl,
+                keyboardType: TextInputType.number,
+                autofocus: true,
+                maxLength: 6,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 8),
+                decoration: const InputDecoration(
+                  labelText: 'Kòd 6 chif',
+                  border: OutlineInputBorder(),
+                  counterText: '',
+                ),
+                validator: (v) {
+                  final s = (v ?? '').trim();
+                  if (s.length != 6 || int.tryParse(s) == null) {
+                    return 'Kòd la dwe gen 6 chif.';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _passCtrl,
+                obscureText: !_showPass,
+                decoration: InputDecoration(
+                  labelText: 'Nouvo modpas',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(_showPass ? Icons.visibility_off : Icons.visibility),
+                    onPressed: () => setState(() => _showPass = !_showPass),
+                  ),
+                ),
+                validator: (v) {
+                  if ((v ?? '').length < 8) return 'Omwen 8 karakte.';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _confirmCtrl,
+                obscureText: !_showPass,
+                decoration: const InputDecoration(
+                  labelText: 'Konfime modpas',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) {
+                  if ((v ?? '') != _passCtrl.text) return 'Modpas yo pa menm.';
+                  return null;
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : () => Navigator.pop(context, false),
+          child: const Text('Anile'),
+        ),
+        FilledButton(
+          onPressed: _loading ? null : _submit,
+          child: _loading
+              ? const SizedBox(
+                  width: 16, height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Reinisyalize'),
         ),
       ],
     );

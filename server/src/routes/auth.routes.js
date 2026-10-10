@@ -3,20 +3,25 @@
 /**
  * Wout otantifikasyon.
  *
- *   POST /api/auth/bootstrap   premye owner la (sèlman si baz la vid)
+ *   POST /api/auth/bootstrap        premye owner la (sèlman si baz la vid)
  *   POST /api/auth/login
  *   POST /api/auth/logout
  *   GET  /api/auth/me
- *   POST /api/auth/change-password
+ *   POST /api/auth/forgot-password  mande kòd reinisyalizasyon (etap 1)
+ *   POST /api/auth/reset-password   konfime kòd + nouvo modpas (etap 2)
+ *   POST /api/auth/change-password  chanje modpas (konekte, bezwen ansyen)
  */
 
 const express = require("express");
+const { randomInt } = require("node:crypto");
 
 const users = require("../auth/users");
 const { createSession, destroySession } = require("../auth/sessions");
 const { requireAuth, readToken } = require("../auth/middleware");
 const { getDb, now } = require("../db/db");
 const AppIds = require("../../../bazik/src/ids");
+const { saveOtp, verifyOtp, canSend } = require("../otp_store");
+const { getMailer } = require("../mail");
 
 const router = express.Router();
 
@@ -225,6 +230,90 @@ router.get("/me", requireAuth, (req, res) => {
     expiresAt: req.session?.expiresAt,
     idleTimeoutMs: req.session?.idleTimeoutMs,
   });
+});
+
+/**
+ * Etap 1 — Mande kòd reinisyalizasyon.
+ *
+ * Nou toujou reponn { ok: true } menm si imel la pa egziste nan sistèm nan,
+ * pou pa revele ki adrès ki gen kont.
+ */
+router.post("/forgot-password", async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+
+  if (!email) {
+    return res.status(400).json({ ok: false, code: "missing_email", message: "Email obligatwa." });
+  }
+
+  const otpGate = canSend(`reset:${email}`);
+  if (!otpGate.allowed) {
+    return res.status(429).json({
+      ok: false,
+      code: "too_soon",
+      message: `Tann ${otpGate.retryAfterSeconds} segond anvan ou mande yon lòt kòd.`,
+      retryAfterSeconds: otpGate.retryAfterSeconds,
+    });
+  }
+
+  const user = users.findByEmail(email);
+
+  if (user && user.is_active === 1) {
+    const otp = String(randomInt(0, 1000000)).padStart(6, "0");
+    const ttl = Number(process.env.OTP_TTL_SECONDS || 300);
+
+    try {
+      await getMailer().sendResetPassword(email, otp, ttl);
+      saveOtp(`reset:${email}`, otp, ttl);
+    } catch (err) {
+      console.error("[auth] forgot-password imel echwe:", err.message);
+    }
+  }
+
+  return res.json({
+    ok: true,
+    message: "Si imel sa a gen yon kont aktif, yon kòd voye sou li.",
+  });
+});
+
+/**
+ * Etap 2 — Konfime kòd epi mete nouvo modpas.
+ */
+router.post("/reset-password", async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const otp = String(req.body?.otp || "").trim();
+  const newPassword = String(req.body?.newPassword || "");
+
+  if (!email || !otp || !newPassword) {
+    return res.status(400).json({
+      ok: false,
+      code: "missing_fields",
+      message: "Email, kòd ak nouvo modpas obligatwa.",
+    });
+  }
+
+  const result = verifyOtp(`reset:${email}`, otp);
+
+  if (!result.ok) {
+    const messages = {
+      not_found: "Pa gen kòd pou adrès sa a. Mande yon nouvo kòd.",
+      expired: "Kòd la ekspire. Mande yon nouvo kòd.",
+      too_many_attempts: "Twòp tantativ. Mande yon nouvo kòd.",
+      invalid: "Kòd la pa bon.",
+    };
+    return res.status(401).json({
+      ok: false,
+      code: result.reason,
+      message: messages[result.reason] || "Kòd la pa bon.",
+      ...(result.attemptsLeft !== undefined ? { attemptsLeft: result.attemptsLeft } : {}),
+    });
+  }
+
+  try {
+    await users.resetPasswordSelf(email, newPassword);
+    return res.json({ ok: true, message: "Modpas reinisyalize. Konekte ankò." });
+  } catch (err) {
+    return send(res, err);
+  }
 });
 
 router.post("/change-password", requireAuth, async (req, res) => {

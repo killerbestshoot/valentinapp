@@ -174,3 +174,24 @@ CREATE TABLE IF NOT EXISTS transfer_resolutions (
   resolved_by    TEXT NOT NULL,
   resolved_at    INTEGER NOT NULL
 );
+
+-- Demann rechaj airtime: yon ajan mande kòb pou voye minit.
+-- Apwobasyon an kredite dirèkteman wallet ajan an (`airtime_recharge`).
+CREATE TABLE IF NOT EXISTS airtime_recharge_requests (
+  request_id     TEXT PRIMARY KEY,
+  enterprise_id  TEXT NOT NULL,
+  agent_uid      TEXT NOT NULL,
+  agent_name     TEXT NOT NULL DEFAULT '',
+  amount_minor   INTEGER NOT NULL,
+  currency       TEXT NOT NULL,
+  note           TEXT NOT NULL DEFAULT '',
+  status         TEXT NOT NULL DEFAULT 'pending'
+                 CHECK (status IN ('pending','approved','rejected')),
+  decided_by     TEXT NOT NULL DEFAULT '',
+  decided_at     INTEGER,
+  created_at     INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_airtime_recharge_ent
+  ON airtime_recharge_requests (enterprise_id, status, created_at DESC);

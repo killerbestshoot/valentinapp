@@ -13,7 +13,7 @@
 const { loadMailConfig } = require("./config");
 const { createSmtpTransport } = require("./smtp_transport");
 const { createApiTransport, MailError } = require("./api_transport");
-const { otpEmail } = require("./templates");
+const { otpEmail, resetPasswordEmail } = require("./templates");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -87,6 +87,17 @@ function createMailer({ env, transport, config } = {}) {
     /** Voye yon kòd OTP. */
     async sendOtp(to, code, ttlSeconds) {
       const message = otpEmail({
+        code,
+        ttlSeconds,
+        appName: resolvedConfig.fromName,
+      });
+
+      return send({ to, ...message });
+    },
+
+    /** Voye yon kòd reinisyalizasyon modpas. */
+    async sendResetPassword(to, code, ttlSeconds) {
+      const message = resetPasswordEmail({
         code,
         ttlSeconds,
         appName: resolvedConfig.fromName,
