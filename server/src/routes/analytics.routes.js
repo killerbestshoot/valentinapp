@@ -78,6 +78,12 @@ function statusOf(row, now) {
 
 const STATUS_LABEL = { delivered: "Livre", failed: "Echwe", pending: "An kou", verifying: "Pou verifye" };
 
+const amountFmt = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** 242 569,26 — espas nòmal, pa espas fen Intl la (li parèt mal nan kèk font). */
+function fmtAmount(v) {
+  return amountFmt.format(v).replace(/[\u202f\u00a0]/g, " ");
+}
+
 function maskPhone(phone) {
   const d = String(phone || "").replace(/\D/g, "").slice(-8);
   if (d.length < 8) return phone || "";
@@ -295,7 +301,7 @@ router.get("/owner", requireAuth, requireEnterprise, requireRole("owner", "admin
         level: "critical",
         code: "transfers_stuck",
         title: `${stuck.length} transfè pou verifye`,
-        detail: `${round(stuck.reduce((s, t) => s + t.amount, 0))} ${display} san repons pasrèl la depi plis pase 15 minit.`,
+        detail: `${fmtAmount(stuck.reduce((s, t) => s + t.amount, 0))} ${display} san repons pasrèl la depi plis pase 15 minit. Pa voye yo ankò: verifye yo nan Sante sistèm.`,
       });
     }
     const overall = finish(kCur).successRate;

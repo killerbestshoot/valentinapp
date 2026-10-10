@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/app/admin_shell.dart';
 import 'package:mon_premye_app/pages/dashboard/owner_analytics_section.dart';
 import 'package:mon_premye_app/core/config/app_environment.dart';
-import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
-import 'package:mon_premye_app/features/transactions/data/transaction_api.dart';
 import 'package:mon_premye_app/features/payments/presentation/widgets/gateway_status_card.dart';
 import 'package:mon_premye_app/features/wallet/presentation/widgets/exchange_rates_card.dart';
 import 'package:mon_premye_app/pages/agent/agents_page.dart';
@@ -34,54 +33,12 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  static const _ink = HomePage._ink;
-  static const _surface = HomePage._surface;
-
-  /// Yon sèl Future pataje ant tout moso ki bezwen estatistik yo.
-  /// Si nou te rele `_loadStats()` dirèk nan `build`, chak rebuild t ap
-  /// relanse tout rekèt agregasyon yo.
-  late Future<_DashboardStats> _statsFuture;
-  late Future<List<TransactionRecord>> _recentFuture;
   final _analyticsKey = GlobalKey<OwnerAnalyticsSectionState>();
 
-  @override
-  void initState() {
-    super.initState();
-    _statsFuture = _loadStats();
-    _recentFuture = _loadRecent();
-  }
-
-  /// Estatistik yo kouvri TOUT koleksyon an, pa sèlman 10 dènye yo.
-  ///
-  /// Anvan, `_DashboardStats.fromDocs(docs)` t ap kalkile sou menm lis `limit(10)`
-  /// ki alimante tablo a: "Transactions" te toujou montre maksimòm 10, e volim
-  /// nan se te volim 10 dènye tranzaksyon yo — pa total la.
-  Future<_DashboardStats> _loadStats() async {
-    final stats = await TransactionApi.instance.stats();
-
-    return _DashboardStats(
-      total: stats.total,
-      pending: stats.pending,
-      delivered: stats.delivered,
-      volumes: stats.volumes,
-    );
-  }
-
-  Future<List<TransactionRecord>> _loadRecent() {
-    return TransactionApi.instance.list(limit: 10);
-  }
-
   void _refresh() {
-    setState(() {
-      _statsFuture = _loadStats();
-      _recentFuture = _loadRecent();
-    });
     _analyticsKey.currentState?.reload();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Estatistik yo rechaje.'),
-        duration: Duration(seconds: 2),
-      ),
+      const SnackBar(content: Text('Tablo a rechaje.'), duration: Duration(seconds: 2)),
     );
   }
 
@@ -91,132 +48,104 @@ class _HomePageState extends State<HomePage> {
       return _MockAdminDashboard(
         email: AuthRepositoryProvider.instance.currentUser?.email ?? '',
         onCreate: () => _openCreateTransaction(context),
-        onLogout: () => _confirmLogout(context),
+        onLogout: () => AuthRepositoryProvider.instance.signOut(),
       );
     }
 
-    return Scaffold(
-      backgroundColor: _surface,
-      appBar: AppBar(
-        backgroundColor: _surface,
-        elevation: 0,
-        foregroundColor: _ink,
-        titleSpacing: 24,
-        title: const Text(
-          'VOUPVAPCASH',
-          style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0),
+    return AdminShell(
+      onCreateTransaction: () => _openCreateTransaction(context),
+      onRefresh: (id) {
+        if (id == 'dashboard') _refresh();
+      },
+      destinations: [
+        ShellDestination(
+          id: 'dashboard',
+          label: 'Tablo',
+          icon: Icons.space_dashboard_outlined,
+          builder: (context) => _DashboardBody(
+            analyticsKey: _analyticsKey,
+            onOpenReceipt: (id) => _openReceipt(context, id),
+          ),
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Rafrechi',
-            onPressed: _refresh,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: 'Dekonekte',
-            onPressed: () => _confirmLogout(context),
-            icon: const Icon(Icons.logout),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: FutureBuilder<List<TransactionRecord>>(
-        future: _recentFuture,
-        builder: (context, snap) {
-          if (snap.hasError) {
-            final error = snap.error;
-            return _StateMessage(
-              icon: Icons.error_outline,
-              title: 'Nou pa ka chaje tranzaksyon yo',
-              message: error is ApiException ? error.message : '$error',
-            );
-          }
-
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final transactions = snap.data!;
-
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 900;
-
-              return ListView(
-                padding: EdgeInsets.fromLTRB(
-                  isWide ? 32 : 16,
-                  12,
-                  isWide ? 32 : 16,
-                  32,
-                ),
-                children: [
-                  _Header(
-                    isWide: isWide,
-                    onCreate: () => _openCreateTransaction(context),
-                  ),
-                  const SizedBox(height: 18),
-                  OwnerAnalyticsSection(
-                    key: _analyticsKey,
-                    isWide: isWide,
-                    onOpenReceipt: (id) => _openReceipt(context, id),
-                  ),
-                  const SizedBox(height: 18),
-                  _AdminCommandCenter(
-                    isWide: isWide,
-                    onOpen: (page) => _open(context, page),
-                  ),
-                  const SizedBox(height: 18),
-                  const GatewayStatusCard(),
-                  const SizedBox(height: 18),
-                  const ExchangeRatesCard(),
-                  const SizedBox(height: 18),
-                  isWide
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              flex: 7,
-                              child: _TransactionsPanel(
-                                transactions: transactions,
-                                onOpen: (id) => _openReceipt(context, id),
-                              ),
-                            ),
-                            const SizedBox(width: 18),
-                            Expanded(
-                              flex: 3,
-                              child: FutureBuilder<_DashboardStats>(
-                                future: _statsFuture,
-                                builder: (context, snap) => _OperationsPanel(
-                                  stats: snap.data ?? _DashboardStats.empty,
-                                  onCreate: () =>
-                                      _openCreateTransaction(context),
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          children: [
-                            FutureBuilder<_DashboardStats>(
-                              future: _statsFuture,
-                              builder: (context, snap) => _OperationsPanel(
-                                stats: snap.data ?? _DashboardStats.empty,
-                                onCreate: () => _openCreateTransaction(context),
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                            _TransactionsPanel(
-                              transactions: transactions,
-                              onOpen: (id) => _openReceipt(context, id),
-                            ),
-                          ],
-                        ),
-                ],
-              );
-            },
-          );
-        },
-      ),
+        ShellDestination(
+          id: 'transactions',
+          label: 'Tranzaksyon',
+          icon: Icons.receipt_long_outlined,
+          section: 'Operasyon',
+          builder: (_) => const TransactionManagementPage(),
+        ),
+        ShellDestination(
+          id: 'payouts',
+          label: 'Payout',
+          icon: Icons.task_alt_outlined,
+          section: 'Operasyon',
+          builder: (_) => const PayoutsPage(),
+        ),
+        ShellDestination(
+          id: 'topups',
+          label: 'Rechaj wallet',
+          icon: Icons.fact_check_outlined,
+          section: 'Operasyon',
+          builder: (_) => const WalletTopupApprovalPage(),
+        ),
+        ShellDestination(
+          id: 'agents',
+          label: 'Ajan',
+          icon: Icons.groups_outlined,
+          section: 'Operasyon',
+          builder: (_) => const AgentsPage(),
+        ),
+        ShellDestination(
+          id: 'commissions',
+          label: 'Komisyon',
+          icon: Icons.percent,
+          section: 'Lajan',
+          builder: (_) => const CommissionsPage(),
+        ),
+        ShellDestination(
+          id: 'services',
+          label: 'Sèvis ak frè',
+          icon: Icons.tune_outlined,
+          section: 'Lajan',
+          builder: (_) => const ServiceCatalogPage(),
+        ),
+        ShellDestination(
+          id: 'reports',
+          label: 'Rapò',
+          icon: Icons.bar_chart_outlined,
+          section: 'Lajan',
+          builder: (_) => const ReportsPage(),
+        ),
+        ShellDestination(
+          id: 'wallet',
+          label: 'Istorik wallet',
+          icon: Icons.history,
+          section: 'Lajan',
+          builder: (_) => const WalletHistoryPage(),
+        ),
+        ShellDestination(
+          id: 'notifications',
+          label: 'Notifikasyon',
+          icon: Icons.notifications_outlined,
+          section: 'Sistèm',
+          badge: true,
+          builder: (_) => const NotificationsPage(),
+        ),
+        ShellDestination(
+          id: 'health',
+          label: 'Sante sistèm',
+          icon: Icons.monitor_heart_outlined,
+          section: 'Sistèm',
+          builder: (_) => const SystemHealthPage(),
+        ),
+        ShellDestination(
+          id: 'settings',
+          label: 'Paramèt',
+          icon: Icons.settings_outlined,
+          section: 'Sistèm',
+          builder: (_) => const SettingsPage(),
+        ),
+      ],
     );
   }
 
@@ -227,43 +156,47 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _open(BuildContext context, Widget page) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => page),
-    );
-  }
-
   void _openReceipt(BuildContext context, String id) {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => ReceiptPage(transactionId: id)),
     );
   }
+}
 
-  Future<void> _confirmLogout(BuildContext context) async {
-    final shouldLogout = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Dekonekte?'),
-        content: const Text('Ou vle soti nan kont sa a?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Anile'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            icon: const Icon(Icons.logout),
-            label: const Text('Dekonekte'),
-          ),
+/// Paj "Tablo": analiz owner a, epi eta pasrèl yo ak to jounen an anba.
+class _DashboardBody extends StatelessWidget {
+  const _DashboardBody({required this.analyticsKey, required this.onOpenReceipt});
+
+  final GlobalKey<OwnerAnalyticsSectionState> analyticsKey;
+  final void Function(String id) onOpenReceipt;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final isWide = constraints.maxWidth >= 900;
+      return ListView(
+        padding: EdgeInsets.fromLTRB(isWide ? 28 : 16, 18, isWide ? 28 : 16, 32),
+        children: [
+          OwnerAnalyticsSection(key: analyticsKey, isWide: isWide, onOpenReceipt: onOpenReceipt),
+          const SizedBox(height: 18),
+          if (isWide)
+            const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: GatewayStatusCard()),
+                SizedBox(width: 16),
+                Expanded(child: ExchangeRatesCard()),
+              ],
+            )
+          else ...const [
+            GatewayStatusCard(),
+            SizedBox(height: 16),
+            ExchangeRatesCard(),
+          ],
         ],
-      ),
-    );
-
-    if (shouldLogout == true) {
-      await AuthRepositoryProvider.instance.signOut();
-    }
+      );
+    });
   }
 }
 
@@ -877,179 +810,6 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
-class _TransactionsPanel extends StatelessWidget {
-  const _TransactionsPanel({
-    required this.transactions,
-    required this.onOpen,
-  });
-
-  final List<TransactionRecord> transactions;
-  final ValueChanged<String> onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFDDE8D8)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(18, 18, 18, 12),
-            child: Row(
-              children: [
-                Icon(Icons.list_alt_outlined, color: HomePage._brand),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Dènye transactions',
-                    style: TextStyle(
-                      color: HomePage._ink,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          if (transactions.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(28),
-              child: Text(
-                'Pa gen transaction ankò.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: HomePage._muted),
-              ),
-            )
-          else
-            ...transactions.map((tx) {
-              return _TransactionTile(
-                id: tx.txId,
-                service: tx.serviceName,
-                customerName: tx.customerName,
-                phone: tx.customerPhone,
-                amount: tx.amount.toStringAsFixed(2),
-                currency: tx.currency,
-                status: tx.status,
-                onTap: () => onOpen(tx.txId),
-              );
-            }),
-        ],
-      ),
-    );
-  }
-}
-
-class _TransactionTile extends StatelessWidget {
-  const _TransactionTile({
-    required this.id,
-    required this.service,
-    required this.customerName,
-    required this.phone,
-    required this.amount,
-    required this.currency,
-    required this.status,
-    required this.onTap,
-  });
-
-  final String id;
-  final String service;
-  final String customerName;
-  final String phone;
-  final String amount;
-  final String currency;
-  final String status;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final displayName =
-        customerName.isEmpty ? 'Kliyan pa disponib' : customerName;
-
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF2F8EE),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.receipt_long_outlined,
-                color: HomePage._brand,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        service.isEmpty ? 'Service' : service,
-                        style: const TextStyle(
-                          color: HomePage._ink,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      Text(
-                        '$amount $currency'.trim(),
-                        style: const TextStyle(
-                          color: HomePage._brand,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      _StatusPill(status: status),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '$displayName • ${phone.isEmpty ? 'Telefòn pa disponib' : phone}',
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: HomePage._muted,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'ID: $id',
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: HomePage._muted,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Icon(Icons.chevron_right, color: HomePage._muted),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _OperationsPanel extends StatelessWidget {
   const _OperationsPanel({
     required this.stats,
@@ -1153,39 +913,6 @@ class _HealthRow extends StatelessWidget {
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.status});
-
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    final normalized = status.trim().toLowerCase();
-    final delivered = normalized == 'delivered' ||
-        normalized == 'livre' ||
-        normalized == 'livrée';
-    final label = status.trim().isEmpty ? 'pending' : status.trim();
-    final color = delivered ? const Color(0xFF2E7D32) : const Color(0xFFF57F17);
-    final fill = delivered ? const Color(0xFFE8F5E9) : const Color(0xFFFFF8E1);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: fill,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
 class _DashboardStats {
   const _DashboardStats({
     required this.total,
@@ -1244,47 +971,4 @@ class _DashboardStats {
     return entries.skip(1).map((e) => '${_format(e.value)} ${e.key}').join(' + ');
   }
 
-}
-
-class _StateMessage extends StatelessWidget {
-  const _StateMessage({
-    required this.icon,
-    required this.title,
-    required this.message,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 44, color: HomePage._muted),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: HomePage._ink,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: HomePage._muted),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

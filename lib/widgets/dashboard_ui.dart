@@ -10,6 +10,17 @@ class DashboardColors {
   static const danger = Color(0xFFB91C1C);
 }
 
+/// Make paj ki parèt ANNDAN kad owner/admin nan (meni bò a + ba anlè).
+class ShellScope extends InheritedWidget {
+  const ShellScope({super.key, required super.child});
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ShellScope>() != null;
+
+  @override
+  bool updateShouldNotify(ShellScope oldWidget) => false;
+}
+
 class DashboardPage extends StatelessWidget {
   const DashboardPage({
     super.key,
@@ -26,6 +37,30 @@ class DashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Nan kad owner/admin nan, ba anlè kad la deja montre tit la ak moun ki
+    // konekte a: paj la pa ajoute yon dezyèm ba.
+    if (ShellScope.of(context)) {
+      return ColoredBox(
+        color: DashboardColors.surface,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+              children: [
+                if (actions.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: actions),
+                  ),
+                ...children,
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: DashboardColors.surface,
       appBar: AppBar(
