@@ -12,6 +12,7 @@ import 'package:mon_premye_app/pages/payout/payouts_page.dart';
 import 'package:mon_premye_app/pages/commission/commissions_page.dart';
 import 'package:mon_premye_app/pages/wallet/wallet_history_page.dart';
 import 'package:mon_premye_app/pages/system/system_health_page.dart';
+import 'package:mon_premye_app/pages/system/stuck_transfers_page.dart';
 import 'package:mon_premye_app/pages/notifications/notifications_page.dart';
 import 'package:mon_premye_app/pages/receipts/receipt_page.dart';
 import 'package:mon_premye_app/pages/reports/reports_page.dart';
@@ -130,6 +131,13 @@ class _HomePageState extends State<HomePage> {
           section: 'Sistèm',
           badge: true,
           builder: (_) => const NotificationsPage(),
+        ),
+        ShellDestination(
+          id: 'review',
+          label: 'Pou verifye',
+          icon: Icons.rule_outlined,
+          section: 'Sistèm',
+          builder: (_) => const StuckTransfersPage(),
         ),
         ShellDestination(
           id: 'health',

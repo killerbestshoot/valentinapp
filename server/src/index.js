@@ -20,6 +20,7 @@ const { attachUser } = require("./auth/middleware");
 const { getDb, resetDb } = require("./db/db");
 const { checkProductionConfig } = require("./preflight");
 const { getRatesRefresher } = require("./rates/rates_refresher");
+const { getReconcileJob } = require("./jobs/reconcile_job");
 
 const preflight = checkProductionConfig();
 for (const warning of preflight.warnings) console.warn(`⚠️  ${warning}`);
@@ -102,6 +103,11 @@ const server = app.listen(PORT, HOST, () => {
     console.warn("[rates] ⚠️  EXCHANGE_RATE_API_KEY manke: to yo pa mete ajou (valè `seed` yo rete).");
   }
   rates.start();
+
+  // Webhook ki pèdi: transfè ak rechaj ki rete "an kou" rekonsilye chak 5 minit.
+  if (getReconcileJob().start()) {
+    console.log(`[reconcile] chak ${Math.round(getReconcileJob().intervalMs / 60000)} minit`);
+  }
 });
 
 // `docker stop` voye SIGTERM. Nou sispann aksepte demand, men nou kite sa ki
@@ -122,6 +128,7 @@ function shutdown(signal) {
   force.unref();
 
   getRatesRefresher().stop();
+  getReconcileJob().stop();
 
   server.close(() => {
     resetDb();

@@ -383,3 +383,46 @@ test("devi enkoyeran: frè 5% la aplike, pa zewo", async (t) => {
 
   assert.equal(quote.feeHtg, 66, "5% de 1320 HTG");
 });
+
+test("transfè san ID Bazik ke Bazik pa jwenn: verifikasyon manyèl, pa ranbouse, pa re-eseye", async (t) => {
+  const { service, client } = makeService();
+  t.after(() => service.close());
+
+  // Repons lan pèdi: nou pa janm resevwa ID Bazik la. (Bazik reyèl la pa
+  // jwenn yon transfè pa referans NOU: 404 pa vle di lajan an pa pati.)
+  client.createTransfer = async () => {
+    throw new BazikError("network_error", "timeout", { retryable: true });
+  };
+
+  const agent = await seedAgent(service.store, { balanceMinor: USD(500) });
+  await assert.rejects(
+    service.transfers.send({
+      network: "moncash",
+      amountMinor: USD(10),
+      uid: agent.uid,
+      enterpriseId: agent.enterpriseId,
+      phone: "37123456",
+      idempotencySeed: "san-id",
+    }),
+    { code: "transfer_pending_verification" }
+  );
+  const debited = await balanceOf(service.store, agent);
+
+  let lookups = 0;
+  const realStatus = client.transferStatus.bind(client);
+  client.transferStatus = async (id) => {
+    lookups += 1;
+    return realStatus(id);
+  };
+
+  await service.transfers.pollPending();
+  const [flagged] = await service.store._db
+    .prepare("SELECT status, gateway_status, refunded FROM bazik_transfers").all();
+  assert.equal(flagged.status, "processing", "ni livre, ni echwe");
+  assert.equal(flagged.gateway_status, "manual_review");
+  assert.equal(flagged.refunded, 0);
+  assert.equal(await balanceOf(service.store, agent), debited, "pa ranbouse: lajan an ka te pati");
+
+  await service.transfers.pollPending();
+  assert.equal(lookups, 1, "pa gen apèl Bazik initil apre li make");
+});

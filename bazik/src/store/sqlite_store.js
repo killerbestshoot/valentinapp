@@ -659,7 +659,11 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
     async listPendingTransfers(limit = 50) {
       return db
         .prepare(
-          "SELECT * FROM bazik_transfers WHERE status IN ('pending','processing') ORDER BY created_at ASC LIMIT ?"
+          // Transfè "verifikasyon manyèl" yo pa okipe plas yo nan pasaj otomatik la.
+          `SELECT * FROM bazik_transfers
+            WHERE status IN ('pending','processing')
+              AND NOT (gateway_id = '' AND gateway_status = 'manual_review')
+            ORDER BY created_at ASC LIMIT ?`
         )
         .all(limit)
         .map(mapTransfer);

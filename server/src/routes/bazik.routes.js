@@ -252,6 +252,176 @@ router.post("/transfers", requireAuth, requireEnterprise, async (req, res) => {
   }
 });
 
+// --- Rekonsilyasyon manyèl ---
+
+/** Yon transfè ki poko fini depi plis pase sa a parèt nan lis pou verifye a. */
+const REVIEW_AFTER_MS = 15 * 60000;
+
+/**
+ * Transfè ki bloke (pending/processing depi plis pase 15 minit), ak sa owner
+ * a bezwen pou jwenn yo sou dashboard Bazik la: dat, montan, nimewo, non.
+ */
+router.get("/transfers/review", requireAuth, requireEnterprise, requireRole("owner", "admin"), (req, res) => {
+  try {
+    const db = getBazikService().store._db;
+    const rows = db
+      .prepare(
+        `SELECT b.*, t.staff_name, t.status AS tx_status, t.client_name
+           FROM bazik_transfers b
+           LEFT JOIN transactions t ON t.tx_id = b.tx_id
+          WHERE b.enterprise_id = ? AND b.status IN ('pending', 'processing') AND b.created_at <= ?
+          ORDER BY b.created_at ASC`
+      )
+      .all(req.user.enterpriseId, Date.now() - REVIEW_AFTER_MS);
+
+    return res.json({
+      ok: true,
+      transfers: rows.map((r) => ({
+        transferId: r.transfer_id,
+        reference: r.reference,
+        gatewayId: r.gateway_id || null,
+        provider: r.provider || "bazik",
+        network: r.network,
+        status: r.status,
+        /** Pa gen ID Bazik ak Bazik pa jwenn li: sèlman yon moun ka deside. */
+        manualReview: !r.gateway_id && r.gateway_status === "manual_review",
+        amountHtg: money.fromMinor(r.amount_htg_minor),
+        amount: money.fromMinor(r.amount_minor),
+        currency: r.currency,
+        debit: money.fromMinor(r.debit_minor),
+        walletCurrency: r.wallet_currency,
+        phone: r.phone,
+        receiverName: r.receiver_name || r.client_name || "",
+        staffName: r.staff_name || "",
+        txId: r.tx_id || null,
+        txStatus: r.tx_status || null,
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+/**
+ * Owner a deside sò yon transfè bloke.
+ *
+ *   { action: "completed", gatewayId: "…", note }  lajan an pati: ID Bazik la
+ *       OBLIGATWA, e Bazik dwe konfime l `completed` — pa gen livrezon sou
+ *       pawòl sèlman.
+ *   { action: "failed", note }  lajan an pa janm pati: ajan an ranbouse
+ *       (montan + frè). Refize si tranzaksyon an deja make livre.
+ *
+ * Yon sèl desizyon pa transfè (`transfer_resolutions`), ak non moun nan ak rezon an.
+ */
+router.post("/transfers/:id/resolve", requireAuth, requireEnterprise, requireRole("owner"), async (req, res) => {
+  try {
+    const service = getBazikService();
+    const db = service.store._db;
+    const body = req.body || {};
+    const action = body.action === "completed" ? "completed" : body.action === "failed" ? "failed" : null;
+    const note = String(body.note || "").trim();
+    const gatewayId = String(body.gatewayId || "").trim();
+
+    if (!action) return send(res, { code: "invalid_action", message: "Chwazi: livre oswa echwe." });
+    if (note.length < 5) {
+      return send(res, { code: "note_required", message: "Ekri poukisa (omwen 5 karaktè): se tras desizyon an." });
+    }
+
+    const transfer = await service.store.getTransfer(req.params.id);
+    if (!transfer || transfer.enterpriseId !== req.user.enterpriseId) {
+      return res.status(404).json({ ok: false, code: "transfer_not_found" });
+    }
+    if (transfer.status === "completed" || transfer.status === "failed") {
+      return res.status(409).json({ ok: false, code: "transfer_closed", message: `Transfè sa a deja ${transfer.status}.` });
+    }
+
+    let bazikStatus = null;
+    if (gatewayId) {
+      const other = db
+        .prepare("SELECT transfer_id FROM bazik_transfers WHERE gateway_id = ? AND transfer_id != ?")
+        .get(gatewayId, transfer.transferId);
+      if (other) {
+        return res.status(409).json({
+          ok: false,
+          code: "gateway_id_taken",
+          message: "ID Bazik sa a deja lye ak yon lòt transfè.",
+        });
+      }
+      try {
+        bazikStatus = (await service.client.transferStatus(gatewayId)).status;
+      } catch (err) {
+        if (err instanceof BazikError && err.status === 404) {
+          return send(res, { code: "gateway_id_unknown", message: "Bazik pa konnen ID sa a. Verifye l sou dashboard la." });
+        }
+        throw err;
+      }
+    }
+
+    if (action === "completed") {
+      if (!gatewayId) {
+        return send(res, { code: "gateway_id_required", message: "Mete ID transfè a jan li parèt sou dashboard Bazik la." });
+      }
+      if (bazikStatus !== "completed") {
+        return res.status(409).json({
+          ok: false,
+          code: "bazik_not_completed",
+          message: `Bazik di transfè sa a "${bazikStatus}", pa livre.`,
+        });
+      }
+    } else {
+      if (bazikStatus === "completed") {
+        return res.status(409).json({
+          ok: false,
+          code: "bazik_completed",
+          message: "Bazik di lajan sa a PATI: li pa ka make echwe ni ranbouse.",
+        });
+      }
+      const tx = transfer.txId
+        ? db.prepare("SELECT status FROM transactions WHERE tx_id = ?").get(transfer.txId)
+        : null;
+      if (tx?.status === "delivered") {
+        return res.status(409).json({
+          ok: false,
+          code: "transaction_delivered",
+          message: "Tranzaksyon an deja make livre (komisyon ka deja peye): konfime l ak ID Bazik la oswa kontakte sipò.",
+        });
+      }
+    }
+
+    const claimed = db
+      .prepare(
+        `INSERT INTO transfer_resolutions
+          (transfer_id, enterprise_id, action, gateway_id, note, resolved_by, resolved_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(transfer_id) DO NOTHING`
+      )
+      .run(transfer.transferId, req.user.enterpriseId, action, gatewayId, note, req.user.uid, Date.now());
+    if (claimed.changes !== 1) {
+      return res.status(409).json({ ok: false, code: "already_resolved", message: "Yon lòt moun deja deside pou transfè sa a." });
+    }
+
+    const settled = await service.store.settleTransfer({
+      transferId: transfer.transferId,
+      status: action,
+      gatewayId,
+      gatewayStatus: action === "completed" ? "manual_confirmed" : "manual_failed",
+      failureReason: action === "failed" ? `Rekonsilye alamen: ${note}` : "",
+    });
+
+    await settleCommissions(req.user.enterpriseId);
+
+    return res.json({
+      ok: true,
+      transfer: { transferId: settled.transfer.transferId, status: settled.transfer.status },
+      refunded: settled.refund
+        ? { amount: money.fromMinor(transfer.debitMinor), currency: transfer.walletCurrency }
+        : null,
+    });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
 router.get("/transfers/:id", requireAuth, requireEnterprise, async (req, res) => {
   try {
     const service = getBazikService();

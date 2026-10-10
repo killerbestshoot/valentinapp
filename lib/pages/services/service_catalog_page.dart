@@ -160,9 +160,13 @@ class _ServiceCatalogPageState extends State<ServiceCatalogPage> {
     final feePct = parse(feeCtrl);
     final feeMin = parse(minCtrl);
     final share = parse(shareCtrl);
-    feeCtrl.dispose();
-    minCtrl.dispose();
-    shareCtrl.dispose();
+    // Dyalòg la toujou ap fèmen (animasyon): chan yo itilize kontwolè yo
+    // jiskaske li disparèt nèt. Nou libere yo apre.
+    Future<void>.delayed(const Duration(seconds: 1), () {
+      feeCtrl.dispose();
+      minCtrl.dispose();
+      shareCtrl.dispose();
+    });
 
     if (!ok) return;
 

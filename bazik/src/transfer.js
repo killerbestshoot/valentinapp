@@ -20,6 +20,9 @@ const { PslError } = require("./psl_client");
 const { assertNetworkAmount, feeMinor, fromMinor, DEFAULT_FEE_PERCENT } = require("./money");
 const { createRateBook } = require("./rates");
 
+/** `gateway_status` yon transfè ke sèlman yon moun ka rekonsilye. */
+const MANUAL_REVIEW = "manual_review";
+
 function createTransferUseCases({
   store,
   client,
@@ -583,6 +586,14 @@ function createTransferUseCases({
       return { transfer: settled.transfer, changed: !settled.duplicate, refund: settled.refund };
     }
 
+    // Bazik pa jwenn yon transfè pa REFERANS NOU: se ID pa l sèlman li konnen.
+    // Yon transfè san ID Bazik (repons lan te pèdi lè nou te voye l) pa ka
+    // rekonsilye otomatikman — ni livre, ni ranbouse: yon moun dwe verifye l
+    // sou dashboard Bazik la (`POST /api/bazik/transfers/:id/resolve`).
+    if (!transfer.gatewayId && transfer.gatewayStatus === MANUAL_REVIEW) {
+      return { transfer, changed: false, manualReview: true };
+    }
+
     const lookupId = transfer.gatewayId || transfer.reference;
 
     let result;
@@ -590,6 +601,10 @@ function createTransferUseCases({
       result = await client.transferStatus(lookupId);
     } catch (err) {
       if (err instanceof BazikError && err.status === 404) {
+        if (!transfer.gatewayId) {
+          const flagged = await store.updateTransfer(transferId, { gatewayStatus: MANUAL_REVIEW });
+          return { transfer: flagged, changed: true, manualReview: true };
+        }
         return { transfer, changed: false, notFound: true };
       }
       throw err;
@@ -630,4 +645,4 @@ function createTransferUseCases({
   return { quote, send, refresh, pollPending, prepareAmounts, gatewayBalance };
 }
 
-module.exports = { createTransferUseCases };
+module.exports = { createTransferUseCases, MANUAL_REVIEW };

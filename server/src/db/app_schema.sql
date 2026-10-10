@@ -161,3 +161,16 @@ CREATE TABLE IF NOT EXISTS app_settings (
   updated_at INTEGER NOT NULL,
   updated_by TEXT NOT NULL DEFAULT ''
 );
+
+-- Rekonsilyasyon manyèl: yon owner deside sò yon transfè Bazik pa ka
+-- rekonsilye otomatikman (repons lan te pèdi, pa gen ID Bazik). PRIMARY KEY:
+-- yon sèl desizyon pa transfè. Tras la rete menm si transfè a chanje apre.
+CREATE TABLE IF NOT EXISTS transfer_resolutions (
+  transfer_id    TEXT PRIMARY KEY,
+  enterprise_id  TEXT NOT NULL,
+  action         TEXT NOT NULL CHECK (action IN ('completed','failed')),
+  gateway_id     TEXT NOT NULL DEFAULT '',
+  note           TEXT NOT NULL,
+  resolved_by    TEXT NOT NULL,
+  resolved_at    INTEGER NOT NULL
+);
