@@ -213,6 +213,7 @@ router.post("/topups", requireAuth, requireEnterprise, requireAvailable, async (
       phone: tx.phone,
       amountMinor: tx.amount_minor,
       currency: tx.currency,
+      platformFeeMinor: tx.fee_mode ? tx.sender_fee_minor : 0,
       operatorId: body.operatorId,
       txId,
       note: `Minit Haiti ${tx.client_name || ""}`.trim(),

@@ -6,6 +6,7 @@
  *   GET    /api/transactions            lis (limit, status)
  *   GET    /api/transactions/stats      total / pending / delivered / volim
  *   GET    /api/transactions/:id
+ *   POST   /api/transactions/quote      devi frè a (pou ekran an, anyen pa anrejistre)
  *   POST   /api/transactions            kreye
  *   PATCH  /api/transactions/:id        chanje estati
  *   DELETE /api/transactions/:id        owner sèlman
@@ -26,7 +27,9 @@ const { getDb, now } = require("../db/db");
 const { requireAuth, requireRole, requireEnterprise } = require("../auth/middleware");
 const { money } = require("../../../bazik/index.js");
 const AppIds = require("../../../bazik/src/ids");
-const { computeCommission, applyCommissionToTx } = require("../commission/engine");
+const { applyCommissionToTx } = require("../commission/engine");
+const { computeFee } = require("../commission/fees");
+const { getBazikService } = require("../bazik_service");
 
 const router = express.Router();
 
@@ -116,8 +119,13 @@ function toJson(row) {
     /** Sa benefisyè a resevwa. */
     paymentAmount: money.fromMinor(row.amount_minor),
     paymentCurrency: row.currency,
-    /** Frè anvwayè a peye anplis (0 = san frè). */
+    /** Frè platfòm nan (0 = san frè, sèlman ansyen tranzaksyon). */
     senderFee: money.fromMinor(row.sender_fee_minor || 0),
+    fee: money.fromMinor(row.sender_fee_minor || 0),
+    /** 'sender' (anvwayè a peye l anplis), 'deducted' (retire sou montan an), '' (ansyen). */
+    feeMode: row.fee_mode || "",
+    feePct: row.fee_pct || 0,
+    agentSharePct: row.agent_share_pct || 0,
     /** Sa anvwayè a soti nan pòch li an tou. */
     totalPaid: money.fromMinor(row.amount_minor + (row.sender_fee_minor || 0)),
     status: row.status,
@@ -249,47 +257,87 @@ router.get("/:id", requireAuth, requireEnterprise, (req, res) => {
 
 // --- Kreye ---
 
-router.post("/", requireAuth, requireEnterprise, (req, res) => {
+/**
+ * Frè a kalkile SÈVÈ-bò, apati règ owner a. Kò demann lan pote sèlman montan
+ * ajan an tape a ak kiyès ki peye frè a — jamè frè a li menm: yon ajan pa ka
+ * bese frè platfòm nan.
+ */
+async function feeFromBody(body) {
+  const serviceName = String(body.serviceName || "").trim();
+  if (!serviceName) {
+    throw Object.assign(new Error("Sèvis la obligatwa."), { code: "missing_service" });
+  }
+
+  let inputMinor;
+  try {
+    inputMinor = money.toMinor(body.paymentAmount);
+  } catch (err) {
+    throw Object.assign(new Error(err.message), { code: "invalid_amount" });
+  }
+
+  return computeFee({
+    inputMinor,
+    currency: String(body.paymentCurrency || "USD").trim().toUpperCase(),
+    mode: body.feeMode === "deducted" ? "deducted" : "sender",
+    serviceName,
+  });
+}
+
+function feeJson(fee) {
+  return {
+    feeMode: fee.mode,
+    currency: fee.currency,
+    feePct: fee.feePct,
+    minApplied: fee.minApplied,
+    fee: money.fromMinor(fee.feeMinor),
+    /** Sa benefisyè a resevwa. */
+    netAmount: money.fromMinor(fee.netMinor),
+    /** Sa kliyan an peye an tou. */
+    totalPaid: money.fromMinor(fee.totalMinor),
+    agentCommission: money.fromMinor(fee.agentMinor),
+    agentSharePct: fee.agentSharePct,
+  };
+}
+
+router.post("/quote", requireAuth, requireEnterprise, async (req, res) => {
+  try {
+    const fee = await feeFromBody(req.body || {});
+    const quote = feeJson(fee);
+
+    // Sa ki pral soti nan wallet ajan an pou livrezon an (montan + frè), nan
+    // deviz WALLET la. Frè pasrèl la pa ladan: se owner a ki peye l.
+    const service = getBazikService();
+    const wallet = await service.store.getWallet({ uid: req.user.uid, enterpriseId: req.user.enterpriseId });
+    if (wallet) {
+      const debit = await service.rates.convert(fee.totalMinor, fee.currency, wallet.currency);
+      quote.walletDebit = money.fromMinor(debit.amountMinor);
+      quote.walletCurrency = wallet.currency;
+    }
+
+    return res.json({ ok: true, quote });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+router.post("/", requireAuth, requireEnterprise, async (req, res) => {
   try {
     const body = req.body || {};
 
     const serviceName = String(body.serviceName || "").trim();
     const customerPhone = String(body.customerPhone || "").trim();
 
-    if (!serviceName) {
-      return send(res, { code: "missing_service", message: "Sèvis la obligatwa." });
-    }
-
-    let amountMinor;
-    try {
-      amountMinor = money.toMinor(body.paymentAmount);
-    } catch (err) {
-      return send(res, { code: "invalid_amount", message: err.message });
-    }
+    // Frè a + separasyon an fikse KOUNYE A: si owner a chanje to sèvis la
+    // pita, sa pa modifye retwoaktivman sa tranzaksyon sa a te pwomèt.
+    const fee = await feeFromBody(body);
 
     const txId = AppIds.transaction(
       `${serviceName}:${customerPhone}:${req.user.uid}:${Date.now()}`
     );
 
-    // Frè anvwayè a: opsyonèl, 0 pa defo.
-    //
-    // Li PA antre nan kalkil komisyon an: komisyon yo rete sou montan
-    // benefisyè a resevwa a, jan yo te ye anvan.
-    let senderFeeMinor = 0;
-    if (body.senderFee !== undefined && body.senderFee !== null && `${body.senderFee}` !== "") {
-      try {
-        senderFeeMinor = money.toMinor(body.senderFee);
-      } catch (err) {
-        return send(res, { code: "invalid_fee", message: `Frè a pa valid: ${err.message}` });
-      }
-      if (senderFeeMinor < 0) {
-        return send(res, { code: "invalid_fee", message: "Frè a pa ka negatif." });
-      }
-    }
-
-    // To komisyon an fikse KOUNYE A: si yon admin chanje to sèvis la pita, sa
-    // pa modifye retwoaktivman sa tranzaksyon sa a te pwomèt.
-    const commission = computeCommission({ amountMinor, serviceName });
+    // Pou jounal la: pati ajan/owner an % MONTAN benefisyè a resevwa a, menm
+    // inite ak ansyen kolòn yo.
+    const pctOfNet = (minor) => Math.round((minor / fee.netMinor) * 10000) / 100;
 
     // `enterprise_id` ak `staff_uid` toujou soti nan sesyon an, jamè nan kò a:
     // yon kliyan pa ka atribiye yon tranzaksyon bay yon lòt antrepriz.
@@ -298,11 +346,11 @@ router.post("/", requireAuth, requireEnterprise, (req, res) => {
         `INSERT INTO transactions
           (tx_id, enterprise_id, enterprise_name, staff_uid, staff_name, staff_role,
            client_name, phone, service, service_id, country, amount_minor, currency,
-           sender_fee_minor,
+           sender_fee_minor, fee_mode, fee_pct, agent_share_pct,
            status, gateway_ref, commission_applied, note, created_at, updated_at,
            commission_agent_minor, commission_owner_minor,
            agent_commission_pct, owner_commission_pct)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', 0, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', 0, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         txId,
@@ -316,20 +364,23 @@ router.post("/", requireAuth, requireEnterprise, (req, res) => {
         serviceName,
         String(body.serviceId || "").trim(),
         String(body.country || "").trim(),
-        amountMinor,
-        String(body.paymentCurrency || "USD").trim().toUpperCase(),
-        senderFeeMinor,
+        fee.netMinor,
+        fee.currency,
+        fee.feeMinor,
+        fee.mode,
+        fee.feePct,
+        fee.agentSharePct,
         String(body.note || "").trim(),
         now(),
         now(),
-        commission.agentMinor,
-        commission.ownerMinor,
-        commission.agentPct,
-        commission.ownerPct
+        fee.agentMinor,
+        fee.ownerMinor,
+        pctOfNet(fee.agentMinor),
+        pctOfNet(fee.ownerMinor)
       );
 
     const row = getDb().prepare("SELECT * FROM transactions WHERE tx_id = ?").get(txId);
-    return res.json({ ok: true, transaction: toJson(row) });
+    return res.json({ ok: true, transaction: toJson(row), quote: feeJson(fee) });
   } catch (err) {
     return send(res, err);
   }

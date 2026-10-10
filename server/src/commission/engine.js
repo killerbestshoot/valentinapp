@@ -3,10 +3,16 @@
 /**
  * Motè komisyon — pòt SQLite `commission/index.js` (Firebase).
  *
- * RÈG BIZNIS (menm ak ansyen sistèm nan):
+ * RÈG BIZNIS — FRÈ PLATFÒM (tranzaksyon ki gen `fee_mode`, `commission/fees.js`):
+ *   - komisyon yo soti NAN FRÈ kliyan an peye a, pa nan lè
+ *   - komisyon ajan = frè × pati ajan an (fikse lè tranzaksyon an kreye)
+ *   - pati owner = frè − komisyon ajan − frè pasrèl la (Bazik/PSL). Si frè a
+ *     pa kouvri pasrèl la, owner a peye diferans lan nan wallet li.
+ *   - aplike SÈLMAN sou tranzaksyon `delivered`, yon SÈL fwa
+ *
+ * RÈG LEGACY (ansyen tranzaksyon san `fee_mode`):
  *   - komisyon ajan = montan × to ajan sèvis la (10% pa default)
  *   - komisyon owner = montan × to owner sèvis la (20% pa default)
- *   - aplike SÈLMAN sou tranzaksyon `delivered`, yon SÈL fwa
  *
  * DE DEFO ANSYEN VÈSYON AN KI KORIJE ISIT LA:
  *
@@ -97,12 +103,30 @@ async function applyCommissionToTx(txId) {
   let agentMinor = tx.commission_agent_minor;
   let ownerMinor = tx.commission_owner_minor;
 
-  if (!agentMinor && !ownerMinor) {
+  const withPlatformFee = Boolean(tx.fee_mode);
+  const feeMinor = withPlatformFee ? tx.sender_fee_minor || 0 : 0;
+
+  if (!withPlatformFee && !agentMinor && !ownerMinor) {
     const computed = computeCommission({ amountMinor: tx.amount_minor, serviceName: tx.service });
     ({ agentPct, ownerPct, agentMinor, ownerMinor } = computed);
   }
 
-  if (agentMinor <= 0 && ownerMinor <= 0) {
+  // Frè pasrèl la, an deviz tranzaksyon an. Se owner a ki peye l sou pati pa l.
+  let gatewayCostMinor = 0;
+  if (withPlatformFee) {
+    const transfer = db
+      .prepare(
+        `SELECT fee_htg_minor FROM bazik_transfers
+          WHERE tx_id = ? AND status = 'completed' ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(txId);
+    if (transfer?.fee_htg_minor) {
+      gatewayCostMinor = await convertMinor(transfer.fee_htg_minor, "HTG", tx.currency);
+    }
+  }
+  const ownerNetMinor = ownerMinor - gatewayCostMinor;
+
+  if (agentMinor <= 0 && ownerMinor <= 0 && gatewayCostMinor <= 0) {
     db.prepare(
       "UPDATE transactions SET commission_applied = 1, commission_applied_at = ? WHERE tx_id = ?"
     ).run(now(), txId);
@@ -129,7 +153,9 @@ async function applyCommissionToTx(txId) {
       amountMinor: agentCreditMinor,
       currency: agentCurrency,
       type: "commission_agent",
-      note: `Komisyon ${agentPct}% sou ${tx.service} (${money.fromMinor(tx.amount_minor)} ${tx.currency})`,
+      note: withPlatformFee
+        ? `Komisyon ${tx.agent_share_pct}% frè a (${money.fromMinor(feeMinor)} ${tx.currency}) sou ${tx.service}`
+        : `Komisyon ${agentPct}% sou ${tx.service} (${money.fromMinor(tx.amount_minor)} ${tx.currency})`,
       sourceCollection: "transactions",
       sourceId: txId,
       txId,
@@ -142,11 +168,12 @@ async function applyCommissionToTx(txId) {
 
   // --- Kredi owner ---
   let ownerCreditMinor = 0;
+  const ownerToCredit = withPlatformFee ? ownerNetMinor : ownerMinor;
 
-  if (ownerUid && ownerMinor > 0) {
+  if (ownerUid && ownerToCredit > 0) {
     const ownerWallet = await store.getWallet({ uid: ownerUid, enterpriseId: tx.enterprise_id });
     const ownerCurrency = ownerWallet?.currency || tx.currency;
-    ownerCreditMinor = await convertMinor(ownerMinor, tx.currency, ownerCurrency);
+    ownerCreditMinor = await convertMinor(ownerToCredit, tx.currency, ownerCurrency);
 
     if (ownerCreditMinor > 0) {
       await store.creditWallet({
@@ -157,7 +184,9 @@ async function applyCommissionToTx(txId) {
         amountMinor: ownerCreditMinor,
         currency: ownerCurrency,
         type: "commission_owner",
-        note: `Komisyon owner ${ownerPct}% sou ${tx.service}`,
+        note: withPlatformFee
+          ? `Pati owner frè a sou ${tx.service} (frè ${money.fromMinor(feeMinor)}, pasrèl ${money.fromMinor(gatewayCostMinor)} ${tx.currency})`
+          : `Komisyon owner ${ownerPct}% sou ${tx.service}`,
         sourceCollection: "transactions",
         sourceId: txId,
         txId,
@@ -166,6 +195,41 @@ async function applyCommissionToTx(txId) {
         createdByRole: "system",
         idempotencyKey: `commission:${txId}:owner`,
       });
+    }
+  }
+
+  // --- Frè a pa kouvri pasrèl la: owner a peye diferans lan ---
+  //
+  // Bazik deja peye pasrèl la nan float antrepriz la. Si nou pa debite owner a,
+  // wallet yo ta pwomèt plis lajan pase sa ki nan float la.
+  let ownerShortfallMinor = 0;
+  if (withPlatformFee && ownerUid && ownerNetMinor < 0) {
+    const ownerWallet = await store.getWallet({ uid: ownerUid, enterpriseId: tx.enterprise_id });
+    const ownerCurrency = ownerWallet?.currency || tx.currency;
+    const shortfall = await convertMinor(-ownerNetMinor, tx.currency, ownerCurrency);
+    try {
+      await store.debitWallet({
+        uid: ownerUid,
+        enterpriseId: tx.enterprise_id,
+        enterpriseName: tx.enterprise_name || enterprise?.name || "",
+        role: "owner",
+        amountMinor: shortfall,
+        currency: ownerCurrency,
+        type: "gateway_cost_owner",
+        note: `Frè pasrèl ${tx.service} pi wo pase pati owner nan frè a`,
+        sourceCollection: "transactions",
+        sourceId: txId,
+        txId,
+        serviceName: tx.service,
+        createdBy: "commission_engine",
+        createdByRole: "system",
+        idempotencyKey: `commission:${txId}:owner_shortfall`,
+      });
+      ownerShortfallMinor = shortfall;
+    } catch (err) {
+      // Wallet owner a vid: pèt la rete vizib nan `owner_net_minor` (negatif)
+      // ak nan kontwòl solvabilite a. Nou pa bloke komisyon ajan an pou sa.
+      console.error(`[commission] ${txId}: owner pa ka kouvri frè pasrèl la:`, err.message);
     }
   }
 
@@ -187,13 +251,14 @@ async function applyCommissionToTx(txId) {
     `INSERT INTO commission_logs
       (tx_id, enterprise_id, staff_uid, owner_uid, service, tx_amount_minor, tx_currency,
        agent_pct, owner_pct, agent_minor, owner_minor, agent_credit_minor,
-       owner_credit_minor, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       owner_credit_minor, fee_minor, gateway_cost_minor, owner_net_minor, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(tx_id) DO NOTHING`
   ).run(
     txId, tx.enterprise_id, tx.staff_uid, ownerUid, tx.service, tx.amount_minor,
     tx.currency, agentPct, ownerPct, agentMinor, ownerMinor, agentCreditMinor,
-    ownerCreditMinor, now()
+    ownerCreditMinor, feeMinor, gatewayCostMinor,
+    withPlatformFee ? ownerNetMinor : ownerMinor, now()
   );
 
   return {
@@ -201,6 +266,7 @@ async function applyCommissionToTx(txId) {
     txId,
     agentCredit: money.fromMinor(agentCreditMinor),
     ownerCredit: money.fromMinor(ownerCreditMinor),
+    ownerShortfall: money.fromMinor(ownerShortfallMinor),
     ownerMissing: !ownerUid,
   };
 }

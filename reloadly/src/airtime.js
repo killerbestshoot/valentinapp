@@ -375,9 +375,16 @@ function createAirtimeUseCases({
     note = "",
     createdBy = "",
     idempotencySeed = "",
+    // Frè platfòm nan (nan deviz `currency`), deja touche an kach pa ajan an:
+    // debite ansanm ak minit yo, ranbouse ansanm si rechaj la echwe.
+    platformFeeMinor = 0,
   }) {
     if (!uid || !enterpriseId) {
       throw new DomainError("missing_owner", "uid ak enterpriseId obligatwa.");
+    }
+
+    if (!Number.isInteger(platformFeeMinor) || platformFeeMinor < 0) {
+      throw new DomainError("invalid_platform_fee", "Frè platfòm nan pa valid.");
     }
 
     const seed = idempotencySeed || (txId ? `tx:${txId}` : "");
@@ -402,6 +409,10 @@ function createAirtimeUseCases({
       amountCurrency: currency || wallet.currency,
       walletCurrency: wallet.currency,
     });
+
+    if (platformFeeMinor > 0) {
+      plan.debitMinor += (await rates.convert(platformFeeMinor, plan.currency, plan.walletCurrency)).amountMinor;
+    }
 
     await assertAccountFunded(plan);
     if (typeof client.prepare === "function") await client.prepare();

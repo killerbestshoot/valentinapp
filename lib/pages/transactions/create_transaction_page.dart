@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:mon_premye_app/core/format/haiti_phone.dart';
+import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/features/airtime/data/airtime_gateway_provider.dart';
 import 'package:mon_premye_app/features/airtime/domain/airtime_gateway.dart';
 import 'package:mon_premye_app/features/airtime/domain/airtime_models.dart';
@@ -30,10 +31,16 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   final _formKey = GlobalKey<FormState>();
   final nameCtrl = TextEditingController();
   final phoneCtrl = TextEditingController();
-  final feeCtrl = TextEditingController();
   final amountCtrl = TextEditingController();
 
   String serviceName = 'MonCash';
+
+  /// Kiyès ki peye frè platfòm nan. Frè a li menm soti nan règ owner a.
+  FeeMode _feeMode = FeeMode.sender;
+
+  /// Devi frè a (serveur a): frè, sa benefisyè a resevwa, sa kliyan an peye.
+  FeeQuote? _feeQuote;
+  String? _feeError;
   String paymentCurrency = 'MXN';
   bool loading = false;
 
@@ -75,7 +82,6 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
     _quoteDebounce?.cancel();
     nameCtrl.dispose();
     phoneCtrl.dispose();
-    feeCtrl.dispose();
     amountCtrl.dispose();
     super.dispose();
   }
@@ -102,13 +108,12 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
 
   Future<void> _refreshQuote() async {
     final amount = _num(amountCtrl.text);
-    final ready = _deliversAutomatically &&
-        amount > 0 &&
-        (!_isAirtimeService || _hasHaitiPhone);
 
-    if (!ready) {
+    if (amount <= 0) {
       if (mounted) {
         setState(() {
+          _feeQuote = null;
+          _feeError = null;
           _quote = null;
           _airtimeQuote = null;
           _quoteError = null;
@@ -120,8 +125,31 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
     setState(() => _quoting = true);
 
     try {
-      await _fetchQuote(amount);
+      // 1) Frè platfòm nan, pou TOUT sèvis: se li ki di konbyen benefisyè a
+      //    resevwa (si frè a dedwi) ak konbyen kliyan an peye.
+      final fee = await _fetchFeeQuote(amount);
+
+      // 2) Devi pasrèl la sou sa benefisyè a resevwa vre (minimòm NatCash,
+      //    operatè minit...).
+      final ready = _deliversAutomatically && (!_isAirtimeService || _hasHaitiPhone);
+      if (ready) {
+        await _fetchQuote(fee.netAmount);
+      } else if (mounted) {
+        setState(() {
+          _quote = null;
+          _airtimeQuote = null;
+        });
+      }
       if (mounted) setState(() => _quoteError = null);
+    } on ApiException catch (err) {
+      if (mounted) {
+        setState(() {
+          _feeQuote = null;
+          _feeError = err.message;
+          _quote = null;
+          _airtimeQuote = null;
+        });
+      }
     } on PaymentException catch (err) {
       // Devi a se yon konfò: si li echwe pou yon rezon teknik, fòm nan rete
       // itilizab. Men yon erè ajan an KA korije (montan anba minimòm NatCash,
@@ -137,6 +165,22 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
     } finally {
       if (mounted) setState(() => _quoting = false);
     }
+  }
+
+  Future<FeeQuote> _fetchFeeQuote(double amount) async {
+    final fee = await TransactionApi.instance.quote(
+      serviceName: serviceName,
+      amount: amount,
+      currency: paymentCurrency,
+      feeMode: _feeMode,
+    );
+    if (mounted) {
+      setState(() {
+        _feeQuote = fee;
+        _feeError = null;
+      });
+    }
+    return fee;
   }
 
   /// Rele devi ki koresponn ak sèvis la. Erè a monte bay moun k ap rele a.
@@ -202,8 +246,9 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
       // kanpe la: pa gen tranzaksyon `pending` òfelen ki rete dèyè yon voye
       // ki pa t ka janm pase. Devi an dirèk la ka pa t gen tan fini (debounce):
       // se poutèt sa nou rele l ankò isit la, e nou tann li.
+      final fee = await _fetchFeeQuote(amount);
       if (_deliversAutomatically) {
-        await _fetchQuote(amount);
+        await _fetchQuote(fee.netAmount);
       }
 
       // Serveur a mete `enterpriseId` ak `staffUid` pou kont li, depi sesyon
@@ -212,11 +257,11 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
         serviceName: serviceName,
         customerName: name,
         customerPhone: phone,
-        // `amount` se sa benefisyè a resevwa. Frè a ajoute sou li pou sa
-        // kliyan an peye — li pa retire nan sa ki pati.
+        // `amount` se sa ajan an tape. Serveur a kalkile frè a, epi selon
+        // `feeMode` li ajoute l sou montan an oswa li retire l ladan.
         amount: amount,
         currency: paymentCurrency,
-        senderFee: _num(feeCtrl.text),
+        feeMode: _feeMode,
       );
 
       final txId = created.txId;
@@ -248,7 +293,9 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
       // Voye tou swit. Menm tranzaksyon => menm seed => yon sèl transfè,
       // menm si moun nan peze de fwa.
       final transfer = await _gateway.send(
-        amount: amount,
+        // Sa benefisyè a resevwa (frè a deja retire si l dedwi). Serveur a
+        // pran montan an nan tranzaksyon an kanmenm.
+        amount: created.amount,
         network: PaymentNetworkX.forServiceName(serviceName)!,
         phone: phone,
         receiverName: name,
@@ -265,6 +312,8 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
       if (transfer.status != TransferStatus.failed) _clearForm();
     } on PaymentException catch (err) {
       if (mounted) setState(() => _error = err);
+    } on ApiException catch (err) {
+      if (mounted) setState(() => _error = PaymentException(err.code, err.message));
     } catch (e) {
       if (mounted) {
         setState(() => _error = PaymentException('unexpected', '$e'));
@@ -277,9 +326,10 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   void _clearForm() {
     nameCtrl.clear();
     phoneCtrl.clear();
-    feeCtrl.clear();
     amountCtrl.clear();
     setState(() {
+      _feeQuote = null;
+      _feeError = null;
       _quote = null;
       _airtimeQuote = null;
       _quoteError = null;
@@ -517,28 +567,45 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
             ],
           ),
           const SizedBox(height: 14),
-          TextFormField(
-            controller: feeCtrl,
-            enabled: !loading,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            textInputAction: TextInputAction.done,
-            decoration: _inputDecoration(
-              label: 'Frè kliyan an peye (opsyonèl)',
-              icon: Icons.receipt_long_outlined,
-              helperText: 'Kite l vid si kliyan an pa peye frè.',
-            ),
-            validator: (value) {
-              if ((value ?? '').trim().isEmpty) return null;
-              if (_num(value ?? '') < 0) return 'Frè a pa ka negatif.';
-              return null;
-            },
-            onChanged: (_) => setState(() {}),
+          const Text(
+            'Frè a',
+            style: TextStyle(fontWeight: FontWeight.w800, color: _ink),
+          ),
+          const SizedBox(height: 8),
+          SegmentedButton<FeeMode>(
+            segments: const [
+              ButtonSegment(
+                value: FeeMode.sender,
+                icon: Icon(Icons.add_circle_outline),
+                label: Text('Kliyan an peye l anplis'),
+              ),
+              ButtonSegment(
+                value: FeeMode.deducted,
+                icon: Icon(Icons.remove_circle_outline),
+                label: Text('Dedwi sou montan an'),
+              ),
+            ],
+            selected: {_feeMode},
+            showSelectedIcon: false,
+            onSelectionChanged: loading
+                ? null
+                : (v) {
+                    setState(() => _feeMode = v.first);
+                    _refreshQuote();
+                  },
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _feeMode == FeeMode.sender
+                ? 'Benefisyè a resevwa tout montan an; frè a ajoute sou sa kliyan an peye.'
+                : 'Kliyan an bay montan an; frè a retire ladan l, benefisyè a resevwa mwens.',
+            style: const TextStyle(color: _muted, fontSize: 12),
           ),
           const SizedBox(height: 14),
           _ClientTotal(
-            amount: _num(amountCtrl.text),
-            fee: _num(feeCtrl.text),
-            currency: paymentCurrency,
+            quote: _feeQuote,
+            loading: _quoting && _feeQuote == null,
+            error: _feeError,
             receiverName: nameCtrl.text,
           ),
           const SizedBox(height: 22),
@@ -573,7 +640,7 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
           ),
           if (!_isAirtimeService && (_quote != null || _quoting)) ...[
             const SizedBox(height: 16),
-            _QuotePanel(quote: _quote, loading: _quoting),
+            _QuotePanel(quote: _quote, feeQuote: _feeQuote, loading: _quoting),
           ],
           if (_isAirtimeService && _airtimeQuote != null) ...[
             const SizedBox(height: 16),
@@ -851,9 +918,10 @@ class _SummaryLine extends StatelessWidget {
 /// Se pa yon konfimasyon: ajan an wè chif yo anvan li peze, epi li peze yon
 /// sèl fwa. Nou pa poze okenn kesyon apre.
 class _QuotePanel extends StatelessWidget {
-  const _QuotePanel({required this.quote, required this.loading});
+  const _QuotePanel({required this.quote, required this.feeQuote, required this.loading});
 
   final TransferQuote? quote;
+  final FeeQuote? feeQuote;
   final bool loading;
 
   @override
@@ -895,16 +963,14 @@ class _QuotePanel extends StatelessWidget {
             label: 'Benefisyè a resevwa',
             value: '${value.amountHtg.toStringAsFixed(2)} HTG',
           ),
-          // Frè pasrèl la se depans ANTREPRIZ la, se pa frè kliyan an. Resi a
-          // pa montre l: kliyan an wè sèlman sa li menm li peye.
-          _QuoteLine(
-            label: 'Frè pasrèl la (sou kont ou)',
-            value: '${value.feeHtg.toStringAsFixed(2)} HTG',
-          ),
           const Divider(height: 18),
+          // Montan + frè platfòm nan, nan deviz wallet la. Frè pasrèl la pa
+          // ladan: se owner a ki peye l sou pati pa l nan frè a.
           _QuoteLine(
             label: 'Total nan wallet ou',
-            value: '${value.debit.toStringAsFixed(2)} ${value.walletCurrency}',
+            value: feeQuote?.walletDebit != null
+                ? '${feeQuote!.walletDebit!.toStringAsFixed(2)} ${feeQuote!.walletCurrency}'
+                : '${value.debit.toStringAsFixed(2)} ${value.walletCurrency}',
             bold: true,
           ),
         ],
@@ -913,29 +979,45 @@ class _QuotePanel extends StatelessWidget {
   }
 }
 
-/// Sa kliyan an peye, epi sa benefisyè a resevwa — de chif diferan depi gen frè.
+/// Sa kliyan an peye, sa benefisyè a resevwa, ak frè a — dapre serveur a.
 ///
 /// Ajan an di sa a byen fò bay kliyan an anvan li peze bouton an. Si li rete
 /// nan tèt ajan an sèlman, se la malantandi yo kòmanse.
 class _ClientTotal extends StatelessWidget {
   const _ClientTotal({
-    required this.amount,
-    required this.fee,
-    required this.currency,
+    required this.quote,
+    required this.loading,
+    required this.error,
     required this.receiverName,
   });
 
-  final double amount;
-  final double fee;
-  final String currency;
+  final FeeQuote? quote;
+  final bool loading;
+  final String? error;
   final String receiverName;
 
   @override
   Widget build(BuildContext context) {
-    if (amount <= 0) return const SizedBox.shrink();
+    if (error != null) {
+      return Text(error!, style: const TextStyle(color: Color(0xFFB91C1C), fontWeight: FontWeight.w600));
+    }
+    if (loading) {
+      return const Row(
+        children: [
+          SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+          SizedBox(width: 12),
+          Text('N ap kalkile frè a...'),
+        ],
+      );
+    }
+    final q = quote;
+    if (q == null) return const SizedBox.shrink();
 
     final who = receiverName.trim().isEmpty ? 'Benefisyè a' : receiverName.trim();
-    String money(double value) => '${value.toStringAsFixed(2)} $currency';
+    String money(double value) => '${value.toStringAsFixed(2)} ${q.currency}';
+    final pct = q.feePct == q.feePct.roundToDouble()
+        ? q.feePct.toStringAsFixed(0)
+        : q.feePct.toStringAsFixed(1);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -946,16 +1028,21 @@ class _ClientTotal extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _QuoteLine(label: '$who resevwa', value: money(amount)),
+          _QuoteLine(label: '$who resevwa', value: money(q.netAmount)),
           _QuoteLine(
-            label: fee > 0 ? 'Frè kliyan an peye' : 'Frè',
-            value: fee > 0 ? money(fee) : 'Pa gen frè',
+            label: q.minApplied ? 'Frè (minimòm)' : 'Frè $pct%',
+            value: q.feeMode == FeeMode.deducted ? '− ${money(q.fee)}' : '+ ${money(q.fee)}',
           ),
           const Divider(height: 18),
           _QuoteLine(
             label: 'Kliyan an peye an tou',
-            value: money(amount + fee),
+            value: money(q.totalPaid),
             bold: true,
+          ),
+          const SizedBox(height: 6),
+          _QuoteLine(
+            label: 'Komisyon ou lè l livre',
+            value: '+ ${money(q.agentCommission)}',
           ),
         ],
       ),

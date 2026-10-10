@@ -105,6 +105,15 @@ class CommissionsApi {
         .toList();
   }
 
+  /// Komisyon tout ajan yo an dirèk (owner/admin). `days`: 1, 7 oswa 30.
+  Future<LiveCommissions> live({int days = 1, String currency = 'HTG'}) async {
+    final json = await _client.get(
+      '/api/commissions/live',
+      query: {'days': days, 'currency': currency},
+    );
+    return LiveCommissions.fromJson(json);
+  }
+
   /// Aplike komisyon ki an reta yo. Idempotan: san danje pou rele l plizyè fwa.
   Future<CommissionRunResult> run() async {
     final json = await _client.post('/api/commissions/run');
@@ -112,6 +121,140 @@ class CommissionsApi {
       applied: _i(json['applied']),
       skipped: _i(json['skipped']),
       errors: _i(json['errors']),
+    );
+  }
+}
+
+/// Yon ajan sou ekran komisyon an dirèk la. Montan yo nan [LiveCommissions.currency].
+class LiveAgentCommission {
+  const LiveAgentCommission({
+    required this.staffUid,
+    required this.staffName,
+    required this.count,
+    required this.volume,
+    required this.fee,
+    required this.agentCommission,
+    required this.ownerGross,
+    required this.gatewayCost,
+    required this.ownerNet,
+    required this.pendingCount,
+    required this.pendingAgent,
+    required this.pendingOwner,
+    this.lastAt,
+  });
+
+  final String staffUid;
+  final String staffName;
+  final int count;
+  final double volume;
+  final double fee;
+  final double agentCommission;
+  final double ownerGross;
+  final double gatewayCost;
+  final double ownerNet;
+  final int pendingCount;
+  final double pendingAgent;
+  final double pendingOwner;
+  final DateTime? lastAt;
+
+  factory LiveAgentCommission.fromJson(Map<String, dynamic> j) => LiveAgentCommission(
+        staffUid: '${j['staffUid'] ?? ''}',
+        staffName: '${j['staffName'] ?? ''}',
+        count: _i(j['count']),
+        volume: _d(j['volume']),
+        fee: _d(j['fee']),
+        agentCommission: _d(j['agentCommission']),
+        ownerGross: _d(j['ownerGross']),
+        gatewayCost: _d(j['gatewayCost']),
+        ownerNet: _d(j['ownerNet']),
+        pendingCount: _i(j['pendingCount']),
+        pendingAgent: _d(j['pendingAgent']),
+        pendingOwner: _d(j['pendingOwner']),
+        lastAt: _date(j['lastAt']),
+      );
+}
+
+class LiveCommissionLine {
+  const LiveCommissionLine({
+    required this.txId,
+    required this.staffName,
+    required this.service,
+    required this.currency,
+    required this.fee,
+    required this.agentCommission,
+    required this.ownerNet,
+    this.createdAt,
+  });
+
+  final String txId;
+  final String staffName;
+  final String service;
+  final String currency;
+  final double fee;
+  final double agentCommission;
+  final double ownerNet;
+  final DateTime? createdAt;
+
+  factory LiveCommissionLine.fromJson(Map<String, dynamic> j) => LiveCommissionLine(
+        txId: '${j['txId'] ?? ''}',
+        staffName: '${j['staffName'] ?? ''}',
+        service: '${j['service'] ?? ''}',
+        currency: '${j['currency'] ?? ''}',
+        fee: _d(j['fee']),
+        agentCommission: _d(j['agentCommission']),
+        ownerNet: _d(j['ownerNet']),
+        createdAt: _date(j['createdAt']),
+      );
+}
+
+class LiveCommissions {
+  const LiveCommissions({
+    required this.days,
+    required this.currency,
+    required this.count,
+    required this.fee,
+    required this.agentCommission,
+    required this.gatewayCost,
+    required this.ownerNet,
+    required this.pendingAgent,
+    required this.pendingOwner,
+    required this.agents,
+    required this.recent,
+    this.serverTime,
+  });
+
+  final int days;
+  final String currency;
+  final int count;
+  final double fee;
+  final double agentCommission;
+  final double gatewayCost;
+  final double ownerNet;
+  final double pendingAgent;
+  final double pendingOwner;
+  final List<LiveAgentCommission> agents;
+  final List<LiveCommissionLine> recent;
+  final DateTime? serverTime;
+
+  factory LiveCommissions.fromJson(Map<String, dynamic> j) {
+    final totals = (j['totals'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return LiveCommissions(
+      days: _i(j['days']),
+      currency: '${j['currency'] ?? 'HTG'}',
+      count: _i(totals['count']),
+      fee: _d(totals['fee']),
+      agentCommission: _d(totals['agentCommission']),
+      gatewayCost: _d(totals['gatewayCost']),
+      ownerNet: _d(totals['ownerNet']),
+      pendingAgent: _d(totals['pendingAgent']),
+      pendingOwner: _d(totals['pendingOwner']),
+      agents: ((j['agents'] as List?) ?? const [])
+          .map((e) => LiveAgentCommission.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      recent: ((j['recent'] as List?) ?? const [])
+          .map((e) => LiveCommissionLine.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      serverTime: _date(j['serverTime']),
     );
   }
 }
@@ -128,6 +271,11 @@ class ServiceItem {
     required this.gatewayBacked,
     required this.agentCommissionPct,
     required this.ownerCommissionPct,
+    this.feePct = 0,
+    this.feeMinHtg = 0,
+    this.agentSharePct = 0,
+    this.gatewayCostPct = 0,
+    this.ownerMarginPct = 0,
   });
 
   final String serviceId;
@@ -139,6 +287,21 @@ class ServiceItem {
   final double agentCommissionPct;
   final double ownerCommissionPct;
 
+  /// Frè platfòm nan, an % montan an. Owner a fikse l; li obligatwa.
+  final double feePct;
+
+  /// Frè minimòm, an HTG.
+  final double feeMinHtg;
+
+  /// Pati ajan an NAN FRÈ A (owner a pran rès la).
+  final double agentSharePct;
+
+  /// Estimasyon sa pasrèl la (Bazik/PSL) pran, an % montan an.
+  final double gatewayCostPct;
+
+  /// Sa owner a kenbe an % montan an. Negatif = pèt sou chak transfè.
+  final double ownerMarginPct;
+
   factory ServiceItem.fromJson(Map<String, dynamic> j) => ServiceItem(
         serviceId: '${j['serviceId'] ?? ''}',
         name: '${j['name'] ?? ''}',
@@ -146,6 +309,11 @@ class ServiceItem {
         gatewayBacked: j['gatewayBacked'] == true,
         agentCommissionPct: _d(j['agentCommissionPct']),
         ownerCommissionPct: _d(j['ownerCommissionPct']),
+        feePct: _d(j['feePct']),
+        feeMinHtg: _d(j['feeMinHtg']),
+        agentSharePct: _d(j['agentSharePct']),
+        gatewayCostPct: _d(j['gatewayCostPct']),
+        ownerMarginPct: _d(j['ownerMarginPct']),
       );
 }
 
@@ -170,11 +338,17 @@ class ServicesApi {
     String serviceId, {
     double? agentCommissionPct,
     double? ownerCommissionPct,
+    double? feePct,
+    double? feeMinHtg,
+    double? agentSharePct,
     bool? isActive,
   }) async {
     final json = await _client.patch('/api/services/$serviceId', {
       if (agentCommissionPct != null) 'agentCommissionPct': agentCommissionPct,
       if (ownerCommissionPct != null) 'ownerCommissionPct': ownerCommissionPct,
+      if (feePct != null) 'feePct': feePct,
+      if (feeMinHtg != null) 'feeMinHtg': feeMinHtg,
+      if (agentSharePct != null) 'agentSharePct': agentSharePct,
       if (isActive != null) 'isActive': isActive,
     });
     return ServiceItem.fromJson(json['service'] as Map<String, dynamic>);

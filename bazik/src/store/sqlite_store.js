@@ -580,8 +580,10 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
         if (amountMinor > 0) moveSync("debit", move);
         db.prepare(
           `UPDATE bazik_transfers SET debit_minor = debit_minor + ?, fee_htg_minor = ?,
-             total_htg_minor = ?, fee_charged_to_wallet = 1, updated_at = ? WHERE transfer_id = ?`
-        ).run(amountMinor, feeHtgMinor, totalHtgMinor, now(), transferId);
+             total_htg_minor = ?,
+             fee_charged_to_wallet = CASE WHEN ? > 0 THEN 1 ELSE fee_charged_to_wallet END,
+             updated_at = ? WHERE transfer_id = ?`
+        ).run(amountMinor, feeHtgMinor, totalHtgMinor, amountMinor, now(), transferId);
         return getTransferSync(transferId);
       });
     },

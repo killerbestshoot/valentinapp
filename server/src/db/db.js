@@ -38,6 +38,32 @@ const TRANSACTION_EXTRA_COLUMNS = [
   // frè pasrèl la, ki se yon depans antrepriz la, envizib pou kliyan an.
   // 0 = kliyan an pa peye anyen anplis; benefisyè a resevwa tout montan an.
   ["sender_fee_minor", "INTEGER NOT NULL DEFAULT 0"],
+  // Frè platfòm nan (obligatwa, fikse pa owner a pa sèvis). `fee_mode` vid =
+  // ansyen tranzaksyon, anvan règ sa a: komisyon yo te kalkile sou montan an.
+  //   'sender'   → anvwayè a peye frè a anplis montan an
+  //   'deducted' → frè a retire sou montan an, benefisyè a resevwa mwens
+  // Nan de ka yo `sender_fee_minor` = frè a, `amount_minor` = sa benefisyè a
+  // resevwa, e kliyan an peye `amount_minor + sender_fee_minor`.
+  ["fee_mode", "TEXT NOT NULL DEFAULT ''"],
+  ["fee_pct", "REAL NOT NULL DEFAULT 0"],
+  ["agent_share_pct", "REAL NOT NULL DEFAULT 0"],
+];
+
+/** Règ frè owner a fikse pou chak sèvis. */
+const SERVICE_EXTRA_COLUMNS = [
+  ["fee_pct", "REAL NOT NULL DEFAULT 10"],
+  ["fee_min_htg_minor", "INTEGER NOT NULL DEFAULT 0"],
+  // Pati ajan an NAN FRÈ A (pa nan montan an). Rès la se pou owner a, ki
+  // peye frè pasrèl la (Bazik, PSL) sou pati pa l.
+  ["agent_share_pct", "REAL NOT NULL DEFAULT 40"],
+];
+
+/** Detay frè a sou chak liy komisyon (règ frè platfòm nan). */
+const COMMISSION_LOG_EXTRA_COLUMNS = [
+  ["fee_minor", "INTEGER NOT NULL DEFAULT 0"],
+  ["gateway_cost_minor", "INTEGER NOT NULL DEFAULT 0"],
+  // Pati owner a apre frè pasrèl la. Ka negatif si frè a pa kouvri pasrèl la.
+  ["owner_net_minor", "INTEGER NOT NULL DEFAULT 0"],
 ];
 
 let db = null;
@@ -127,6 +153,8 @@ function getDb() {
   db.exec(fs.readFileSync(AIRTIME_SCHEMA, "utf8"));
   db.exec(fs.readFileSync(APP_SCHEMA, "utf8"));
   ensureColumns(db, "transactions", TRANSACTION_EXTRA_COLUMNS);
+  ensureColumns(db, "services", SERVICE_EXTRA_COLUMNS);
+  ensureColumns(db, "commission_logs", COMMISSION_LOG_EXTRA_COLUMNS);
   // `source`: 'seed' oswa 'exchangerate-api'. Baz ki te egziste anvan an pa genyen l.
   ensureColumns(db, "exchange_rates", [["source", "TEXT NOT NULL DEFAULT 'seed'"]]);
   seedExchangeRates(db);

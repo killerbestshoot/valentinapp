@@ -378,10 +378,15 @@ String _rateLine(DeliveryDetails delivery) {
 /// e montre l sou resi a ta fè l kwè se nan lajan pa l li soti. Sa resi a dwe
 /// di se yon sèl bagay: èske moun ki voye a peye yon bagay anplis, wi ou non.
 ///
-/// Nan de ka yo, benefisyè a resevwa MENM montan an — se sa ki dwe klè.
+/// Si frè a te dedwi, benefisyè a resevwa montan an mwens frè a: resi a di l.
 String _senderFeeLine(TransactionRecord tx) {
   if (!tx.hasSenderFee) {
     return 'Pa gen frè — anvwayè a peye montan an sèlman';
+  }
+
+  if (tx.feeDeducted) {
+    return '${tx.senderFee.toStringAsFixed(2)} ${tx.currency} — '
+        'dedwi sou montan an';
   }
 
   return '${tx.senderFee.toStringAsFixed(2)} ${tx.currency} — '

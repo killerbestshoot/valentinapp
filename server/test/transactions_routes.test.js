@@ -216,84 +216,86 @@ test("yon transfè ki echwe pa parèt sou resi a", async () => {
   assert.equal(json.delivery, null, "lajan an pa janm rive: pa gen anyen pou di");
 });
 
-// --- Frè ANVWAYÈ a peye ---
+// --- Frè platfòm nan (owner a fikse l, obligatwa) ---
 
-test("yon tranzaksyon san frè: anvwayè a peye montan an sèlman", async () => {
-  const txId = await create("San frè");
+const setPolicy = ({ feePct = 5, minHtg = 0, share = 40 } = {}) =>
+  db.getDb()
+    .prepare("UPDATE services SET fee_pct = ?, fee_min_htg_minor = ?, agent_share_pct = ? WHERE name = 'MonCash'")
+    .run(feePct, Math.round(minHtg * 100), share);
 
-  const { json } = await call("GET", `/api/transactions/${txId}`, { role: "agent" });
-
-  assert.equal(json.transaction.senderFee, 0);
-  assert.equal(json.transaction.paymentAmount, 10);
-  assert.equal(json.transaction.totalPaid, 10);
+let phoneSeq = 10;
+const txBody = (extra = {}) => ({
+  serviceName: "MonCash", customerName: "Vanessa", customerPhone: `+509371234${phoneSeq++}`,
+  paymentAmount: 2000, paymentCurrency: "MXN", ...extra,
 });
 
-test("Jean voye 2000, li peye 2100: se 2000 ki pati", async () => {
-  const created = await call("POST", "/api/transactions", {
-    role: "agent",
-    body: {
-      serviceName: "MonCash",
-      customerName: "Vanessa",
-      customerPhone: "+50937123456",
-      paymentAmount: 2000,
-      paymentCurrency: "MXN",
-      senderFee: 100,
-    },
-  });
+test("anvwayè a peye: 5% sou 2000 MXN = 100, kliyan an peye 2100, benefisyè a resevwa 2000", async () => {
+  setPolicy();
+  const { status, json } = await call("POST", "/api/transactions", { role: "agent", body: txBody({ feeMode: "sender" }) });
 
-  assert.equal(created.status, 200);
-
-  const { json } = await call("GET", `/api/transactions/${created.json.transaction.txId}`, {
-    role: "agent",
-  });
-
-  assert.equal(json.transaction.paymentAmount, 2000, "sa Vanessa resevwa");
-  assert.equal(json.transaction.senderFee, 100, "sa Jean peye anplis");
-  assert.equal(json.transaction.totalPaid, 2100, "sa Jean soti nan pòch li");
+  assert.equal(status, 200, JSON.stringify(json));
+  assert.equal(json.transaction.feeMode, "sender");
+  assert.equal(json.transaction.fee, 100);
+  assert.equal(json.transaction.paymentAmount, 2000, "sa benefisyè a resevwa");
+  assert.equal(json.transaction.totalPaid, 2100, "sa kliyan an soti nan pòch li");
+  assert.equal(json.transaction.commissionAgent, 40, "40% frè a");
+  assert.equal(json.transaction.commissionOwner, 60, "rès frè a");
 });
 
-test("frè a pa antre nan kalkil komisyon an", async () => {
-  // Telefòn diferan: `tx_id` gen ladan l telefòn nan ak milisgond lan, donk
-  // de kreyasyon idantik nan menm milisgond lan antre an konfli.
-  const sanFrè = await call("POST", "/api/transactions", {
-    role: "agent",
-    body: {
-      serviceName: "MonCash", customerName: "A", customerPhone: "+50937123401",
-      paymentAmount: 2000, paymentCurrency: "MXN",
-    },
+test("dedwi: 5% sou 2000 MXN = 100, kliyan an peye 2000, benefisyè a resevwa 1900", async () => {
+  setPolicy();
+  const { json } = await call("POST", "/api/transactions", { role: "agent", body: txBody({ feeMode: "deducted" }) });
+
+  assert.equal(json.transaction.feeMode, "deducted");
+  assert.equal(json.transaction.fee, 100);
+  assert.equal(json.transaction.paymentAmount, 1900);
+  assert.equal(json.transaction.totalPaid, 2000);
+  assert.equal(json.transaction.commissionAgent + json.transaction.commissionOwner, 100, "komisyon yo = frè a, pa plis");
+});
+
+test("ajan an pa ka bese frè a: `senderFee` nan kò a inyore", async () => {
+  setPolicy();
+  const { json } = await call("POST", "/api/transactions", { role: "agent", body: txBody({ senderFee: 0, fee: 0 }) });
+
+  assert.equal(json.transaction.fee, 100);
+  assert.equal(json.transaction.feeMode, "sender", "pa defo: anvwayè a peye");
+});
+
+test("frè minimòm nan aplike sou ti montan yo", async () => {
+  setPolicy({ minHtg: 725 }); // 725 HTG = 100 MXN a 7,25
+  const { json } = await call("POST", "/api/transactions", { role: "agent", body: txBody({ paymentAmount: 200 }) });
+
+  assert.equal(json.transaction.fee, 100, "5% sou 200 = 10, men minimòm nan se 100");
+  assert.equal(json.quote.minApplied, true);
+
+  const tooSmall = await call("POST", "/api/transactions", {
+    role: "agent", body: txBody({ paymentAmount: 100, feeMode: "deducted" }),
+  });
+  assert.equal(tooSmall.json.code, "amount_below_fee", "benefisyè a pa t ap resevwa anyen");
+  setPolicy();
+});
+
+test("devi a bay menm chif yo san li pa anrejistre anyen", async () => {
+  setPolicy();
+  const before = db.getDb().prepare("SELECT COUNT(*) AS n FROM transactions").get().n;
+  const { status, json } = await call("POST", "/api/transactions/quote", {
+    role: "agent", body: txBody({ feeMode: "deducted" }),
   });
 
-  const akFrè = await call("POST", "/api/transactions", {
-    role: "agent",
-    body: {
-      serviceName: "MonCash", customerName: "B", customerPhone: "+50937123402",
-      paymentAmount: 2000, paymentCurrency: "MXN", senderFee: 100,
-    },
-  });
-
-  assert.equal(sanFrè.status, 200, JSON.stringify(sanFrè.json));
-  assert.equal(akFrè.status, 200, JSON.stringify(akFrè.json));
-
-  // Komisyon yo rete sou sa ki pati, jan yo te ye anvan.
-  assert.equal(
-    akFrè.json.transaction.commissionAgent,
-    sanFrè.json.transaction.commissionAgent
+  assert.equal(status, 200, JSON.stringify(json));
+  assert.deepEqual(
+    [json.quote.fee, json.quote.netAmount, json.quote.totalPaid, json.quote.agentCommission],
+    [100, 1900, 2000, 40]
   );
+  assert.equal(db.getDb().prepare("SELECT COUNT(*) AS n FROM transactions").get().n, before);
 });
 
-test("yon frè negatif oswa pa valid refize", async () => {
-  const body = {
-    serviceName: "MonCash", customerName: "C", customerPhone: "+50937123456",
-    paymentAmount: 2000, paymentCurrency: "MXN",
-  };
+test("yon chanjman to pita pa chanje frè yon tranzaksyon ki deja kreye", async () => {
+  setPolicy();
+  const { json } = await call("POST", "/api/transactions", { role: "agent", body: txBody() });
+  setPolicy({ feePct: 20 });
 
-  const negatif = await call("POST", "/api/transactions", {
-    role: "agent", body: { ...body, senderFee: -5 },
-  });
-  assert.equal(negatif.json.code, "invalid_fee");
-
-  const tèks = await call("POST", "/api/transactions", {
-    role: "agent", body: { ...body, senderFee: "abc" },
-  });
-  assert.equal(tèks.json.code, "invalid_fee");
+  const after = await call("GET", `/api/transactions/${json.transaction.txId}`, { role: "agent" });
+  assert.equal(after.json.transaction.fee, 100);
+  setPolicy();
 });

@@ -210,19 +210,28 @@ router.post("/transfers", requireAuth, requireEnterprise, async (req, res) => {
     // ajan te ka mete `txId` yon lòt antrepriz epi fè tranzaksyon sa a pase
     // `delivered` oswa `failed`.
     const txId = String(body.txId || "").trim();
+    let tx = null;
     if (txId) {
-      const owned = service.store._db
-        .prepare("SELECT 1 FROM transactions WHERE tx_id = ? AND enterprise_id = ?")
+      tx = service.store._db
+        .prepare("SELECT * FROM transactions WHERE tx_id = ? AND enterprise_id = ?")
         .get(txId, enterpriseId);
 
-      if (!owned) return res.status(404).json({ ok: false, code: "transaction_not_found" });
+      if (!tx) return res.status(404).json({ ok: false, code: "transaction_not_found" });
     }
+
+    // Tranzaksyon ak frè platfòm: montan, deviz ak frè a soti nan TRANZAKSYON
+    // AN, pa nan kò demann lan. Sinon yon ajan te ka voye plis pase sa li
+    // anrejistre, oswa "bliye" frè a. Frè pasrèl la pa sou wallet ajan an: se
+    // owner a ki peye l sou pati pa l nan frè a (`commission/engine.js`).
+    const withPlatformFee = Boolean(tx?.fee_mode);
 
     const result = await service.transfers.send({
       kind: body.kind === "delivery" ? "delivery" : "payout",
       network: body.network === "natcash" ? "natcash" : "moncash",
-      amountMinor: amountMinorFrom(body),
-      currency: body.currency,
+      amountMinor: withPlatformFee ? tx.amount_minor : amountMinorFrom(body),
+      currency: withPlatformFee ? tx.currency : body.currency,
+      platformFeeMinor: withPlatformFee ? tx.sender_fee_minor : 0,
+      chargeFeeToWallet: !withPlatformFee,
       uid,
       enterpriseId,
       // Soti nan sesyon an: anvan, yon kliyan te ka ekri "SPOOFED CORP" nan

@@ -205,7 +205,9 @@ function createTransferUseCases({
     // PSL facture 7 %, contre 5 % provisionnés au départ pour Bazik.
     const pslFeeHtgMinor = Math.round(amounts.amountHtgMinor * 0.07);
     const previouslyChargedFee = chargeFeeToWallet ? amounts.feeHtgMinor : 0;
-    const extraHtgMinor = Math.max(0, pslFeeHtgMinor - previouslyChargedFee);
+    // Frè pasrèl la pa sou wallet ajan an (règ frè platfòm nan: se owner a ki
+    // peye l sou pati pa l): pa gen anyen pou ajiste.
+    const extraHtgMinor = chargeFeeToWallet ? Math.max(0, pslFeeHtgMinor - previouslyChargedFee) : 0;
     const transferBeforeFallback = await store.getTransfer(transferId);
     try {
       const extraDebit = extraHtgMinor
@@ -347,9 +349,17 @@ function createTransferUseCases({
     createdBy = "",
     idempotencySeed = "",
     chargeFeeToWallet = true,
+    // Frè platfòm nan (nan deviz `currency`), deja touche an kach pa ajan an.
+    // Li debite nan wallet la ANSANM ak montan an; li pa janm voye bay Bazik.
+    // Se nan li komisyon ajan an ak pati owner a soti lè transfè a livre.
+    platformFeeMinor = 0,
   }) {
     if (!uid || !enterpriseId) {
       throw new DomainError("missing_owner", "uid ak enterpriseId obligatwa.");
+    }
+
+    if (!Number.isInteger(platformFeeMinor) || platformFeeMinor < 0) {
+      throw new DomainError("invalid_platform_fee", "Frè platfòm nan pa valid.");
     }
 
     if (network === "natcash" && !String(receiverName).trim()) {
@@ -391,7 +401,11 @@ function createTransferUseCases({
     }
 
     const amounts = await prepareAmounts({ amountMinor, currency: amountCurrency, walletCurrency, network });
-    const debitMinor = chargeFeeToWallet ? amounts.debitMinor : amounts.amountWalletMinor;
+    const platformFeeWalletMinor = platformFeeMinor
+      ? (await rates.convert(platformFeeMinor, amountCurrency, walletCurrency)).amountMinor
+      : 0;
+    const debitMinor =
+      (chargeFeeToWallet ? amounts.debitMinor : amounts.amountWalletMinor) + platformFeeWalletMinor;
 
     await assertGatewayFunded(amounts.totalHtgMinor);
 

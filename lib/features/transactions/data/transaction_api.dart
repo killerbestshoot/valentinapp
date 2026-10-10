@@ -14,6 +14,8 @@ class TransactionRecord {
     required this.currency,
     required this.status,
     this.senderFee = 0,
+    this.feeMode = '',
+    this.feePct = 0,
     this.staffName = '',
     this.staffUid = '',
     this.enterpriseName = '',
@@ -31,12 +33,20 @@ class TransactionRecord {
   final String currency;
   final String status;
 
-  /// Frè ANVWAYÈ a peye anplis (0 = san frè).
+  /// Frè platfòm nan (0 = san frè, sèlman ansyen tranzaksyon).
   ///
   /// Se pa frè pasrèl la: sa a se yon depans antrepriz la, kliyan an pa wè l.
   final double senderFee;
 
+  /// `sender`: anvwayè a peye frè a anplis. `deducted`: frè a retire sou
+  /// montan an. Vid: ansyen tranzaksyon (frè a te opsyonèl).
+  final String feeMode;
+
+  /// % owner a te fikse lè tranzaksyon an kreye.
+  final double feePct;
+
   bool get hasSenderFee => senderFee > 0;
+  bool get feeDeducted => feeMode == 'deducted';
 
   /// Sa anvwayè a soti nan pòch li an tou.
   double get totalPaid => amount + senderFee;
@@ -65,6 +75,8 @@ class TransactionRecord {
       status: '${json['status'] ?? 'pending'}',
       senderFee:
           json['senderFee'] is num ? (json['senderFee'] as num).toDouble() : 0,
+      feeMode: '${json['feeMode'] ?? ''}',
+      feePct: json['feePct'] is num ? (json['feePct'] as num).toDouble() : 0,
       staffName: '${json['staffName'] ?? ''}',
       staffUid: '${json['staffUid'] ?? ''}',
       enterpriseName: '${json['enterpriseName'] ?? ''}',
@@ -254,13 +266,31 @@ class TransactionApi {
     return TransactionStats.fromJson(json['stats'] as Map<String, dynamic>);
   }
 
+  /// Devi frè a: serveur a kalkile l apati règ owner a, anyen pa anrejistre.
+  Future<FeeQuote> quote({
+    required String serviceName,
+    required double amount,
+    required String currency,
+    required FeeMode feeMode,
+  }) async {
+    final json = await _client.post('/api/transactions/quote', {
+      'serviceName': serviceName,
+      'paymentAmount': amount,
+      'paymentCurrency': currency,
+      'feeMode': feeMode.wire,
+    });
+    return FeeQuote.fromJson(json['quote'] as Map<String, dynamic>);
+  }
+
+  /// [amount] se sa ajan an tape: montan pou voye ([FeeMode.sender]) oswa sa
+  /// kliyan an bay an tou ([FeeMode.deducted]). Frè a pa soti nan app la.
   Future<TransactionRecord> create({
     required String serviceName,
     required String customerName,
     required String customerPhone,
     required double amount,
     required String currency,
-    double senderFee = 0,
+    FeeMode feeMode = FeeMode.sender,
     String country = '',
     String note = '',
   }) async {
@@ -270,7 +300,7 @@ class TransactionApi {
       'customerPhone': customerPhone,
       'paymentAmount': amount,
       'paymentCurrency': currency,
-      if (senderFee > 0) 'senderFee': senderFee,
+      'feeMode': feeMode.wire,
       if (country.isNotEmpty) 'country': country,
       if (note.isNotEmpty) 'note': note,
     });
@@ -285,5 +315,73 @@ class TransactionApi {
 
   Future<void> remove(String txId) async {
     await _client.delete('/api/transactions/$txId');
+  }
+}
+
+/// Kiyès ki peye frè platfòm nan.
+enum FeeMode {
+  /// Anvwayè a peye frè a ANPLIS montan an: benefisyè a resevwa tout montan an.
+  sender('sender'),
+
+  /// Frè a retire SOU montan an: benefisyè a resevwa montan an mwens frè a.
+  deducted('deducted');
+
+  const FeeMode(this.wire);
+  final String wire;
+}
+
+/// Devi frè a, jan serveur a kalkile l.
+class FeeQuote {
+  const FeeQuote({
+    required this.feeMode,
+    required this.currency,
+    required this.feePct,
+    required this.fee,
+    required this.netAmount,
+    required this.totalPaid,
+    required this.agentCommission,
+    required this.agentSharePct,
+    this.minApplied = false,
+    this.walletDebit,
+    this.walletCurrency,
+  });
+
+  final FeeMode feeMode;
+  final String currency;
+  final double feePct;
+  final double fee;
+
+  /// Sa benefisyè a resevwa.
+  final double netAmount;
+
+  /// Sa kliyan an peye an tou.
+  final double totalPaid;
+
+  /// Sa ajan an ap touche lè transfè a livre.
+  final double agentCommission;
+  final double agentSharePct;
+
+  /// Frè minimòm nan te pi wo pase %: se li ki aplike.
+  final bool minApplied;
+
+  /// Sa ki pral soti nan wallet ajan an (montan + frè), nan deviz wallet la.
+  final double? walletDebit;
+  final String? walletCurrency;
+
+  factory FeeQuote.fromJson(Map<String, dynamic> j) {
+    double d(dynamic v) => v is num ? v.toDouble() : 0;
+    return FeeQuote(
+      feeMode: j['feeMode'] == 'deducted' ? FeeMode.deducted : FeeMode.sender,
+      currency: '${j['currency'] ?? ''}',
+      feePct: d(j['feePct']),
+      fee: d(j['fee']),
+      netAmount: d(j['netAmount']),
+      totalPaid: d(j['totalPaid']),
+      agentCommission: d(j['agentCommission']),
+      agentSharePct: d(j['agentSharePct']),
+      minApplied: j['minApplied'] == true,
+      walletDebit: j['walletDebit'] is num ? d(j['walletDebit']) : null,
+      walletCurrency: j['walletCurrency'] as String?,
+    );
   }
 }

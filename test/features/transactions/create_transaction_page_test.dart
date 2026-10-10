@@ -18,6 +18,33 @@ class _FakeTransactionApi extends TransactionApi {
   final FakeAirtimeGateway airtime;
   final List<TransactionRecord> created = [];
 
+  /// Règ owner a nan tès yo: 5% frè, ajan an 40% frè a.
+  static const feePct = 5.0;
+
+  FeeQuote _fee(double amount, String currency, FeeMode mode) {
+    final fee = amount * feePct / 100;
+    final net = mode == FeeMode.sender ? amount : amount - fee;
+    return FeeQuote(
+      feeMode: mode,
+      currency: currency,
+      feePct: feePct,
+      fee: fee,
+      netAmount: net,
+      totalPaid: net + fee,
+      agentCommission: fee * 0.4,
+      agentSharePct: 40,
+    );
+  }
+
+  @override
+  Future<FeeQuote> quote({
+    required String serviceName,
+    required double amount,
+    required String currency,
+    required FeeMode feeMode,
+  }) async =>
+      _fee(amount, currency, feeMode);
+
   @override
   Future<TransactionRecord> create({
     required String serviceName,
@@ -25,24 +52,27 @@ class _FakeTransactionApi extends TransactionApi {
     required String customerPhone,
     required double amount,
     required String currency,
-    double senderFee = 0,
+    FeeMode feeMode = FeeMode.sender,
     String country = '',
     String note = '',
   }) async {
+    final fee = _fee(amount, currency, feeMode);
     final record = TransactionRecord(
       txId: 'TX_${created.length + 1}',
       serviceName: serviceName,
       customerName: customerName,
       customerPhone: customerPhone,
-      amount: amount,
+      amount: fee.netAmount,
       currency: currency,
       status: 'pending',
-      senderFee: senderFee,
+      senderFee: fee.fee,
+      feeMode: feeMode.wire,
+      feePct: feePct,
     );
     created.add(record);
     airtime.transactions[record.txId] = FakeAirtimeTransaction(
       phone: customerPhone,
-      amount: amount,
+      amount: fee.netAmount,
       currency: currency,
     );
     return record;
@@ -311,31 +341,17 @@ void main() {
     });
   });
 
-  group('Frè anvwayè a', () {
-    testWidgets('san frè: kliyan an peye menm montan an', (tester) async {
+  group('Frè platfòm nan (owner a fikse l)', () {
+    testWidgets('pa defo kliyan an peye l anplis: 5% sou 2000 = 2100', (tester) async {
       await pumpPage(tester);
       await chooseService(tester, 'MonCash');
       await fill(tester, name: 'Vanessa', phone: '37123456', amount: '2000');
-
-      expect(find.text('Pa gen frè'), findsOneWidget);
-      expect(find.text('Kliyan an peye an tou'), findsOneWidget);
-      expect(find.text('2000.00 MXN'), findsWidgets);
-    });
-
-    testWidgets('Jean voye 2000 ak 100 frè: li peye 2100, Vanessa resevwa 2000',
-        (tester) async {
-      await pumpPage(tester);
-      await chooseService(tester, 'MonCash');
-      await fill(tester, name: 'Vanessa', phone: '37123456', amount: '2000');
-
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Frè kliyan an peye (opsyonèl)'),
-        '100',
-      );
-      await tester.pumpAndSettle();
 
       expect(find.text('Vanessa resevwa'), findsOneWidget);
-      expect(find.text('2100.00 MXN'), findsOneWidget, reason: 'sa Jean peye');
+      expect(find.text('Frè 5%'), findsOneWidget);
+      expect(find.text('+ 100.00 MXN'), findsOneWidget);
+      expect(find.text('2100.00 MXN'), findsOneWidget, reason: 'sa kliyan an peye');
+      expect(find.text('+ 40.00 MXN'), findsOneWidget, reason: 'komisyon ajan an');
 
       await save(tester);
 
@@ -343,6 +359,33 @@ void main() {
       expect(created.amount, 2000, reason: 'se sa ki pati bay Vanessa');
       expect(created.senderFee, 100);
       expect(created.totalPaid, 2100);
+      expect(created.feeMode, 'sender');
+    });
+
+    testWidgets('dedwi: kliyan an bay 2000, Vanessa resevwa 1900', (tester) async {
+      await pumpPage(tester);
+      await chooseService(tester, 'MonCash');
+      await fill(tester, name: 'Vanessa', phone: '37123456', amount: '2000');
+
+      await tester.ensureVisible(find.text('Dedwi sou montan an'));
+      await tester.tap(find.text('Dedwi sou montan an'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('1900.00 MXN'), findsOneWidget, reason: 'sa Vanessa resevwa');
+      expect(find.text('− 100.00 MXN'), findsOneWidget);
+
+      await save(tester);
+
+      final created = transactions.created.single;
+      expect(created.amount, 1900);
+      expect(created.totalPaid, 2000);
+      expect(created.feeMode, 'deducted');
+    });
+
+    testWidgets('ajan an pa gen okenn chan pou chanje frè a', (tester) async {
+      await pumpPage(tester);
+
+      expect(find.widgetWithText(TextFormField, 'Frè kliyan an peye (opsyonèl)'), findsNothing);
     });
   });
 }

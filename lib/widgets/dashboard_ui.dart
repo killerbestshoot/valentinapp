@@ -7,6 +7,7 @@ class DashboardColors {
   static const brand = Color(0xFF123D2B);
   static const border = Color(0xFFDDE8D8);
   static const soft = Color(0xFFF2F8EE);
+  static const danger = Color(0xFFB91C1C);
 }
 
 class DashboardPage extends StatelessWidget {
