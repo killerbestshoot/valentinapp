@@ -18,6 +18,12 @@ class _FakeTransactionApi extends TransactionApi {
   final FakeAirtimeGateway airtime;
   final List<TransactionRecord> created = [];
 
+  /// Dènye tranzaksyon ajan an (pou favori yo).
+  List<TransactionRecord> history = const [];
+
+  @override
+  Future<List<TransactionRecord>> list({int limit = 25, String? status, String? search}) async => history;
+
   /// Règ owner a nan tès yo: 5% frè, ajan an 40% frè a.
   static const feePct = 5.0;
 
@@ -124,14 +130,12 @@ void main() {
       find.byType(DropdownButtonFormField<String>).at(index);
 
   Future<void> chooseService(WidgetTester tester, String service) async {
-    await tester.tap(dropdown(0));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(service).last);
+    await tester.tap(find.byKey(ValueKey('service-$service')));
     await tester.pumpAndSettle();
   }
 
   Future<void> chooseCurrency(WidgetTester tester, String to) async {
-    await tester.tap(dropdown(1));
+    await tester.tap(dropdown(0));
     await tester.pumpAndSettle();
     await tester.tap(find.text(to).last);
     await tester.pumpAndSettle();
@@ -143,7 +147,7 @@ void main() {
     required String phone,
     required String amount,
   }) async {
-    await tester.enterText(find.widgetWithText(TextFormField, 'Non kliyan'), name);
+    await tester.enterText(find.widgetWithText(TextFormField, 'Non benefisyè'), name);
     await tester.enterText(find.widgetWithText(TextFormField, 'Telefòn'), phone);
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Montan').first,
@@ -241,8 +245,8 @@ void main() {
       await fill(tester, name: 'Jean', phone: '37123456', amount: '100');
 
       // 100 MXN = 725 HTG, +5% = 761,25 HTG, / 132 = 5,77 USD
-      expect(find.text('725.00 HTG'), findsOneWidget);
-      expect(find.text('5.77 USD'), findsOneWidget);
+      expect(find.text('725,00 HTG'), findsOneWidget, reason: 'an goud, sou tikè a');
+      expect(find.text('5,77 USD'), findsOneWidget, reason: 'total nan wallet USD la');
     });
 
     testWidgets('devi a montre operatè a ak sa benefisyè a resevwa', (tester) async {
@@ -349,9 +353,9 @@ void main() {
 
       expect(find.text('Vanessa resevwa'), findsOneWidget);
       expect(find.text('Frè 5%'), findsOneWidget);
-      expect(find.text('+ 100.00 MXN'), findsOneWidget);
-      expect(find.text('2100.00 MXN'), findsOneWidget, reason: 'sa kliyan an peye');
-      expect(find.text('+ 40.00 MXN'), findsOneWidget, reason: 'komisyon ajan an');
+      expect(find.text('+ 100,00 MXN'), findsOneWidget);
+      expect(find.textContaining('2 100,00', findRichText: true), findsOneWidget, reason: 'sa kliyan an peye');
+      expect(find.text('+ 40,00 MXN'), findsOneWidget, reason: 'komisyon ajan an');
 
       await save(tester);
 
@@ -371,8 +375,8 @@ void main() {
       await tester.tap(find.text('Dedwi sou montan an'));
       await tester.pumpAndSettle();
 
-      expect(find.text('1900.00 MXN'), findsOneWidget, reason: 'sa Vanessa resevwa');
-      expect(find.text('− 100.00 MXN'), findsOneWidget);
+      expect(find.text('1 900,00 MXN'), findsOneWidget, reason: 'sa Vanessa resevwa');
+      expect(find.text('− 100,00 MXN'), findsOneWidget);
 
       await save(tester);
 
@@ -386,6 +390,36 @@ void main() {
       await pumpPage(tester);
 
       expect(find.widgetWithText(TextFormField, 'Frè kliyan an peye (opsyonèl)'), findsNothing);
+    });
+  });
+
+  group('Favori ak resi', () {
+    testWidgets('yon favori ranpli benefisyè a ak sèvis li', (tester) async {
+      transactions.history = const [
+        TransactionRecord(
+          txId: 'TX_OLD', serviceName: 'NatCash', customerName: 'Wesner Louis',
+          customerPhone: '+50941887720', amount: 800, currency: 'MXN', status: 'delivered',
+        ),
+      ];
+      await pumpPage(tester);
+
+      await tester.tap(find.text('Wesner Louis'));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(TextFormField, 'Wesner Louis'), findsOneWidget);
+      expect(find.widgetWithText(TextFormField, '41887720'), findsOneWidget);
+      expect(find.byKey(const ValueKey('network-minimum-notice')), findsOneWidget,
+          reason: 'NatCash chwazi otomatikman');
+    });
+
+    testWidgets('apre voye a, bouton resi a parèt', (tester) async {
+      await pumpPage(tester);
+      await chooseService(tester, 'MonCash');
+      await fill(tester, name: 'Vanessa', phone: '37123456', amount: '2000');
+      await save(tester);
+
+      expect(find.text('Lajan an pati'), findsOneWidget);
+      expect(find.text('Wè ak pataje resi a'), findsOneWidget);
     });
   });
 }
