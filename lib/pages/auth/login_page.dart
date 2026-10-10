@@ -1,5 +1,7 @@
 import 'package:mon_premye_app/core/network/api_client.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:mon_premye_app/core/session/session_store.dart';
@@ -531,6 +533,22 @@ class _LoginPageState extends State<LoginPage> {
                   _isLogin ? 'Kreye yon kont' : 'Mwen gen kont deja',
                 ),
               ),
+              if (kIsWeb) ...[
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: () => launchUrl(
+                    Uri.parse('/download/voupvapcash.apk'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  icon: const Icon(Icons.android, size: 18),
+                  label: const Text('Telechaje app Android la (.apk)'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF2E7D32),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

@@ -27,11 +27,17 @@ ARG API_BASE_URL=
 RUN flutter build web --release --no-web-resources-cdn \
       --dart-define=API_BASE_URL=${API_BASE_URL}
 
+# Prepare APK download directory (voupvapcash.apk optional — place in dist/ before build).
+COPY dist/ /tmp/dist/
+RUN mkdir -p /tmp/nginx-download && \
+    (cp /tmp/dist/voupvapcash.apk /tmp/nginx-download/ 2>/dev/null || true)
+
 # --- Service ------------------------------------------------------------------
 FROM nginxinc/nginx-unprivileged:1.30-alpine AS runtime
 
 COPY docker/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /src/build/web /usr/share/nginx/html
+COPY --from=build --chown=101:0 /tmp/nginx-download/ /usr/share/nginx/html/download/
 
 EXPOSE 8080
 
