@@ -41,6 +41,7 @@ test.before(async () => {
   app.use("/api/events", eventsRoutes);
   app.post("/api/transactions", (req, res) => res.json({ ok: true }));
   app.post("/api/transactions/fail", (req, res) => res.status(400).json({ ok: false }));
+  app.post("/api/transactions/quote", (req, res) => res.json({ ok: true }));
   server = await new Promise((resolve) => {
     const s = app.listen(0, "127.0.0.1", () => resolve(s));
   });
@@ -125,6 +126,9 @@ test("yon chanjman rive sou ekran menm antrepriz la, pa sou lòt la", async () =
 
   await fetch(`${baseUrl}/api/transactions/fail`, { method: "POST", headers: { authorization: `Bearer ${tokens.a}` } });
   assert.equal(await a2.next("change", 400), null, "yon erè pa pibliye anyen");
+
+  await fetch(`${baseUrl}/api/transactions/quote`, { method: "POST", headers: { authorization: `Bearer ${tokens.a}` } });
+  assert.equal(await a2.next("change", 400), null, "yon devi pa chanje anyen: pa gen siyal");
 
   a2.close();
   b.close();

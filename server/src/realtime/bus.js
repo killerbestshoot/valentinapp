@@ -52,6 +52,9 @@ function publishMutations(req, res, next) {
     if (res.statusCode >= 400) return;
     const path = req.originalUrl.split("?")[0];
     if (path.startsWith("/api/events") || path.startsWith("/api/auth") || path.startsWith("/api/otp")) return;
+    // Devi yo se POST men yo pa chanje anyen: ajan an rele yo sou chak lèt li
+    // tape. Pibliye yo ta fè tout ekran yo rechaje san rezon.
+    if (/\/quote$/.test(path) || /\/quotes?\//.test(path)) return;
     const topics = topicsFor(path);
     if (!topics.length) return;
     const enterpriseId = req.user?.enterpriseId || (/\/webhook/.test(path) ? "*" : "");
