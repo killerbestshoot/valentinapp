@@ -15,6 +15,8 @@ const payoutRoutes = require("./routes/payouts.routes");
 const settingsRoutes = require("./routes/settings.routes");
 const systemRoutes = require("./routes/system.routes");
 const analyticsRoutes = require("./routes/analytics.routes");
+const eventsRoutes = require("./routes/events.routes");
+const { publishMutations } = require("./realtime/bus");
 const { router: receiptRoutes } = require("./routes/receipts.routes");
 const { attachUser } = require("./auth/middleware");
 const { getDb, resetDb } = require("./db/db");
@@ -60,6 +62,9 @@ app.use(
 // Idantite a soti nan jeton an, sou chak demand.
 app.use(attachUser);
 
+// Tan reyèl: chak chanjman ki reyisi pibliye yon evènman pou ekran ki ouvè yo.
+app.use(publishMutations);
+
 app.get("/", (req, res) => {
   res.json({ ok: true, service: "voupvapcash-server" });
 });
@@ -85,6 +90,7 @@ app.use("/api/payouts", payoutRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/system", systemRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/events", eventsRoutes);
 app.use("/api/receipts", receiptRoutes);
 app.use("/api/otp", otpRoutes);
 app.use("/api/bazik", bazikRoutes);

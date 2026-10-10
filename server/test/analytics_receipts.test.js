@@ -155,3 +155,17 @@ test("resi: siyati a valide, yon montan chanje refize", async () => {
   const tampered = await get(`/api/receipts/verify?tx=${txId}&s=${json.receipt.signature}`);
   assert.equal(tampered.json.valid, false, "montan an chanje: siyati a pa bon ankò");
 });
+
+test("tablo ajan: sèlman tranzaksyon pa l, komisyon nan deviz wallet li", async () => {
+  const { json, status } = await get("/api/analytics/agent?days=30", "agent");
+  assert.equal(status, 200, JSON.stringify(json));
+  // 2 livre + 1 an atant (+ tranzaksyon resi a) pou "agent"; echèk "agent2" a pa konte.
+  assert.ok(json.kpis.count >= 3);
+  assert.equal(json.kpis.failed, 0, "echèk la se pou agent2");
+  assert.equal(json.commissionSeries.length, 7);
+  assert.ok(json.inProgress.every((t) => t.phone.includes("••")), "nimewo maske");
+  assert.ok(json.inProgress.some((t) => t.status === "pending"));
+
+  const owner = await get("/api/analytics/agent?days=30", "owner");
+  assert.equal(owner.json.kpis.count, 0, "owner a pa wè tranzaksyon ajan an nan pwòp tablo ajan l");
+});

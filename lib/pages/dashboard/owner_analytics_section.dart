@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/core/realtime/realtime.dart';
 import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/features/analytics/data/analytics_api.dart';
 import 'package:mon_premye_app/features/operations/data/operations_api.dart';
@@ -80,17 +81,22 @@ class OwnerAnalyticsSectionState extends State<OwnerAnalyticsSection> {
   Object? _error;
   bool _loading = false;
   Timer? _timer;
+  StreamSubscription<RealtimeEvent>? _live;
 
   @override
   void initState() {
     super.initState();
     reload();
+    // Tan reyèl: chak tranzaksyon, konfimasyon oswa komisyon rechaje tablo a.
+    _live = Realtime.instance.listen(const {'transactions', 'transfers', 'wallets', 'commissions'}, reload);
+    // Filè sekirite si kanal la koupe.
     _timer = Timer.periodic(widget.refreshEvery, (_) => reload());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _live?.cancel();
     super.dispose();
   }
 

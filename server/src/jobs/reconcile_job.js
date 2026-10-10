@@ -17,6 +17,7 @@
 const { getBazikService } = require("../bazik_service");
 const { getAirtimeService } = require("../airtime_service");
 const { applyPendingCommissions } = require("../commission/engine");
+const { publish } = require("../realtime/bus");
 
 const DEFAULT_INTERVAL_MS = 5 * 60000;
 
@@ -57,6 +58,10 @@ function createReconcileJob({
         result.commissions = applied.filter((r) => r.status === "applied").length;
       } catch (err) {
         result.errors.push(`commission: ${err.message}`);
+      }
+      if (result.transfers || result.topups || result.commissions) {
+        // Yon webhook pèdi rekonsilye: ekran ki ouvè yo dwe wè l touswit.
+        publish("*", ["transfers", "transactions", "wallets", "commissions"], { source: "reconcile" });
       }
       if (result.transfers || result.topups || result.commissions || result.errors.length) {
         log.log(`[reconcile] transfè ${result.transfers}, rechaj ${result.topups}, komisyon ${result.commissions}` +

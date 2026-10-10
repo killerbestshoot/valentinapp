@@ -18,7 +18,12 @@ import 'package:mon_premye_app/features/wallet/data/wallet_api.dart';
 import 'package:mon_premye_app/pages/receipts/receipt_page.dart';
 
 class CreateTransactionPage extends StatefulWidget {
-  const CreateTransactionPage({super.key});
+  const CreateTransactionPage({super.key, this.initialName, this.initialPhone, this.initialService});
+
+  /// Pre-ranpli pa "Voye ankò" (tablo ajan an).
+  final String? initialName;
+  final String? initialPhone;
+  final String? initialService;
 
   @override
   State<CreateTransactionPage> createState() => _CreateTransactionPageState();
@@ -83,6 +88,11 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
     amountCtrl.addListener(_scheduleQuote);
     // Devi Minit Haiti a depann de nimewo a (se li ki bay operatè a).
     phoneCtrl.addListener(_scheduleQuote);
+    if (widget.initialName != null) nameCtrl.text = widget.initialName!;
+    if (widget.initialPhone != null) phoneCtrl.text = HaitiPhone.localPart(widget.initialPhone!);
+    if (widget.initialService != null && services.contains(widget.initialService)) {
+      serviceName = widget.initialService!;
+    }
     _loadContext();
   }
 

@@ -385,5 +385,137 @@ router.get("/owner", requireAuth, requireEnterprise, requireRole("owner", "admin
   }
 });
 
+/**
+ * Tablo AJAN an — sèlman tranzaksyon moun k ap rele a.
+ *
+ *   GET /api/analytics/agent?days=1|7|30
+ *
+ * Montan yo: volim an HTG (sa benefisyè yo resevwa), komisyon ak frè nan
+ * deviz WALLET ajan an (sa li wè sou sòld li).
+ */
+router.get("/agent", requireAuth, requireEnterprise, async (req, res) => {
+  try {
+    const db = getDb();
+    const { uid, enterpriseId } = req.user;
+    const days = [1, 7, 30].includes(Number(req.query.days)) ? Number(req.query.days) : 1;
+    const now = Date.now();
+    const service = getBazikService();
+    const wallet = await service.store.getWallet({ uid, enterpriseId });
+    const walletCurrency = wallet?.currency || "HTG";
+    const rates = service.rates;
+    const factors = new Map();
+    const factor = async (from, to) => {
+      const key = `${from}>${to}`;
+      if (!factors.has(key)) {
+        try {
+          factors.set(key, (await rates.info(from)).rateToHtg / (await rates.info(to)).rateToHtg);
+        } catch {
+          factors.set(key, null);
+        }
+      }
+      return factors.get(key);
+    };
+    const conv = async (minor, from, to) => {
+      const f = await factor(from, to);
+      return f === null ? 0 : ((minor || 0) * f) / 100;
+    };
+
+    const dates = [];
+    for (let i = 0; dates.length < Math.max(days, 7) && i < 40; i += 1) {
+      const d = localParts(now - i * DAY).date;
+      if (!dates.includes(d)) dates.push(d);
+    }
+    const period = new Set(dates.slice(0, days));
+    const week = dates.slice(0, 7).reverse();
+
+    const rows = db
+      .prepare(
+        `SELECT t.tx_id, t.created_at, t.status, t.service, t.currency, t.amount_minor, t.sender_fee_minor,
+                t.commission_agent_minor, t.client_name, t.phone,
+                c.agent_credit_minor, c.reversed_at,
+                b.provider, b.status AS transfer_status, b.created_at AS transfer_created_at,
+                b.gateway_id, b.gateway_status
+           FROM transactions t
+           LEFT JOIN commission_logs c ON c.tx_id = t.tx_id
+           LEFT JOIN bazik_transfers b ON b.transfer_id = (
+             SELECT transfer_id FROM bazik_transfers WHERE tx_id = t.tx_id ORDER BY created_at DESC LIMIT 1)
+          WHERE t.enterprise_id = ? AND t.staff_uid = ? AND t.created_at >= ?
+          ORDER BY t.created_at DESC`
+      )
+      .all(enterpriseId, uid, now - 40 * DAY);
+
+    const k = { count: 0, delivered: 0, failed: 0, pending: 0, volumeHtg: 0, fee: 0, earned: 0, pendingCommission: 0 };
+    const byDay = new Map(week.map((d) => [d, { date: d, earned: 0, pending: 0, count: 0 }]));
+    const inProgress = [];
+
+    for (const r of rows) {
+      const lp = localParts(r.created_at);
+      const state = statusOf(r, now);
+      const open = state === "pending" || state === "verifying";
+      const earned = r.agent_credit_minor && !r.reversed_at ? r.agent_credit_minor / 100 : 0;
+      const pendingCom = open ? await conv(r.commission_agent_minor, r.currency, walletCurrency) : 0;
+
+      if (period.has(lp.date)) {
+        k.count += 1;
+        k[state === "verifying" ? "pending" : state] += 1;
+        if (state === "delivered") {
+          k.volumeHtg += await conv(r.amount_minor, r.currency, "HTG");
+          k.fee += await conv(r.sender_fee_minor, r.currency, walletCurrency);
+          k.earned += earned;
+        }
+        k.pendingCommission += pendingCom;
+      }
+      const day = byDay.get(lp.date);
+      if (day) {
+        day.count += 1;
+        if (state === "delivered") day.earned += earned;
+        day.pending += pendingCom;
+      }
+      if (open) {
+        inProgress.push({
+          txId: r.tx_id,
+          createdAt: r.created_at,
+          service: r.service,
+          network: networkOf(r),
+          clientName: r.client_name || "",
+          phone: maskPhone(r.phone),
+          amount: (r.amount_minor || 0) / 100,
+          currency: r.currency,
+          status: state,
+          manualReview: !r.gateway_id && r.gateway_status === "manual_review",
+        });
+      }
+    }
+
+    const r2 = (v) => Math.round(v * 100) / 100;
+    const done = k.delivered + k.failed;
+    return res.json({
+      ok: true,
+      days,
+      generatedAt: now,
+      wallet: wallet
+        ? { balance: wallet.balanceMinor / 100, currency: walletCurrency, balanceHtg: r2(await conv(wallet.balanceMinor, walletCurrency, "HTG")) }
+        : null,
+      kpis: {
+        count: k.count,
+        delivered: k.delivered,
+        failed: k.failed,
+        pending: k.pending,
+        volumeHtg: r2(k.volumeHtg),
+        fee: r2(k.fee),
+        commissionEarned: r2(k.earned),
+        commissionPending: r2(k.pendingCommission),
+        successRate: done ? Math.round((k.delivered / done) * 10000) / 10000 : null,
+        averageTicketHtg: k.delivered ? r2(k.volumeHtg / k.delivered) : 0,
+        currency: walletCurrency,
+      },
+      commissionSeries: [...byDay.values()].map((d) => ({ ...d, earned: r2(d.earned), pending: r2(d.pending) })),
+      inProgress: inProgress.slice(0, 10),
+    });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
 module.exports = router;
 module.exports._internals = { localParts, weekOf, networkOf, maskPhone };

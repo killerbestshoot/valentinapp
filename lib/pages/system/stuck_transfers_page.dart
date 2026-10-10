@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:mon_premye_app/core/realtime/realtime.dart';
 import 'package:mon_premye_app/core/models/app_role.dart';
 import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
@@ -39,6 +42,21 @@ class StuckTransfersPage extends StatefulWidget {
 
 class _StuckTransfersPageState extends State<StuckTransfersPage> {
   late Future<List<StuckTransfer>> _future = ReconciliationApi.instance.stuck();
+  StreamSubscription<RealtimeEvent>? _live;
+
+  @override
+  void initState() {
+    super.initState();
+    _live = Realtime.instance.listen(const {'transfers'}, () {
+      if (mounted) _reload();
+    });
+  }
+
+  @override
+  void dispose() {
+    _live?.cancel();
+    super.dispose();
+  }
 
   bool get _isOwner => AuthRepositoryProvider.instance.currentUser?.role == AppRole.owner;
 

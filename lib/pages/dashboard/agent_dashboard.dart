@@ -1,3 +1,8 @@
+import 'package:mon_premye_app/app/admin_shell.dart';
+import 'package:mon_premye_app/pages/commission/commissions_page.dart';
+import 'package:mon_premye_app/pages/dashboard/agent_home.dart';
+import 'package:mon_premye_app/pages/notifications/notifications_page.dart';
+import 'package:mon_premye_app/pages/receipts/receipt_page.dart';
 import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/features/wallet/data/wallet_api.dart';
 import 'package:mon_premye_app/features/wallet/presentation/widgets/exchange_rates_card.dart';
@@ -28,55 +33,99 @@ class AgentDashboard extends StatelessWidget {
         name: user?.email ?? 'Agent',
         enterprise: 'VOUPVAPCASH',
         balance: 0,
+        currency: 'USD',
         onOpen: (page) => _open(context, page),
         onLogout: () => AuthRepositoryProvider.instance.signOut(),
       );
     }
 
-    // Non, antrepriz ak sòld vini nan yon sèl rekèt sou serveur a.
-    return FutureBuilder<WalletSummary>(
-      future: WalletApi.instance.mine(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            backgroundColor: DashboardColors.surface,
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
+    return const _AgentShell();
+  }
+}
 
-        final profile = AuthRepositoryProvider.instance.currentUser;
-        final wallet = snap.data;
+/// Kad ajan an: menm meni bò a ak ba anlè ak owner a, ak paj pa l.
+class _AgentShell extends StatefulWidget {
+  const _AgentShell();
 
-        if (snap.hasError) {
-          final error = snap.error;
-          return Scaffold(
-            backgroundColor: DashboardColors.surface,
-            body: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  error is ApiException ? error.message : '$error',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFFB91C1C)),
-                ),
-              ),
-            ),
-          );
-        }
+  @override
+  State<_AgentShell> createState() => _AgentShellState();
+}
 
-        return _AgentDashboardContent(
-          name: profile?.displayName.isNotEmpty == true
-              ? profile!.displayName
-              : (profile?.email ?? 'Agent'),
-          enterprise: profile?.enterpriseName.isNotEmpty == true
-              ? profile!.enterpriseName
-              : 'VOUPVAPCASH',
-          balance: wallet?.balance ?? 0,
-          currency: wallet?.currency ?? 'USD',
-          onOpen: (page) => _open(context, page),
-          onLogout: () => AuthRepositoryProvider.instance.signOut(),
-        );
+class _AgentShellState extends State<_AgentShell> {
+  final _shellKey = GlobalKey<AdminShellState>();
+  final _homeKey = GlobalKey<AgentHomeState>();
+
+  void _push(Widget page) => Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminShell(
+      key: _shellKey,
+      onCreateTransaction: () => _push(const CreateTransactionPage()),
+      onRefresh: (id) {
+        if (id == 'home') _homeKey.currentState?.reload();
       },
+      destinations: [
+        ShellDestination(
+          id: 'home',
+          label: 'Akèy',
+          icon: Icons.space_dashboard_outlined,
+          builder: (_) => AgentHome(
+            key: _homeKey,
+            onCreate: () => _push(const CreateTransactionPage()),
+            onRepeat: (tx) => _push(CreateTransactionPage(
+              initialName: tx.customerName,
+              initialPhone: tx.customerPhone,
+              initialService: tx.serviceName,
+            )),
+            onOpenReceipt: (id) => _push(ReceiptPage(transactionId: id)),
+            onOpenPayout: () => _shellKey.currentState?.select('payout'),
+          ),
+        ),
+        ShellDestination(
+          id: 'transactions',
+          label: 'Tranzaksyon',
+          icon: Icons.receipt_long_outlined,
+          section: 'Travay',
+          builder: (_) => const TransactionManagementPage(),
+        ),
+        ShellDestination(
+          id: 'commissions',
+          label: 'Komisyon',
+          icon: Icons.percent,
+          section: 'Travay',
+          builder: (_) => const CommissionsPage(),
+        ),
+        ShellDestination(
+          id: 'wallet',
+          label: 'Wallet',
+          icon: Icons.account_balance_wallet_outlined,
+          section: 'Lajan',
+          builder: (_) => const WalletHistoryPage(),
+        ),
+        ShellDestination(
+          id: 'payout',
+          label: 'Payout',
+          icon: Icons.north_east,
+          section: 'Lajan',
+          builder: (_) => const PayoutsPage(),
+        ),
+        ShellDestination(
+          id: 'notifications',
+          label: 'Notifikasyon',
+          icon: Icons.notifications_outlined,
+          section: 'Kont',
+          badge: true,
+          builder: (_) => const NotificationsPage(),
+        ),
+        ShellDestination(
+          id: 'settings',
+          label: 'Paramèt',
+          icon: Icons.settings_outlined,
+          section: 'Kont',
+          builder: (_) => const SettingsPage(),
+        ),
+      ],
     );
   }
 }

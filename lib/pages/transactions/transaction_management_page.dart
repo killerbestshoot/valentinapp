@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/core/realtime/realtime.dart';
 import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/features/airtime/domain/airtime_models.dart';
 import 'package:mon_premye_app/features/airtime/presentation/widgets/airtime_delivery_dialog.dart';
@@ -40,14 +41,19 @@ class _TransactionManagementPageState extends State<TransactionManagementPage> {
     'canceled': 'Anile',
   };
 
+  StreamSubscription<RealtimeEvent>? _live;
+
   @override
   void initState() {
     super.initState();
     _future = _load();
+    // Yon tranzaksyon kreye oswa livre (menm pa yon lòt moun) parèt touswit.
+    _live = Realtime.instance.listen(const {'transactions', 'transfers'}, _reload);
   }
 
   @override
   void dispose() {
+    _live?.cancel();
     _searchDebounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();

@@ -289,6 +289,114 @@ class OwnerAnalytics {
   }
 }
 
+/// Tablo ajan an: sèlman tranzaksyon pa l.
+class AgentAnalytics {
+  const AgentAnalytics({
+    required this.days,
+    required this.count,
+    required this.delivered,
+    required this.failed,
+    required this.pending,
+    required this.volumeHtg,
+    required this.fee,
+    required this.commissionEarned,
+    required this.commissionPending,
+    required this.successRate,
+    required this.averageTicketHtg,
+    required this.currency,
+    required this.commissionSeries,
+    required this.inProgress,
+    this.walletBalance,
+    this.walletCurrency,
+    this.walletBalanceHtg,
+  });
+
+  final int days;
+  final int count;
+  final int delivered;
+  final int failed;
+  final int pending;
+  final double volumeHtg;
+
+  /// Frè ak komisyon: nan deviz wallet ajan an ([currency]).
+  final double fee;
+  final double commissionEarned;
+  final double commissionPending;
+  final double? successRate;
+  final double averageTicketHtg;
+  final String currency;
+  final List<({String date, double earned, double pending, int count})> commissionSeries;
+  final List<AgentInProgress> inProgress;
+  final double? walletBalance;
+  final String? walletCurrency;
+  final double? walletBalanceHtg;
+
+  factory AgentAnalytics.fromJson(Map<String, dynamic> j) {
+    final k = (j['kpis'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final w = (j['wallet'] as Map?)?.cast<String, dynamic>();
+    return AgentAnalytics(
+      days: _i(j['days']),
+      count: _i(k['count']),
+      delivered: _i(k['delivered']),
+      failed: _i(k['failed']),
+      pending: _i(k['pending']),
+      volumeHtg: _d(k['volumeHtg']),
+      fee: _d(k['fee']),
+      commissionEarned: _d(k['commissionEarned']),
+      commissionPending: _d(k['commissionPending']),
+      successRate: k['successRate'] is num ? _d(k['successRate']) : null,
+      averageTicketHtg: _d(k['averageTicketHtg']),
+      currency: '${k['currency'] ?? 'HTG'}',
+      commissionSeries: ((j['commissionSeries'] as List?) ?? const [])
+          .map((e) => (e as Map).cast<String, dynamic>())
+          .map((e) => (date: '${e['date']}', earned: _d(e['earned']), pending: _d(e['pending']), count: _i(e['count'])))
+          .toList(),
+      inProgress: _list(j['inProgress'], AgentInProgress.fromJson),
+      walletBalance: w == null ? null : _d(w['balance']),
+      walletCurrency: w?['currency'] as String?,
+      walletBalanceHtg: w == null ? null : _d(w['balanceHtg']),
+    );
+  }
+}
+
+class AgentInProgress {
+  const AgentInProgress({
+    required this.txId,
+    required this.service,
+    required this.clientName,
+    required this.phone,
+    required this.amount,
+    required this.currency,
+    required this.status,
+    required this.manualReview,
+    this.createdAt,
+  });
+
+  final String txId;
+  final String service;
+  final String clientName;
+  final String phone;
+  final double amount;
+  final String currency;
+
+  /// `pending` oswa `verifying`.
+  final String status;
+  final bool manualReview;
+  final DateTime? createdAt;
+
+  factory AgentInProgress.fromJson(Map<String, dynamic> j) => AgentInProgress(
+        txId: '${j['txId'] ?? ''}',
+        service: '${j['service'] ?? ''}',
+        clientName: '${j['clientName'] ?? ''}',
+        phone: '${j['phone'] ?? ''}',
+        amount: _d(j['amount']),
+        currency: '${j['currency'] ?? ''}',
+        status: '${j['status'] ?? 'pending'}',
+        manualReview: j['manualReview'] == true,
+        createdAt: j['createdAt'] is num ? DateTime.fromMillisecondsSinceEpoch(_i(j['createdAt'])) : null,
+      );
+}
+
 class AnalyticsApi {
   AnalyticsApi({ApiClient? client}) : _client = client ?? ApiClient.instance;
 
@@ -298,6 +406,11 @@ class AnalyticsApi {
   static AnalyticsApi get instance => _instance ??= AnalyticsApi();
   static void override(AnalyticsApi api) => _instance = api;
   static void reset() => _instance = null;
+
+  Future<AgentAnalytics> agent({int days = 1}) async {
+    final json = await _client.get('/api/analytics/agent', query: {'days': days});
+    return AgentAnalytics.fromJson(json);
+  }
 
   Future<OwnerAnalytics> owner({
     int days = 30,

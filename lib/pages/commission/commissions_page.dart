@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/core/realtime/realtime.dart';
 import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
 import 'package:mon_premye_app/core/models/app_role.dart';
@@ -203,16 +204,20 @@ class _LiveCommissionsPanelState extends State<LiveCommissionsPanel> {
   bool _loading = false;
   Timer? _timer;
 
+  StreamSubscription<RealtimeEvent>? _live;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _live = Realtime.instance.listen(const {'commissions', 'transactions', 'transfers'}, _load);
     _timer = Timer.periodic(widget.refreshEvery, (_) => _load());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _live?.cancel();
     super.dispose();
   }
 
