@@ -76,6 +76,24 @@ test("nimewo Ayiti: tout fòm kouran yo bay +509 ak 8 chif", () => {
   }
 });
 
+test("nimewo entènasyonal: kòd peyi a obligatwa, Ayiti rete sou 8 chif", () => {
+  const DO = ["1809", "1829", "1849"];
+  assert.equal(mapper.normalizePhone("+1 809-555-1234", "DO", DO).international, "+18095551234");
+  assert.equal(mapper.normalizePhone("0018295551234", "do", DO).countryCode, "DO");
+  assert.equal(mapper.normalizePhone("+52 55 1234 5678", "MX", ["52"]).local, "5512345678");
+  assert.equal(mapper.normalizePhone("37123456", "HT").international, "+50937123456");
+
+  // Nimewo yon lòt peyi, twò kout, oswa twò long.
+  for (const [input, iso, codes] of [["+13055551234", "DO", DO], ["+52 55", "MX", ["52"]], ["+1234567890123456", "US", ["1"]]]) {
+    assert.throws(() => mapper.normalizePhone(input, iso, codes), { code: "invalid_phone" }, input);
+  }
+
+  const request = mapper.buildTopupRequest({
+    operatorId: 9, amountMinor: 500, customIdentifier: "x", phone: "+18095551234", countryCode: "DO",
+  });
+  assert.deepEqual(request.recipientPhone, { countryCode: "DO", number: "+18095551234" });
+});
+
 test("demann rechaj: fòm `PhoneTopupRequest` SDK a", () => {
   assert.deepEqual(
     mapper.buildTopupRequest({

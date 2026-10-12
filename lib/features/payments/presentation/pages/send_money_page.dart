@@ -6,6 +6,7 @@ import '../../data/payment_gateway_provider.dart';
 import '../../domain/payment_gateway.dart';
 import '../../domain/payment_models.dart';
 import '../widgets/payment_error_view.dart';
+import 'package:mon_premye_app/widgets/network_logo.dart';
 
 /// Voye lajan sou MonCash / NatCash atravè Bazik.
 ///
@@ -196,8 +197,16 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
               ],
               SegmentedButton<PaymentNetwork>(
                 segments: const [
-                  ButtonSegment(value: PaymentNetwork.moncash, label: Text('MonCash')),
-                  ButtonSegment(value: PaymentNetwork.natcash, label: Text('NatCash')),
+                  ButtonSegment(
+                    value: PaymentNetwork.moncash,
+                    icon: NetworkLogo('moncash', size: 20),
+                    label: Text('MonCash'),
+                  ),
+                  ButtonSegment(
+                    value: PaymentNetwork.natcash,
+                    icon: NetworkLogo('natcash', size: 20),
+                    label: Text('NatCash'),
+                  ),
                 ],
                 selected: {_network},
                 onSelectionChanged: (selection) {

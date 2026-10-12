@@ -5,13 +5,18 @@
  *
  *   GET /api/settings/exchange-margin   (owner/admin ka wè)
  *   PUT /api/settings/exchange-margin   (owner sèlman mete ajou)
+ *   GET /api/settings/bank-accounts     tout staff (ajan an wè kote pou l vire)
+ *   PATCH /api/settings/bank-accounts   owner/admin
  */
 
 const express = require("express");
 const { getBazikService } = require("../bazik_service");
 
-const { requireAuth, requireRole } = require("../auth/middleware");
+const { requireAuth, requireRole, requireEnterprise } = require("../auth/middleware");
 const {
+  getBankAccounts,
+  setBankAccounts,
+  MAX_BANK_ACCOUNTS,
   getExchangeMargin,
   getPslFallbackEnabled,
   setExchangeMargin,
@@ -90,6 +95,23 @@ router.patch("/psl-fallback", requireAuth, requireRole("owner"), (req, res) => {
     }
     const saved = setPslFallbackEnabled(req.body?.enabled, req.user.uid);
     return res.json({ ok: true, configured, enabled: configured && saved });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+router.get("/bank-accounts", requireAuth, requireEnterprise, (req, res) => {
+  try {
+    return res.json({ ok: true, accounts: getBankAccounts(req.user.enterpriseId), max: MAX_BANK_ACCOUNTS });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+router.patch("/bank-accounts", requireAuth, requireEnterprise, requireRole("owner", "admin"), (req, res) => {
+  try {
+    const accounts = setBankAccounts(req.user.enterpriseId, req.body?.accounts, req.user.uid);
+    return res.json({ ok: true, accounts, max: MAX_BANK_ACCOUNTS });
   } catch (err) {
     return send(res, err);
   }

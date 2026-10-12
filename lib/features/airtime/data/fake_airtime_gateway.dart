@@ -9,11 +9,13 @@ class FakeAirtimeTransaction {
     required this.phone,
     required this.amount,
     this.currency = 'USD',
+    this.countryCode = 'HT',
   });
 
   final String phone;
   final double amount;
   final String currency;
+  final String countryCode;
 }
 
 /// Minit Haiti an memwa: tès widget ak mòd `MOCK_FIREBASE=true`.
@@ -43,6 +45,19 @@ class FakeAirtimeGateway implements AirtimeGateway {
   final Map<String, AirtimeTopup> delivered = {};
 
   final List<String> quotedPhones = [];
+
+  static const fakeCountries = [
+    AirtimeCountry.haiti,
+    AirtimeCountry(countryCode: 'US', name: 'United States', currencyCode: 'USD', callingCodes: ['1']),
+    AirtimeCountry(
+      countryCode: 'DO',
+      name: 'Dominican Republic',
+      currencyCode: 'DOP',
+      callingCodes: ['1809', '1829', '1849'],
+    ),
+    AirtimeCountry(countryCode: 'MX', name: 'Mexico', currencyCode: 'MXN', callingCodes: ['52']),
+    AirtimeCountry(countryCode: 'CL', name: 'Chile', currencyCode: 'CLP', callingCodes: ['56']),
+  ];
 
   static const _natcomPrefixes = {'32', '33', '35', '40', '41', '42', '43', '44', '55'};
 
@@ -96,10 +111,34 @@ class FakeAirtimeGateway implements AirtimeGateway {
           );
   }
 
-  AirtimeQuote _quote(String phone, double amount, String? currency) {
+  /// Lòt peyi: operatè jenerik, menm jan ak `fake_client.js` sou serveur a.
+  (String, AirtimeOperator) _foreign(String phone, String countryCode) {
+    final country = fakeCountries.firstWhere(
+      (c) => c.countryCode == countryCode,
+      orElse: () => throw PaymentException('country_not_supported', 'Reloadly pa sèvi peyi $countryCode.'),
+    );
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    if (digits.length < 8 || !country.callingCodes.any(digits.startsWith)) {
+      throw PaymentException('invalid_phone', 'Nimewo a pa valid pou $countryCode: $phone.');
+    }
+    return (
+      '+$digits',
+      AirtimeOperator(
+        operatorId: 900 + fakeCountries.indexOf(country),
+        name: '${country.name} Mobile',
+        destinationCurrency: country.currencyCode,
+        fxRate: 1,
+        minAmount: 1,
+        maxAmount: 100,
+      ),
+    );
+  }
+
+  AirtimeQuote _quote(String phone, double amount, String? currency, {String countryCode = 'HT'}) {
     _assertEnabled();
-    final local = _local(phone);
-    final operator = _operatorFor(local);
+    final haiti = countryCode == 'HT';
+    final local = haiti ? _local(phone) : '';
+    final (international, operator) = haiti ? ('+509$local', _operatorFor(local)) : _foreign(phone, countryCode);
 
     // Menm règ ak serveur a: nenpòt deviz konvèti an USD (awondi an BA),
     // debi a nan deviz wallet la (o pi pre).
@@ -127,7 +166,7 @@ class FakeAirtimeGateway implements AirtimeGateway {
     }
 
     return AirtimeQuote(
-      phone: '+509$local',
+      phone: international,
       operator: operator,
       currency: amountCurrency,
       amount: amount,
@@ -135,7 +174,7 @@ class FakeAirtimeGateway implements AirtimeGateway {
       sendCurrency: operator.senderCurrency,
       conversionRate: converted ? rate : 1,
       estimatedDelivered: sendAmount * operator.fxRate,
-      deliveredCurrency: 'HTG',
+      deliveredCurrency: operator.destinationCurrency,
       debit: debit,
       debitCurrency: walletCurrency,
       mode: 'fake',
@@ -152,14 +191,21 @@ class FakeAirtimeGateway implements AirtimeGateway {
   }
 
   @override
+  Future<List<AirtimeCountry>> countries() async {
+    _assertEnabled();
+    return fakeCountries;
+  }
+
+  @override
   Future<AirtimeQuote> quote({
     required String phone,
     required double amount,
+    String countryCode = 'HT',
     String? currency,
     int? operatorId,
   }) async {
     quotedPhones.add(phone);
-    return _quote(phone, amount, currency);
+    return _quote(phone, amount, currency, countryCode: countryCode);
   }
 
   @override
@@ -172,8 +218,8 @@ class FakeAirtimeGateway implements AirtimeGateway {
       throw const PaymentException('transaction_not_found', 'Tranzaksyon an pa egziste.');
     }
 
-    final quote = _quote(tx.phone, tx.amount, tx.currency);
-    final failed = failingPhones.contains(_local(tx.phone));
+    final quote = _quote(tx.phone, tx.amount, tx.currency, countryCode: tx.countryCode);
+    final failed = tx.countryCode == 'HT' && failingPhones.contains(_local(tx.phone));
 
     final topup = AirtimeTopup(
       topupId: 'AIR_fake_${delivered.length + 1}',

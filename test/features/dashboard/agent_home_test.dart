@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mon_premye_app/core/models/app_role.dart';
 import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/core/realtime/realtime.dart';
 import 'package:mon_premye_app/features/analytics/data/analytics_api.dart';
+import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
+import 'package:mon_premye_app/features/auth/domain/auth_repository.dart';
+import 'package:mon_premye_app/features/auth/models/auth_user.dart';
 import 'package:mon_premye_app/features/transactions/data/transaction_api.dart';
 import 'package:mon_premye_app/features/wallet/data/wallet_api.dart';
 import 'package:mon_premye_app/pages/dashboard/agent_home.dart';
@@ -46,25 +50,56 @@ class _FakeTx extends TransactionApi {
 
 class _FakeWallet extends WalletApi {
   _FakeWallet() : super(client: ApiClient());
+  final requested = <String>[];
 
   @override
   Future<Map<String, double>> rates() async => {'HTG': 1, 'USD': 131, 'MXN': 7.16};
+
+  @override
+  Future<List<BankAccount>> bankAccounts() async => const [
+        BankAccount(id: 'b1', bankName: 'Unibank', accountName: 'VOUPVAPCASH SA', accountNumber: '120-4455'),
+      ];
+
+  @override
+  Future<String> requestTopup({
+    required String targetUid,
+    required double amount,
+    String currency = 'USD',
+    String note = '',
+    bool autoApprove = false,
+    String? bankReference,
+    String? bankAccountId,
+  }) async {
+    requested.add('$targetUid:$amount:$currency:$bankReference:$bankAccountId');
+    return 'TU_1';
+  }
+}
+
+class _Auth implements AuthRepository {
+  @override
+  AuthUser? get currentUser => const AuthUser(uid: 'agent_1', email: 'a@x.com', role: AppRole.agent, displayName: 'A');
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {
   late _FakeAnalytics analytics;
   late _FakeTx tx;
+  late _FakeWallet wallet;
   setUp(() {
+    wallet = _FakeWallet();
     analytics = _FakeAnalytics();
     tx = _FakeTx();
     AnalyticsApi.override(analytics);
     TransactionApi.override(tx);
-    WalletApi.override(_FakeWallet());
+    WalletApi.override(wallet);
   });
   tearDown(() {
     AnalyticsApi.reset();
     TransactionApi.reset();
     WalletApi.reset();
+    AuthRepositoryProvider.reset();
   });
 
   testWidgets('akèy ajan: wallet, aktivite, an kou, favori; tan reyèl rechaje l', (tester) async {
@@ -103,5 +138,35 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     await tester.pumpAndSettle();
     expect(analytics.calls, before + 1, reason: 'yon chanjman sou serveur a rechaje akèy la');
+  });
+
+  testWidgets('rechaj pa virement bancaire: kont antrepriz la + referans obligatwa', (tester) async {
+    AuthRepositoryProvider.override(_Auth());
+    tester.view.physicalSize = const Size(1300, 2200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: AgentHome(onCreate: () {}, onRepeat: (_) {}, onOpenReceipt: (_) {}, onOpenPayout: () {}),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Mande rechaj'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Virement bancaire'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('120-4455'), findsOneWidget, reason: 'ajan an wè kont antrepriz la');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Montan'), '1500');
+    await tester.tap(find.text('Voye demann lan'));
+    await tester.pumpAndSettle();
+    expect(find.text('Antre referans virement an.'), findsOneWidget);
+    expect(wallet.requested, isEmpty);
+
+    await tester.enterText(find.widgetWithText(TextFormField, 'Referans virement'), 'UNI-7781');
+    await tester.tap(find.text('Voye demann lan'));
+    await tester.pumpAndSettle();
+    expect(wallet.requested, ['agent_1:1500.0:MXN:UNI-7781:b1']);
   });
 }

@@ -18,6 +18,7 @@ import 'package:mon_premye_app/pages/settings/settings_page.dart';
 import 'package:mon_premye_app/pages/transactions/transaction_management_page.dart';
 import 'package:mon_premye_app/pages/wallet/wallet_history_page.dart';
 import 'package:mon_premye_app/pages/airtime/airtime_recharge_page.dart';
+import 'package:mon_premye_app/widgets/network_logo.dart';
 
 class AgentDashboard extends StatelessWidget {
   const AgentDashboard({super.key});
@@ -387,7 +388,9 @@ class _ServiceChip extends StatelessWidget {
     // `Chip` e pa `ActionChip`: se yon etikèt enfòmatif. Anvan, `onPressed: () {}`
     // te fè l anime lè ou tape l, san li pa fè anyen.
     return Chip(
-      avatar: const Icon(Icons.check_circle_outline, size: 18),
+      avatar: label == 'MonCash' || label == 'NatCash'
+          ? NetworkLogo(label, size: 20)
+          : const Icon(Icons.check_circle_outline, size: 18),
       label: Text(label),
       backgroundColor: DashboardColors.soft,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

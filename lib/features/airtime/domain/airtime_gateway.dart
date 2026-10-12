@@ -8,13 +8,20 @@ abstract class AirtimeGateway {
   /// Eta sèvis la: aktive, mòd, kont Reloadly.
   Future<AirtimeServiceStatus> status();
 
+  /// Peyi Reloadly sèvi yo, Ayiti an tèt.
+  Future<List<AirtimeCountry>> countries();
+
   /// Devi: operatè nimewo a, sa benefisyè a resevwa, sa wallet la peye.
   ///
   /// Li voye MENM erè ak livrezon an (montan anba minimòm, deviz, kont vid):
   /// UI a rele l ANVAN li kreye tranzaksyon an.
+  ///
+  /// [phone] se nimewo konplè a (`+18095551234`) pou lòt peyi pase Ayiti;
+  /// operatè a detekte otomatikman depi nimewo a ak [countryCode].
   Future<AirtimeQuote> quote({
     required String phone,
     required double amount,
+    String countryCode = 'HT',
     String? currency,
     int? operatorId,
   });

@@ -120,4 +120,31 @@ void main() {
     expect(DeliveryChannel.forService('Western Union'), DeliveryChannel.manual);
     expect(DeliveryChannel.forService('CAM Transf'), DeliveryChannel.manual);
   });
+
+  test('AirtimeCountry: prefiks, nimewo konplè, deteksyon pa endikatif', () {
+    final countries = [
+      AirtimeCountry.haiti,
+      AirtimeCountry.fromJson(const {'countryCode': 'CA', 'name': 'Canada', 'callingCodes': ['+1']}),
+      AirtimeCountry.fromJson(const {'countryCode': 'US', 'name': 'United States', 'callingCodes': ['+1']}),
+      AirtimeCountry.fromJson(const {
+        'countryCode': 'DO',
+        'name': 'Dominican Republic',
+        'callingCodes': ['+1809', '+1829', '+1849'],
+      }),
+      AirtimeCountry.fromJson(const {'countryCode': 'MX', 'name': 'Mexico', 'callingCodes': ['+52']}),
+    ];
+    final dominican = countries[3];
+
+    expect(dominican.dialPrefix, '1');
+    expect(dominican.international('809-555-1234'), '+18095551234');
+    expect(dominican.international('1 809 555 1234'), '+18095551234', reason: 'pa double 1 a');
+    expect(countries[4].international('055 1234 5678'), '+525512345678', reason: '0 lokal retire');
+    expect(AirtimeCountry.haiti.flag, '🇭🇹');
+
+    expect(AirtimeCountry.detect('+1 809 555 1234', countries)?.countryCode, 'DO');
+    expect(AirtimeCountry.detect('+1 305 555 1234', countries)?.countryCode, 'US');
+    expect(AirtimeCountry.detect('0052 55 1234 5678', countries)?.countryCode, 'MX');
+    expect(AirtimeCountry.detect('+509 3712 3456', countries)?.countryCode, 'HT');
+    expect(AirtimeCountry.detect('37123456', countries), isNull, reason: 'san + : nimewo lokal');
+  });
 }

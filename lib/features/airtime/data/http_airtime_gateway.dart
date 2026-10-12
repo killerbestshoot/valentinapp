@@ -30,14 +30,24 @@ class HttpAirtimeGateway implements AirtimeGateway {
   }
 
   @override
+  Future<List<AirtimeCountry>> countries() async {
+    final json = await _call(() => _client.get('/api/airtime/countries'));
+    return ((json['countries'] as List?) ?? const [])
+        .map((c) => AirtimeCountry.fromJson(c as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
   Future<AirtimeQuote> quote({
     required String phone,
     required double amount,
+    String countryCode = 'HT',
     String? currency,
     int? operatorId,
   }) async {
     final json = await _call(() => _client.post('/api/airtime/quote', {
           'phone': phone,
+          'country': countryCode,
           'amount': amount,
           if (currency != null) 'currency': currency,
           if (operatorId != null) 'operatorId': operatorId,

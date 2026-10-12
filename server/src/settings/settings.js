@@ -73,6 +73,65 @@ function setExchangeMargin(margin, updatedBy = "") {
 }
 
 /**
+ * Kont bank antrepriz la — sa ajan yo wè lè yo rechaje pa virement.
+ * Yon lis (egz. yon kont HTG, yon kont USD), estoke an JSON pa antrepriz.
+ */
+const BANK_ACCOUNTS_KEY = "bank_accounts";
+const MAX_BANK_ACCOUNTS = 5;
+const BANK_CURRENCIES = ["HTG", "USD"];
+
+function bankKey(enterpriseId) {
+  return `${BANK_ACCOUNTS_KEY}:${enterpriseId}`;
+}
+
+function getBankAccounts(enterpriseId) {
+  const row = getDb().prepare("SELECT value FROM app_settings WHERE key = ?").get(bankKey(enterpriseId));
+  if (!row) return [];
+  try {
+    const list = JSON.parse(row.value);
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function setBankAccounts(enterpriseId, accounts, updatedBy = "") {
+  const invalid = (message) => Object.assign(new Error(message), { code: "invalid_bank_accounts", status: 400 });
+
+  if (!Array.isArray(accounts)) throw invalid("Lis kont bank yo pa valid.");
+  if (accounts.length > MAX_BANK_ACCOUNTS) throw invalid(`${MAX_BANK_ACCOUNTS} kont maksimòm.`);
+
+  const text = (v, max) => String(v ?? "").trim().slice(0, max);
+  const clean = accounts.map((a, i) => {
+    const account = {
+      id: text(a?.id, 40) || `bank_${Date.now()}_${i}`,
+      bankName: text(a?.bankName, 80),
+      accountName: text(a?.accountName, 120),
+      accountNumber: text(a?.accountNumber, 60),
+      currency: BANK_CURRENCIES.includes(String(a?.currency).toUpperCase())
+        ? String(a.currency).toUpperCase()
+        : "HTG",
+      instructions: text(a?.instructions, 300),
+    };
+    if (!account.bankName || !account.accountName || !account.accountNumber) {
+      throw invalid(`Kont #${i + 1}: non bank lan, non kont lan ak nimewo a obligatwa.`);
+    }
+    return account;
+  });
+
+  getDb()
+    .prepare(
+      `INSERT INTO app_settings (key, value, updated_at, updated_by)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+         updated_at = excluded.updated_at, updated_by = excluded.updated_by`
+    )
+    .run(bankKey(enterpriseId), JSON.stringify(clean), now(), updatedBy);
+
+  return clean;
+}
+
+/**
  * Aplike majin lan sou yon to brit (HTG pa inite). Si to a vin ≤ 0 apre, nou
  * kenbe li yon ti kras pozitif pou konvèsyon pa echwe — admin dwe korije
  * majin lan.
@@ -89,6 +148,9 @@ module.exports = {
   EXCHANGE_MARGIN_KEY,
   PSL_FALLBACK_KEY,
   MAX_EXCHANGE_MARGIN,
+  MAX_BANK_ACCOUNTS,
+  getBankAccounts,
+  setBankAccounts,
   getExchangeMargin,
   getPslFallbackEnabled,
   setExchangeMargin,

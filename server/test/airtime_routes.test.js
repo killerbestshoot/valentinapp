@@ -81,13 +81,13 @@ async function agentWithSession({ email, enterpriseId = "ENT_A", balanceMinor = 
   return { ...user, enterpriseId, token: createSession(user.uid).token };
 }
 
-function seedTransaction({ txId, enterpriseId, uid, service = "Minit Haiti", amountMinor = 500, phone = "37123456", status = "pending" }) {
+function seedTransaction({ txId, enterpriseId, uid, service = "Minit Haiti", amountMinor = 500, phone = "37123456", status = "pending", country = "" }) {
   db.getDb()
     .prepare(
-      `INSERT INTO transactions (tx_id, enterprise_id, staff_uid, service, phone, amount_minor, currency, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'USD', ?, ?, ?)`
+      `INSERT INTO transactions (tx_id, enterprise_id, staff_uid, service, phone, amount_minor, currency, status, country, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'USD', ?, ?, ?, ?)`
     )
-    .run(txId, enterpriseId, uid, service, phone, amountMinor, status, Date.now(), Date.now());
+    .run(txId, enterpriseId, uid, service, phone, amountMinor, status, country, Date.now(), Date.now());
 }
 
 async function call(method, route, { token, body } = {}) {
@@ -191,6 +191,42 @@ test("devi: operatè + montan livre, san debi", async () => {
   });
   assert.equal(low.status, 400);
   assert.equal(low.json.code, "amount_too_low");
+});
+
+test("entènasyonal: lis peyi, devi ak livrezon sou yon nimewo Dominikani", async () => {
+  const agent = await agentWithSession({ email: "intl@example.com" });
+
+  const countries = await call("GET", "/api/airtime/countries", { token: agent.token });
+  assert.equal(countries.status, 200, JSON.stringify(countries.json));
+  assert.equal(countries.json.countries[0].countryCode, "HT", "Ayiti an tèt");
+  const dominican = countries.json.countries.find((c) => c.countryCode === "DO");
+  assert.deepEqual(dominican.callingCodes, ["1809", "1829", "1849"]);
+
+  const detected = await call("GET", "/api/airtime/operators/detect?phone=%2B18095551234&country=DO", { token: agent.token });
+  assert.equal(detected.status, 200, JSON.stringify(detected.json));
+  assert.equal(detected.json.operator.countryCode, "DO");
+
+  // Nimewo a pa koresponn ak peyi a: refize avan Reloadly.
+  const wrong = await call("POST", "/api/airtime/quote", {
+    token: agent.token,
+    body: { phone: "+5215512345678", country: "DO", amount: 5, currency: "USD" },
+  });
+  assert.equal(wrong.json.code, "invalid_phone");
+
+  const quote = await call("POST", "/api/airtime/quote", {
+    token: agent.token,
+    body: { phone: "+1 809 555 1234", country: "DO", amount: 5, currency: "USD" },
+  });
+  assert.equal(quote.status, 200, JSON.stringify(quote.json));
+  assert.equal(quote.json.quote.phone, "+18095551234");
+  assert.equal(quote.json.quote.countryCode, "DO");
+
+  seedTransaction({ txId: "TX_INTL", enterpriseId: agent.enterpriseId, uid: agent.uid, phone: "+18095551234", country: "DO" });
+  const sent = await call("POST", "/api/airtime/topups", { token: agent.token, body: { txId: "TX_INTL" } });
+  assert.equal(sent.status, 200, JSON.stringify(sent.json));
+  assert.equal(sent.json.topup.status, "completed");
+  assert.equal(sent.json.topup.countryCode, "DO");
+  assert.equal(sent.json.topup.phone, "+18095551234");
 });
 
 test("yon 401 Reloadly (move kle) tounen 502: sesyon ajan an pa dwe tonbe", async () => {

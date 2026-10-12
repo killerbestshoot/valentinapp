@@ -17,6 +17,7 @@ class _FakeTransactionApi extends TransactionApi {
 
   final FakeAirtimeGateway airtime;
   final List<TransactionRecord> created = [];
+  final List<String> countries = [];
 
   /// Dènye tranzaksyon ajan an (pou favori yo).
   List<TransactionRecord> history = const [];
@@ -80,7 +81,9 @@ class _FakeTransactionApi extends TransactionApi {
       phone: customerPhone,
       amount: fee.netAmount,
       currency: currency,
+      countryCode: country.isEmpty ? 'HT' : country,
     );
+    countries.add(country);
     return record;
   }
 }
@@ -141,13 +144,17 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// "Non benefisyè" oswa "Non benefisyè (opsyonèl)" selon sèvis la.
+  Finder nameField() =>
+      find.ancestor(of: find.textContaining('Non benefisyè'), matching: find.byType(TextFormField)).first;
+
   Future<void> fill(
     WidgetTester tester, {
     required String name,
     required String phone,
     required String amount,
   }) async {
-    await tester.enterText(find.widgetWithText(TextFormField, 'Non benefisyè'), name);
+    await tester.enterText(nameField(), name);
     await tester.enterText(find.widgetWithText(TextFormField, 'Telefòn'), phone);
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Montan').first,
@@ -216,6 +223,65 @@ void main() {
       expect(transactions.created, hasLength(1));
       expect(payments.sent, hasLength(1));
       expect(find.text('Lajan an pati'), findsOneWidget);
+    });
+  });
+
+  group('Minit entènasyonal ak non opsyonèl', () {
+    testWidgets('chwazi Dominikani: nimewo +1, operatè detekte, livre sou DO', (tester) async {
+      await pumpPage(tester);
+      await chooseService(tester, 'Minit Haiti');
+      await chooseCurrency(tester, 'USD');
+
+      await tester.tap(find.byKey(const ValueKey('airtime-country')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Chèche yon peyi (non, HT, +52...)'), 'domin');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dominican Republic'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Non benefisyè (opsyonèl)'), findsOneWidget);
+      await tester.enterText(find.widgetWithText(TextFormField, 'Telefòn'), '809 555 1234');
+      await tester.enterText(find.widgetWithText(TextFormField, 'Montan').first, '5');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+
+      expect(airtime.quotedPhones.last, '+18095551234');
+      expect(find.text('Operatè: Dominican Republic Mobile'), findsOneWidget);
+
+      await save(tester);
+      expect(transactions.created.single.customerName, '', reason: 'non an opsyonèl');
+      expect(transactions.created.single.customerPhone, '+18095551234');
+      expect(transactions.countries.single, 'DO');
+      expect(airtime.delivered['TX_1']?.phone, '+18095551234');
+    });
+
+    testWidgets('kole yon nimewo konplè: peyi a chwazi otomatikman', (tester) async {
+      await pumpPage(tester);
+      await chooseService(tester, 'Minit Haiti');
+      await tester.enterText(find.widgetWithText(TextFormField, 'Telefòn'), '+52 55 1234 5678');
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Mexico'), findsWidgets);
+      expect(find.text('5512345678'), findsOneWidget);
+    });
+
+    testWidgets('MonCash san non: tranzaksyon an pase', (tester) async {
+      await pumpPage(tester);
+      await chooseCurrency(tester, 'USD');
+      await fill(tester, name: '', phone: '37123456', amount: '10');
+      await save(tester);
+      expect(transactions.created.single.customerName, '');
+    });
+
+    testWidgets('NatCash: non an rete obligatwa', (tester) async {
+      await pumpPage(tester);
+      await chooseService(tester, 'NatCash');
+      expect(find.text('Non benefisyè (opsyonèl)'), findsNothing);
+      await chooseCurrency(tester, 'HTG');
+      await fill(tester, name: '', phone: '41123456', amount: '5000');
+      await save(tester);
+      expect(find.text('NatCash mande non benefisyè a.'), findsOneWidget);
+      expect(transactions.created, isEmpty);
     });
   });
 

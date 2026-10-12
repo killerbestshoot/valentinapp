@@ -223,8 +223,10 @@ function createReloadlyClient(config, { fetchImpl = globalThis.fetch, now = () =
      * Nou eskli done, pakè ak PIN: Minit Haiti vann kredi dirèk sou liy lan.
      * TODO(contract): verifye sou sandbox ke filt sa yo respekte sou auto-detect.
      */
-    async detectOperator(phone) {
-      const { international } = mapper.normalizeHaitiPhone(phone);
+    async detectOperator(phone, countryCode = config.countryCode) {
+      const iso = String(countryCode || config.countryCode).toUpperCase();
+      const international =
+        iso === "HT" ? mapper.normalizeHaitiPhone(phone).international : `+${String(phone).replace(/\D/g, "")}`;
       const query = new URLSearchParams({
         suggestedAmounts: "true",
         includeData: "false",
@@ -235,9 +237,15 @@ function createReloadlyClient(config, { fetchImpl = globalThis.fetch, now = () =
       return mapper.readOperator(
         await call(
           `/operators/auto-detect/phone/${encodeURIComponent(international)}` +
-            `/countries/${config.countryCode}?${query}`
+            `/countries/${encodeURIComponent(iso)}?${query}`
         )
       );
+    },
+
+    /** GET /countries — tout peyi Reloadly sèvi yo, ak kòd telefòn yo. */
+    async countries() {
+      const body = await call("/countries");
+      return (Array.isArray(body) ? body : []).map(mapper.readCountry).filter((c) => c.countryCode);
     },
 
     /** GET /operators/{operatorId} */

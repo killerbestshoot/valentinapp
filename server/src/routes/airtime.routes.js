@@ -4,8 +4,9 @@
  * Wout Minit Haiti (Reloadly Airtime).
  *
  *   GET  /api/airtime/status               mòd, kont Reloadly la
- *   GET  /api/airtime/operators/detect     operatè yon nimewo (?phone=)
- *   POST /api/airtime/quote                devi: { phone, amount, currency?, operatorId? }
+ *   GET  /api/airtime/countries            peyi Reloadly sèvi yo + kòd telefòn yo
+ *   GET  /api/airtime/operators/detect     operatè yon nimewo (?phone=&country=HT)
+ *   POST /api/airtime/quote                devi: { phone, country?, amount, currency?, operatorId? }
  *   POST /api/airtime/topups               livre yon tranzaksyon Minit: { txId, operatorId? }
  *   GET  /api/airtime/topups               owner/admin: rekonsilye ak dashboard Reloadly
  *   GET  /api/airtime/topups/:id
@@ -138,10 +139,21 @@ router.get("/status", requireAuth, async (req, res) => {
 
 // --- Operatè ak devi --------------------------------------------------------------
 
+router.get("/countries", requireAuth, requireEnterprise, requireAvailable, async (req, res) => {
+  try {
+    return res.json({ ok: true, countries: await getAirtimeService().topups.countries() });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
 router.get("/operators/detect", requireAuth, requireEnterprise, requireAvailable, async (req, res) => {
   try {
     const service = getAirtimeService();
-    const operator = await service.topups.detectOperator(String(req.query.phone || ""));
+    const operator = await service.topups.detectOperator(
+      String(req.query.phone || ""),
+      String(req.query.country || "HT")
+    );
     return res.json({ ok: true, operator: service.topups.describeOperator(operator) });
   } catch (err) {
     return send(res, err);
@@ -155,6 +167,7 @@ router.post("/quote", requireAuth, requireEnterprise, requireAvailable, async (r
       uid: req.user.uid,
       enterpriseId: req.user.enterpriseId,
       phone: body.phone,
+      countryCode: String(body.country || "HT"),
       amountMinor: money.toMinor(body.amount),
       currency: body.currency,
       operatorId: body.operatorId,
@@ -214,12 +227,14 @@ router.post("/topups", requireAuth, requireEnterprise, requireAvailable, async (
       enterpriseId,
       enterpriseName: req.user.enterpriseName,
       phone: tx.phone,
+      // Peyi benefisyè a, anrejistre sou tranzaksyon an (ansyen yo: Ayiti).
+      countryCode: /^[A-Z]{2}$/.test(tx.country || "") ? tx.country : "HT",
       amountMinor: tx.amount_minor,
       currency: tx.currency,
       platformFeeMinor: tx.fee_mode ? tx.sender_fee_minor : 0,
       operatorId: body.operatorId,
       txId,
-      note: `Minit Haiti ${tx.client_name || ""}`.trim(),
+      note: `Minit ${tx.client_name || tx.phone}`.trim(),
       createdBy: uid,
     });
 

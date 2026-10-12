@@ -57,6 +57,8 @@ class _FakeWalletApi extends WalletApi {
     String currency = 'USD',
     String note = '',
     bool autoApprove = false,
+    String? bankReference,
+    String? bankAccountId,
   }) async {
     calls.add('topup:$targetUid:$amount:$currency:auto=$autoApprove');
     return 'TU_TEST';

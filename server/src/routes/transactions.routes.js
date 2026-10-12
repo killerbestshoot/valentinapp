@@ -385,7 +385,8 @@ router.post("/", requireAuth, requireEnterprise, async (req, res) => {
         customerPhone,
         serviceName,
         String(body.serviceId || "").trim(),
-        String(body.country || "").trim(),
+        // Peyi ISO benefisyè a (minit entènasyonal). Vid = Ayiti.
+        /^[A-Za-z]{2}$/.test(String(body.country || "").trim()) ? String(body.country).trim().toUpperCase() : "",
         fee.netMinor,
         fee.currency,
         fee.feeMinor,

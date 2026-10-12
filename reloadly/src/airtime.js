@@ -20,11 +20,13 @@
 const AppIds = require("../../bazik/src/ids");
 const { createRateBook } = require("../../bazik/src/rates");
 const { ReloadlyError, DomainError, domainError } = require("./errors");
-const { normalizeHaitiPhone, fromMinor } = require("./mapper");
+const { normalizePhone, fromMinor } = require("./mapper");
 
 /** Operatè yo pa chanje chak minit; nou pa rele auto-detect sou chak lèt. */
 const OPERATOR_TTL_MS = 5 * 60 * 1000;
 const BALANCE_TTL_MS = 30 * 1000;
+/** Lis peyi Reloadly a prèske pa janm chanje. */
+const COUNTRIES_TTL_MS = 24 * 60 * 60 * 1000;
 
 const Final = new Set(["completed", "failed"]);
 
@@ -58,6 +60,7 @@ function createAirtimeUseCases({
     return {
       operatorId: operator.operatorId,
       name: operator.name,
+      countryCode: operator.countryCode,
       denominationType: operator.denominationType,
       senderCurrency: operator.senderCurrency,
       destinationCurrency: operator.destinationCurrency,
@@ -73,12 +76,42 @@ function createAirtimeUseCases({
     };
   }
 
-  /** Minit Haiti vann kredi dirèk sou yon liy Ayiti — pa done, pa pakè, pa PIN. */
-  function assertSellable(operator) {
-    if (operator.countryCode && operator.countryCode !== config.countryCode) {
+  // --- Peyi -------------------------------------------------------------------
+
+  /** Tout peyi Reloadly sèvi yo, pa non. Ayiti premye: se ka ki pi kouran an. */
+  async function countries() {
+    return cached("countries", COUNTRIES_TTL_MS, async () => {
+      const list = typeof client.countries === "function" ? await client.countries() : [];
+      return [...list].sort((a, b) =>
+        a.countryCode === "HT" ? -1 : b.countryCode === "HT" ? 1 : a.name.localeCompare(b.name)
+      );
+    });
+  }
+
+  /** Valide nimewo a pou peyi a (kòd telefòn yo soti nan lis Reloadly a). */
+  async function normalize(phone, countryCode = config.countryCode) {
+    const iso = String(countryCode || config.countryCode).toUpperCase();
+    if (!/^[A-Z]{2}$/.test(iso)) throw new DomainError("invalid_country", `Peyi a pa valid: ${countryCode}.`);
+    if (iso === "HT") return normalizePhone(phone, "HT");
+
+    let codes = [];
+    try {
+      const country = (await countries()).find((c) => c.countryCode === iso);
+      if (!country) throw new DomainError("country_not_supported", `Reloadly pa sèvi peyi ${iso}.`);
+      codes = country.callingCodes;
+    } catch (err) {
+      // Lis peyi a pa disponib: Reloadly ap valide nimewo a li menm.
+      if (err instanceof DomainError) throw err;
+    }
+    return normalizePhone(phone, iso, codes);
+  }
+
+  /** Minit vann kredi dirèk sou liy lan — pa done, pa pakè, pa PIN. */
+  function assertSellable(operator, countryCode) {
+    if (operator.countryCode && operator.countryCode !== countryCode) {
       throw new DomainError(
         "operator_not_supported",
-        `${operator.name || "Operatè sa a"} pa yon operatè Ayiti.`
+        `${operator.name || "Operatè sa a"} pa yon operatè ${countryCode}.`
       );
     }
 
@@ -99,19 +132,21 @@ function createAirtimeUseCases({
     return operator;
   }
 
-  async function detectOperator(phone) {
-    const { international } = normalizeHaitiPhone(phone);
+  async function detectOperator(phone, countryCode = config.countryCode) {
+    const { international, countryCode: iso } = await normalize(phone, countryCode);
 
     try {
-      const operator = await cached(`phone:${international}`, OPERATOR_TTL_MS, () =>
-        client.detectOperator(international)
+      const operator = await cached(`phone:${iso}:${international}`, OPERATOR_TTL_MS, () =>
+        client.detectOperator(international, iso)
       );
-      return assertSellable(operator);
+      return assertSellable(operator, iso);
     } catch (err) {
       if (err instanceof ReloadlyError && (err.status === 404 || err.code === "could_not_auto_detect_operator")) {
         throw new DomainError(
           "operator_not_found",
-          `Nou pa jwenn operatè nimewo ${international} la. Verifye se yon nimewo Digicel oswa Natcom.`
+          iso === "HT"
+            ? `Nou pa jwenn operatè nimewo ${international} la. Verifye se yon nimewo Digicel oswa Natcom.`
+            : `Nou pa jwenn operatè nimewo ${international} la (${iso}). Verifye nimewo a ak peyi a.`
         );
       }
       throw err;
@@ -126,8 +161,8 @@ function createAirtimeUseCases({
    * pakè ki PA make `bundle`. Si nou te fè konfyans `operatorId` kliyan an,
    * yon apèl fòje te ka vann pakè sa a kòm minit.
    */
-  async function resolveOperator({ phone, operatorId }) {
-    const operator = await detectOperator(phone);
+  async function resolveOperator({ phone, operatorId, countryCode }) {
+    const operator = await detectOperator(phone, countryCode);
 
     if (operatorId && Number(operatorId) !== operator.operatorId) {
       throw new DomainError(
@@ -275,10 +310,10 @@ function createAirtimeUseCases({
   // --- Devi ------------------------------------------------------------------
 
   /** Sa ajan an ap peye ak sa benefisyè a ap resevwa, san anyen pa deplase. */
-  async function quote({ uid, enterpriseId, phone, amountMinor, currency, operatorId }) {
+  async function quote({ uid, enterpriseId, phone, amountMinor, currency, operatorId, countryCode }) {
     const wallet = await walletFor({ uid, enterpriseId });
-    const { international } = normalizeHaitiPhone(phone);
-    const operator = await resolveOperator({ phone: international, operatorId });
+    const { international, countryCode: iso } = await normalize(phone, countryCode);
+    const operator = await resolveOperator({ phone: international, operatorId, countryCode: iso });
     const plan = await planAmount({
       operator,
       amountMinor,
@@ -293,6 +328,7 @@ function createAirtimeUseCases({
 
     return {
       phone: international,
+      countryCode: iso,
       operator: describeOperator(operator),
       currency: plan.currency,
       amount: fromMinor(plan.amountMinor),
@@ -358,7 +394,8 @@ function createAirtimeUseCases({
    * @param {object} params
    * @param {number} params.amountMinor santim nan deviz `currency`
    * @param {string} [params.currency] deviz montan an (default: deviz wallet la)
-   * @param {string} params.phone nimewo Ayiti benefisyè a
+   * @param {string} params.phone nimewo benefisyè a (konplè, ak kòd peyi, si pa Ayiti)
+   * @param {string} [params.countryCode] peyi ISO benefisyè a (default HT)
    * @param {number} [params.operatorId] si UI a te deja detekte l
    * @param {string} [params.txId] tranzaksyon app la
    * @param {string} [params.idempotencySeed] OBLIGATWA si pa gen `txId`
@@ -371,6 +408,7 @@ function createAirtimeUseCases({
     amountMinor,
     currency,
     operatorId,
+    countryCode,
     txId = "",
     note = "",
     createdBy = "",
@@ -401,8 +439,8 @@ function createAirtimeUseCases({
     if (existing) return { topup: existing, duplicate: true, mode: client.mode };
 
     const wallet = await walletFor({ uid, enterpriseId });
-    const { international } = normalizeHaitiPhone(phone);
-    const operator = await resolveOperator({ phone: international, operatorId });
+    const { international, countryCode: iso } = await normalize(phone, countryCode);
+    const operator = await resolveOperator({ phone: international, operatorId, countryCode: iso });
     const plan = await planAmount({
       operator,
       amountMinor,
@@ -423,7 +461,7 @@ function createAirtimeUseCases({
         topupId,
         operatorId: operator.operatorId,
         operatorName: operator.name,
-        countryCode: config.countryCode,
+        countryCode: iso,
         phone: international,
         useLocalAmount: plan.useLocalAmount,
         amountMinor,
@@ -474,6 +512,7 @@ function createAirtimeUseCases({
         useLocalAmount: plan.useLocalAmount,
         customIdentifier: topupId,
         phone: international,
+        countryCode: iso,
       });
     } catch (err) {
       const reason = err instanceof ReloadlyError ? `${err.code}: ${err.message}` : err.message;
@@ -593,6 +632,7 @@ function createAirtimeUseCases({
   return {
     describeOperator,
     detectOperator,
+    countries,
     quote,
     send,
     refresh,

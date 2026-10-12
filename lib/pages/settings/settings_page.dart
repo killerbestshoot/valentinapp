@@ -8,6 +8,7 @@ import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart'
 import 'package:mon_premye_app/features/auth/data/http_auth_repository.dart';
 import 'package:mon_premye_app/features/wallet/data/wallet_api.dart';
 import 'package:mon_premye_app/pages/notifications/notifications_page.dart';
+import 'package:mon_premye_app/pages/settings/bank_accounts_page.dart';
 import 'package:mon_premye_app/widgets/dashboard_ui.dart';
 
 /// Paramèt kont lan.
@@ -161,6 +162,7 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = AuthRepositoryProvider.instance.currentUser;
     final isOwner = user?.role == AppRole.owner;
+    final isManager = isOwner || user?.role == AppRole.admin;
 
     return DashboardPage(
       title: 'Paramèt',
@@ -182,6 +184,19 @@ class SettingsPage extends StatelessWidget {
           const _ExchangeMarginTile(),
           const SizedBox(height: 12),
           const _PslFallbackTile(),
+        ],
+        if (isManager) ...[
+          const SizedBox(height: 12),
+          DashboardActionTile(
+            icon: Icons.account_balance_outlined,
+            title: 'Kont bank antrepriz la',
+            subtitle: 'Kote ajan yo vire lè yo rechaje pa virement bancaire',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BankAccountsPage()),
+            ),
+            color: const Color(0xFF334155),
+          ),
         ],
         const SizedBox(height: 12),
         DashboardActionTile(

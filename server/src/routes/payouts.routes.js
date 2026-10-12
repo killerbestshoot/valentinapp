@@ -14,6 +14,10 @@
  *
  * Kle idempotans lan se `payout:{requestId}`: de klik sou "Apwouve" pa ka peye
  * menm demann lan de fwa.
+ *
+ * PAYOUT BANK (`network = 'bank'`): Bazik pa ka fè virement bancaire. Apwobasyon
+ * an debite wallet la (menm kle idempotans), epi admin nan fè virement an li
+ * menm APRE — konsa si sòld la pa ase, okenn kòb poko pati.
  */
 
 const express = require("express");
@@ -28,7 +32,8 @@ const router = express.Router();
 
 function send(res, err) {
   const status =
-    err.status || (err instanceof DomainError ? 400 : err instanceof BazikError ? 502 : 500);
+    err.status ||
+    (err instanceof DomainError ? 400 : err instanceof BazikError ? 502 : err instanceof Error ? 500 : 400);
   if (status >= 500) console.error("[payouts]", err);
   return res.status(status).json({ ok: false, code: err.code || "error", message: err.message });
 }
@@ -42,6 +47,9 @@ function toJson(row) {
     currency: row.currency,
     network: row.network,
     phone: row.phone,
+    bankName: row.bank_name || "",
+    bankAccountName: row.bank_account_name || "",
+    bankAccountNumber: row.bank_account_number || "",
     receiverName: row.receiver_name,
     note: row.note,
     status: row.status,
@@ -84,7 +92,7 @@ router.get("/", requireAuth, requireEnterprise, (req, res) => {
 router.post("/", requireAuth, requireEnterprise, async (req, res) => {
   try {
     const body = req.body || {};
-    const network = body.network === "natcash" ? "natcash" : "moncash";
+    const network = ["natcash", "bank"].includes(body.network) ? body.network : "moncash";
 
     let amountMinor;
     try {
@@ -93,8 +101,23 @@ router.post("/", requireAuth, requireEnterprise, async (req, res) => {
       return send(res, { code: "invalid_amount", message: err.message });
     }
 
-    const phone = String(body.phone || "").trim();
-    if (!phone) return send(res, { code: "missing_phone", message: "Nimewo MonCash/NatCash la obligatwa." });
+    const phone = network === "bank" ? "" : String(body.phone || "").trim();
+    if (network !== "bank" && !phone) {
+      return send(res, { code: "missing_phone", message: "Nimewo MonCash/NatCash la obligatwa." });
+    }
+
+    const bank = { name: "", accountName: "", accountNumber: "" };
+    if (network === "bank") {
+      bank.name = String(body.bankName || "").trim().slice(0, 80);
+      bank.accountName = String(body.bankAccountName || "").trim().slice(0, 120);
+      bank.accountNumber = String(body.bankAccountNumber || "").trim().slice(0, 60);
+      if (!bank.name || !bank.accountName || !bank.accountNumber) {
+        return send(res, {
+          code: "missing_bank_details",
+          message: "Non bank lan, non sou kont lan ak nimewo kont lan obligatwa.",
+        });
+      }
+    }
 
     // Deviz la se sa wallet la — pa sa kliyan an voye (menm leson ak vòl pa deviz la).
     const wallet = await getBazikService().store.getWallet({
@@ -119,13 +142,15 @@ router.post("/", requireAuth, requireEnterprise, async (req, res) => {
       .prepare(
         `INSERT INTO payout_requests
           (request_id, enterprise_id, staff_uid, staff_name, amount_minor, currency, network,
-           phone, receiver_name, note, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+           phone, receiver_name, note, bank_name, bank_account_name, bank_account_number,
+           status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
       )
       .run(
         requestId, req.user.enterpriseId, req.user.uid, req.user.displayName, amountMinor,
-        wallet.currency, network, phone, String(body.receiverName || req.user.displayName || ""),
-        String(body.note || ""), now(), now()
+        wallet.currency, network, phone,
+        network === "bank" ? bank.accountName : String(body.receiverName || req.user.displayName || ""),
+        String(body.note || ""), bank.name, bank.accountName, bank.accountNumber, now(), now()
       );
 
     const row = getDb().prepare("SELECT * FROM payout_requests WHERE request_id = ?").get(requestId);
@@ -169,6 +194,41 @@ router.post("/:id/approve", requireAuth, requireEnterprise, requireRole("owner",
 
     if (claimed.changes === 0) {
       return send(res, { code: "already_processed", message: "Yon lòt moun deja trete demann sa a." });
+    }
+
+    if (row.network === "bank") {
+      try {
+        await getBazikService().store.debitWallet({
+          uid: row.staff_uid,
+          enterpriseId: row.enterprise_id,
+          enterpriseName: req.user.enterpriseName,
+          amountMinor: row.amount_minor,
+          currency: row.currency,
+          type: "payout_bank",
+          note: `Payout bank: ${row.bank_name} · ${row.bank_account_number}`,
+          sourceCollection: "payout_requests",
+          sourceId: row.request_id,
+          serviceName: "bank",
+          createdBy: req.user.uid,
+          createdByRole: req.user.role,
+          idempotencyKey: `payout:${row.request_id}`,
+        });
+      } catch (err) {
+        // Debi a atomik: si l echwe, anyen pa t debite e okenn kòb pa t pati.
+        db.prepare(
+          `UPDATE payout_requests SET status = 'failed', failure_reason = ?, decided_at = ?, updated_at = ?
+            WHERE request_id = ?`
+        ).run(`${err.code || "error"}: ${err.message}`, now(), now(), row.request_id);
+        throw err;
+      }
+
+      db.prepare(
+        `UPDATE payout_requests SET status = 'approved', transfer_id = ?, decided_at = ?, updated_at = ?
+          WHERE request_id = ?`
+      ).run(String(req.body?.reference || "").trim().slice(0, 80), now(), now(), row.request_id);
+
+      const updated = db.prepare("SELECT * FROM payout_requests WHERE request_id = ?").get(row.request_id);
+      return res.json({ ok: true, payout: toJson(updated) });
     }
 
     try {

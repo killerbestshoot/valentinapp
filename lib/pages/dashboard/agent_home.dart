@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/core/realtime/realtime.dart';
@@ -12,6 +13,7 @@ import 'package:mon_premye_app/features/wallet/data/wallet_api.dart';
 import 'package:mon_premye_app/features/wallet/presentation/widgets/exchange_rates_card.dart';
 import 'package:mon_premye_app/pages/dashboard/owner_analytics_section.dart' show fmtMoney, fmtCompact;
 import 'package:mon_premye_app/widgets/dashboard_ui.dart';
+import 'package:mon_premye_app/widgets/network_logo.dart';
 
 const _ok = Color(0xFF15803D);
 const _okBg = Color(0xFFE3F3E7);
@@ -112,7 +114,7 @@ class AgentHomeState extends State<AgentHome> {
     final out = <TransactionRecord>[];
     for (final tx in rows) {
       final key = tx.customerPhone.replaceAll(RegExp(r'\D'), '');
-      if (key.isEmpty || tx.customerName.trim().isEmpty || !seen.add(key)) continue;
+      if (key.isEmpty || !seen.add(key)) continue;
       out.add(tx);
       if (out.length == 6) break;
     }
@@ -128,7 +130,7 @@ class AgentHomeState extends State<AgentHome> {
     final data = _data;
     final uid = AuthRepositoryProvider.instance.currentUser?.uid;
     if (data == null || uid == null) return;
-    final result = await showDialog<({double amount, String note})>(
+    final result = await showDialog<_TopupResult>(
       context: context,
       builder: (_) => _TopupDialog(currency: data.walletCurrency ?? data.currency),
     );
@@ -139,8 +141,12 @@ class AgentHomeState extends State<AgentHome> {
         amount: result.amount,
         currency: data.walletCurrency ?? data.currency,
         note: result.note,
+        bankReference: result.bankReference,
+        bankAccountId: result.bankAccountId,
       );
-      _toast('Demann rechaj la voye bay administratè a.');
+      _toast(result.bankReference == null
+          ? 'Demann rechaj la voye bay administratè a.'
+          : 'Demann la voye. Administratè a ap verifye virement an anvan l kredite w.');
     } on ApiException catch (err) {
       _toast(err.message);
     }
@@ -496,14 +502,17 @@ class _Favorite extends StatelessWidget {
             CircleAvatar(
               radius: 17,
               backgroundColor: color,
-              child: Text(initials, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+              child: initials.isEmpty
+                  ? const Icon(Icons.phone, size: 15, color: Colors.white)
+                  : Text(initials, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
             ),
             const SizedBox(width: 8),
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(tx.customerName.trim(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                Text(tx.customerName.trim().isEmpty ? tx.customerPhone : tx.customerName.trim(),
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                 Text('${tx.serviceName} · ${fmtMoney(tx.amount, decimals: 0)} ${tx.currency}',
                     style: const TextStyle(fontSize: 11, color: DashboardColors.muted)),
               ],
@@ -739,14 +748,17 @@ class _TxList extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 9),
             decoration: const BoxDecoration(border: Border(top: BorderSide(color: DashboardColors.border))),
             child: Row(children: [
-              Container(
-                width: 34,
-                height: 34,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
-                child: Text(tx.serviceName.isEmpty ? '?' : tx.serviceName[0],
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-              ),
+              if (tx.serviceName == 'MonCash' || tx.serviceName == 'NatCash')
+                NetworkLogo(tx.serviceName, size: 34)
+              else
+                Container(
+                  width: 34,
+                  height: 34,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
+                  child: Text(tx.serviceName.isEmpty ? '?' : tx.serviceName[0],
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+                ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -775,6 +787,10 @@ class _TxList extends StatelessWidget {
   }
 }
 
+typedef _TopupResult = ({double amount, String note, String? bankReference, String? bankAccountId});
+
+/// Mande yon rechaj: kach (bay administratè a) oswa virement bancaire sou
+/// youn nan kont antrepriz la. Pou virement, ajan an bay referans resi a.
 class _TopupDialog extends StatefulWidget {
   const _TopupDialog({required this.currency});
 
@@ -788,12 +804,95 @@ class _TopupDialogState extends State<_TopupDialog> {
   final _formKey = GlobalKey<FormState>();
   final _amountCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
+  final _refCtrl = TextEditingController();
+  final _accounts = WalletApi.instance.bankAccounts().catchError((_) => <BankAccount>[]);
+  bool _bank = false;
+  String? _accountId;
 
   @override
   void dispose() {
     _amountCtrl.dispose();
     _noteCtrl.dispose();
+    _refCtrl.dispose();
     super.dispose();
+  }
+
+  Widget _bankSection() {
+    return FutureBuilder<List<BankAccount>>(
+      future: _accounts,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()));
+        }
+        final accounts = snap.data ?? const <BankAccount>[];
+        if (accounts.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'Administratè a poko konfigire kont bank antrepriz la. Chwazi Kach oswa kontakte l.',
+              style: TextStyle(color: _crit),
+            ),
+          );
+        }
+        _accountId ??= accounts.first.id;
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Vire sou kont sa a, epi antre referans lan:',
+              style: TextStyle(fontSize: 12.5, color: DashboardColors.muted)),
+          const SizedBox(height: 8),
+          RadioGroup<String>(
+            groupValue: _accountId,
+            onChanged: (v) => setState(() => _accountId = v),
+            child: Column(children: [
+              for (final a in accounts)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _accountId == a.id ? DashboardColors.brand : DashboardColors.border,
+                      width: _accountId == a.id ? 1.6 : 1,
+                    ),
+                  ),
+                  child: RadioListTile<String>(
+                    value: a.id,
+                    dense: true,
+                    title: Text('${a.bankName} · ${a.currency}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(a.accountName),
+                      Row(children: [
+                        Expanded(
+                            child:
+                                SelectableText(a.accountNumber, style: const TextStyle(fontWeight: FontWeight.w700))),
+                        IconButton(
+                          tooltip: 'Kopye nimewo a',
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.copy, size: 16),
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: a.accountNumber));
+                            ScaffoldMessenger.of(context)
+                                .showSnackBar(const SnackBar(content: Text('Nimewo kont lan kopye.')));
+                          },
+                        ),
+                      ]),
+                      if (a.instructions.isNotEmpty)
+                        Text(a.instructions, style: const TextStyle(fontSize: 11.5, color: DashboardColors.muted)),
+                    ]),
+                  ),
+                ),
+            ]),
+          ),
+          const SizedBox(height: 4),
+          TextFormField(
+            controller: _refCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Referans virement',
+              hintText: 'Nimewo resi / tranzaksyon bank lan',
+            ),
+            validator: (v) => (v ?? '').trim().length < 3 ? 'Antre referans virement an.' : null,
+          ),
+        ]);
+      },
+    );
   }
 
   @override
@@ -803,34 +902,59 @@ class _TopupDialogState extends State<_TopupDialog> {
       content: Form(
         key: _formKey,
         child: SizedBox(
-          width: 380,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextFormField(
-              controller: _amountCtrl,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(labelText: 'Montan', suffixText: widget.currency),
-              validator: (v) {
-                final n = double.tryParse((v ?? '').replaceAll(',', '.').trim());
-                return n == null || n <= 0 ? 'Antre yon montan pi gran pase 0.' : null;
-              },
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _noteCtrl,
-              decoration: const InputDecoration(labelText: 'Nòt (opsyonèl)', hintText: 'Egz. Depo kach 10/10'),
-            ),
-          ]),
+          width: 400,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              SegmentedButton<bool>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: false, icon: Icon(Icons.payments_outlined, size: 18), label: Text('Kach')),
+                  ButtonSegment(
+                    value: true,
+                    icon: Icon(Icons.account_balance_outlined, size: 18),
+                    label: Text('Virement bancaire'),
+                  ),
+                ],
+                selected: {_bank},
+                onSelectionChanged: (s) => setState(() => _bank = s.first),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _amountCtrl,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: 'Montan', suffixText: widget.currency),
+                validator: (v) {
+                  final n = double.tryParse((v ?? '').replaceAll(',', '.').trim());
+                  return n == null || n <= 0 ? 'Antre yon montan pi gran pase 0.' : null;
+                },
+              ),
+              const SizedBox(height: 12),
+              if (_bank) ...[_bankSection(), const SizedBox(height: 12)],
+              TextFormField(
+                controller: _noteCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Nòt (opsyonèl)',
+                  hintText: _bank ? 'Egz. Virement Unibank 10/10' : 'Egz. Depo kach 10/10',
+                ),
+              ),
+            ]),
+          ),
         ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Anile')),
         FilledButton(
-          onPressed: () {
+          onPressed: () async {
             if (!_formKey.currentState!.validate()) return;
-            Navigator.pop(context, (
+            // Pa gen kont konfigire: virement an pa posib.
+            if (_bank && (await _accounts).isEmpty) return;
+            if (!context.mounted) return;
+            Navigator.pop<_TopupResult>(context, (
               amount: double.parse(_amountCtrl.text.replaceAll(',', '.').trim()),
               note: _noteCtrl.text.trim(),
+              bankReference: _bank ? _refCtrl.text.trim() : null,
+              bankAccountId: _bank ? _accountId : null,
             ));
           },
           child: const Text('Voye demann lan'),

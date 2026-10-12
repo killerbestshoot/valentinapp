@@ -14,6 +14,85 @@ List<double> _toDoubles(dynamic value) =>
 bool isAirtimeServiceName(String serviceName) =>
     serviceName.toLowerCase().contains('minit');
 
+/// Yon peyi Reloadly sèvi (`GET /api/airtime/countries`).
+class AirtimeCountry {
+  const AirtimeCountry({
+    required this.countryCode,
+    required this.name,
+    this.currencyCode = '',
+    this.callingCodes = const [],
+  });
+
+  static const haiti = AirtimeCountry(
+    countryCode: 'HT',
+    name: 'Haiti',
+    currencyCode: 'HTG',
+    callingCodes: ['509'],
+  );
+
+  /// ISO 3166 (HT, US, DO...).
+  final String countryCode;
+  final String name;
+  final String currencyCode;
+
+  /// Chif sèlman: `['1809', '1829', '1849']` pou Dominikani.
+  final List<String> callingCodes;
+
+  bool get isHaiti => countryCode == 'HT';
+
+  /// Prefiks ajan an wè devan nimewo a. Zòn +1 yo (DO, JM...) gen kòd ak
+  /// endikatif rejyonal la ladan (`1809`): ajan an tape 809... li menm.
+  String get dialPrefix {
+    if (callingCodes.isEmpty) return '';
+    if (callingCodes.any((c) => c.startsWith('1'))) return '1';
+    return ([...callingCodes]..sort((a, b) => a.length - b.length)).first;
+  }
+
+  /// Drapo a an emoji, depi kòd ISO a — pa gen imaj pou chaje.
+  String get flag => countryCode.length != 2
+      ? ''
+      : String.fromCharCodes(countryCode.toUpperCase().codeUnits.map((c) => 0x1F1E6 + c - 65));
+
+  /// Nimewo konplè pou serveur a: `+` + prefiks + chif lokal yo (san 0 devan).
+  /// Zòn +1: ajan an ka tape `1 809...` (11 chif), nou pa double `1` la.
+  String international(String local) {
+    var digits = local.replaceAll(RegExp(r'\D'), '').replaceFirst(RegExp(r'^0+'), '');
+    if (dialPrefix == '1' && digits.length == 11 && digits.startsWith('1')) digits = digits.substring(1);
+    return '+$dialPrefix$digits';
+  }
+
+  /// Peyi yon nimewo entènasyonal (`+52...`, `0052...`), pa pi long kòd la.
+  /// `+1` sèl (US, CA...) → Etazini.
+  static AirtimeCountry? detect(String input, List<AirtimeCountry> countries) {
+    final raw = input.trim();
+    if (!raw.startsWith('+') && !raw.startsWith('00')) return null;
+    var digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (raw.startsWith('00')) digits = digits.substring(2);
+
+    AirtimeCountry? best;
+    var bestLength = 0;
+    for (final country in countries) {
+      for (final code in country.callingCodes) {
+        final better = code.length > bestLength || (code.length == bestLength && country.countryCode == 'US');
+        if (digits.startsWith(code) && better) {
+          best = country;
+          bestLength = code.length;
+        }
+      }
+    }
+    return best;
+  }
+
+  factory AirtimeCountry.fromJson(Map<String, dynamic> json) => AirtimeCountry(
+        countryCode: '${json['countryCode'] ?? ''}'.toUpperCase(),
+        name: '${json['name'] ?? ''}',
+        currencyCode: '${json['currencyCode'] ?? ''}',
+        callingCodes: json['callingCodes'] is List
+            ? (json['callingCodes'] as List).map((c) => '$c'.replaceAll(RegExp(r'\D'), '')).toList()
+            : const [],
+      );
+}
+
 /// Operatè yon nimewo (Digicel, Natcom), ak limit li.
 class AirtimeOperator {
   const AirtimeOperator({

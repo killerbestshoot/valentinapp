@@ -35,5 +35,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+  # Logo MonCash / NatCash: `moncash.png` ak `natcash.png` (kare, ≥ 256 px).
+  # Si fichye a manke, `NetworkLogo` montre yon badj ak koulè rezo a.
+  assets:
+    - assets/logos/
+
 
 

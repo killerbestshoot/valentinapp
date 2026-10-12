@@ -68,6 +68,19 @@ const COMMISSION_LOG_EXTRA_COLUMNS = [
   ["reversed_at", "INTEGER"],
 ];
 
+/** Rechaj pa virement bancaire: referans ajan an bay la + kont li te vize a. */
+const TOPUP_EXTRA_COLUMNS = [
+  ["bank_reference", "TEXT NOT NULL DEFAULT ''"],
+  ["bank_account", "TEXT NOT NULL DEFAULT ''"],
+];
+
+/** Payout sou yon kont bank (`network = 'bank'`) olye MonCash/NatCash. */
+const PAYOUT_EXTRA_COLUMNS = [
+  ["bank_name", "TEXT NOT NULL DEFAULT ''"],
+  ["bank_account_name", "TEXT NOT NULL DEFAULT ''"],
+  ["bank_account_number", "TEXT NOT NULL DEFAULT ''"],
+];
+
 let db = null;
 let dbFile = null;
 
@@ -157,6 +170,8 @@ function getDb() {
   ensureColumns(db, "transactions", TRANSACTION_EXTRA_COLUMNS);
   ensureColumns(db, "services", SERVICE_EXTRA_COLUMNS);
   ensureColumns(db, "commission_logs", COMMISSION_LOG_EXTRA_COLUMNS);
+  ensureColumns(db, "wallet_topup_requests", TOPUP_EXTRA_COLUMNS);
+  ensureColumns(db, "payout_requests", PAYOUT_EXTRA_COLUMNS);
   // `source`: 'seed' oswa 'exchangerate-api'. Baz ki te egziste anvan an pa genyen l.
   ensureColumns(db, "exchange_rates", [["source", "TEXT NOT NULL DEFAULT 'seed'"]]);
   seedExchangeRates(db);

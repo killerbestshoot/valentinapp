@@ -48,7 +48,9 @@ class _WalletTopupApprovalPageState extends State<WalletTopupApprovalPage> {
             title: const Text('Apwouve rechaj la?'),
             content: Text(
               'Wallet ${request.targetName} ap kredite ak '
-              '${request.amount.toStringAsFixed(2)} ${request.currency}.',
+              '${request.amount.toStringAsFixed(2)} ${request.currency}.'
+              '${request.isBank ? '\n\nVerifye sou relve bank lan ke virement '
+                  '"${request.bankReference}" rive sou ${request.bankAccount} anvan ou apwouve.' : ''}',
             ),
             actions: [
               TextButton(
@@ -263,6 +265,19 @@ class _TopupRow extends StatelessWidget {
             '${request.requestedByName.isEmpty ? '' : ' • mande pa ${request.requestedByName}'}',
             style: const TextStyle(color: DashboardColors.muted, fontSize: 12),
           ),
+          if (request.isBank) ...[
+            const SizedBox(height: 4),
+            Row(children: [
+              const Icon(Icons.account_balance_outlined, size: 15, color: DashboardColors.brand),
+              const SizedBox(width: 6),
+              Expanded(
+                child: SelectableText(
+                  'Virement bancaire • Ref: ${request.bankReference} • ${request.bankAccount}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: DashboardColors.ink),
+                ),
+              ),
+            ]),
+          ],
           if (request.isPending) ...[
             const SizedBox(height: 8),
             Row(

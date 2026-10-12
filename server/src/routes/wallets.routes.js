@@ -7,7 +7,8 @@
  *   GET  /api/wallets/me                sòld mwen
  *   GET  /api/wallets/:uid              sòld yon staff (owner/admin)
  *   GET  /api/wallets/:uid/ledger       istorik mouvman yo
- *   POST /api/wallets/topups            mande yon rechaj (owner/admin)
+ *   POST /api/wallets/topups            mande yon rechaj (owner/admin pou yon staff,
+ *                                       ajan pou tèt li — kach oswa virement bancaire)
  *   GET  /api/wallets/topups            lis demann yo
  *   POST /api/wallets/topups/:id/approve  kredite wallet la
  *   POST /api/wallets/topups/:id/reject
@@ -25,7 +26,7 @@ const { getBazikService } = require("../bazik_service");
 const { requireAuth, requireRole, requireEnterprise } = require("../auth/middleware");
 const { money } = require("../../../bazik/index.js");
 const AppIds = require("../../../bazik/src/ids");
-const { getExchangeMargin, applyMargin } = require("../settings/settings");
+const { getExchangeMargin, applyMargin, getBankAccounts } = require("../settings/settings");
 const { checkCreditCapacity, withCreditLock } = require("../solvency");
 
 const router = express.Router();
@@ -171,6 +172,9 @@ router.get("/topups", requireAuth, requireEnterprise, (req, res) => {
         targetName: row.target_name,
         targetEmail: row.target_email,
         note: row.note,
+        method: row.network === "bank" ? "bank" : "manual",
+        bankReference: row.bank_reference || "",
+        bankAccount: row.bank_account || "",
         requestedByName: row.requested_by_name,
         createdAt: row.created_at,
         creditedAt: row.credited_at,
@@ -185,11 +189,14 @@ router.post(
   "/topups",
   requireAuth,
   requireEnterprise,
-  requireRole("owner", "admin"),
+  requireRole("owner", "admin", "agent"),
   async (req, res) => {
     try {
       const body = req.body || {};
-      const targetUid = String(body.targetUid || "").trim();
+      // Yon ajan mande SÈLMAN pou tèt li, e li pa janm apwouve pwòp demann li.
+      const isAgent = req.user.role === "agent";
+      const targetUid = isAgent ? req.user.uid : String(body.targetUid || "").trim();
+      const autoApprove = !isAgent && body.autoApprove === true;
 
       if (!targetUid) {
         return send(res, { code: "missing_target", message: "Chwazi yon staff." });
@@ -215,6 +222,38 @@ router.post(
           code: "target_not_found",
           message: "Staff sa a pa nan antrepriz ou a.",
         });
+      }
+
+      // Virement bancaire: ajan an vire sou kont antrepriz la, epi li bay
+      // referans lan. Admin nan verifye l sou relve bank lan anvan l apwouve.
+      const method = body.method === "bank" ? "bank" : "manual";
+      let bankReference = "";
+      let bankAccount = "";
+
+      if (method === "bank") {
+        bankReference = String(body.bankReference || "").trim().slice(0, 80);
+        if (bankReference.length < 3) {
+          return send(res, {
+            code: "missing_bank_reference",
+            message: "Antre referans virement an (nimewo resi bank lan).",
+          });
+        }
+
+        const accounts = getBankAccounts(req.user.enterpriseId);
+        if (accounts.length === 0) {
+          return send(res, {
+            code: "bank_not_configured",
+            message: "Administratè a poko konfigire kont bank antrepriz la.",
+          });
+        }
+
+        const account = body.bankAccountId
+          ? accounts.find((a) => a.id === body.bankAccountId)
+          : accounts.length === 1 ? accounts[0] : null;
+        if (!account) {
+          return send(res, { code: "invalid_bank_account", message: "Chwazi kont bank ou vire sou li a." });
+        }
+        bankAccount = `${account.bankName} · ${account.accountNumber} (${account.currency})`;
       }
 
       const requestId = AppIds.topupRequest(
@@ -251,22 +290,23 @@ router.post(
              amount_minor, currency, amount_htg_minor, rate_to_htg, target_uid,
              target_email, target_name, target_role, enterprise_id, enterprise_name,
              requested_by, requested_by_name, requested_by_role, note,
-             created_at, updated_at)
-           VALUES (?, 'wallet_topup', 'pending', 0, 'manual', 'manual', ?, ?, ?, 0, 0,
-                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+             bank_reference, bank_account, created_at, updated_at)
+           VALUES (?, 'wallet_topup', 'pending', 0, ?, ?, ?, ?, ?, 0, 0,
+                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
-          requestId, requestId, creditMinor, currency, targetUid,
+          requestId, method === "bank" ? "bank_transfer" : "manual", method,
+          requestId, creditMinor, currency, targetUid,
           target.email, target.display_name, target.role,
           req.user.enterpriseId, req.user.enterpriseName,
           req.user.uid, req.user.displayName, req.user.role,
-          String(body.note || "") + rateNote, now(), now()
+          String(body.note || "") + rateNote, bankReference, bankAccount, now(), now()
         );
 
       // `autoApprove` = owner/admin ap mete kòb dirèkteman, san de etap.
       // Nou pase pa MENM chemen an (`settleTopup`), donk rejis la ekri menm
       // jan an: pa gen "rakousi" ki sote tras la.
-      if (body.autoApprove === true) {
+      if (autoApprove) {
         let settled;
         try {
           settled = await settleIfCovered({

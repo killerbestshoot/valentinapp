@@ -72,6 +72,52 @@ function normalizeHaitiPhone(phone) {
   return { local, international: `+509${local}` };
 }
 
+/**
+ * Nimewo nenpòt peyi, fòma entènasyonal (`+18095551234`).
+ *
+ * Ayiti rete sou règ 8 chif la (nimewo lokal aksepte). Pou lòt peyi yo, UI a
+ * voye nimewo a KONPLÈ (`+` + kòd peyi), e nou verifye l kòmanse ak youn nan
+ * kòd peyi a (`callingCodes` Reloadly: `["1809", "1829", "1849"]` pou DO).
+ */
+function normalizePhone(phone, countryCode = "HT", callingCodes = []) {
+  const iso = String(countryCode || "HT").toUpperCase();
+  if (iso === "HT") return { ...normalizeHaitiPhone(phone), countryCode: "HT" };
+
+  let digits = String(phone || "").replace(/\D/g, "");
+  if (/^\s*00/.test(String(phone || ""))) digits = digits.slice(2);
+
+  const codes = callingCodes.map((c) => String(c).replace(/\D/g, "")).filter(Boolean);
+  const code = codes.sort((a, b) => b.length - a.length).find((c) => digits.startsWith(c));
+
+  if (digits.length < 8 || digits.length > 15 || (codes.length > 0 && !code)) {
+    throw new DomainError(
+      "invalid_phone",
+      `Nimewo a pa valid pou ${iso}: ${phone || "(vid)"}. Antre nimewo konplè a ak kòd peyi a` +
+        (codes.length ? ` (+${codes[codes.length - 1]}…).` : ".")
+    );
+  }
+
+  return {
+    local: code ? digits.slice(code.length) : digits,
+    international: `+${digits}`,
+    countryCode: iso,
+  };
+}
+
+/** `Country` (GET /countries): kòd ISO, non, deviz, kòd telefòn. */
+function readCountry(body) {
+  const codes = pick(body, ["callingCodes"], []);
+  return {
+    countryCode: String(pick(body, ["isoName", "iso"], "")).toUpperCase(),
+    name: String(pick(body, ["name"], "")),
+    currencyCode: String(pick(body, ["currencyCode"], "")).toUpperCase(),
+    callingCodes: (Array.isArray(codes) ? codes : [])
+      .map((c) => String(c).replace(/\D/g, ""))
+      .filter(Boolean),
+    flag: String(pick(body, ["flag"], "")),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Demann (nou -> Reloadly)
 // ---------------------------------------------------------------------------
@@ -93,15 +139,17 @@ function buildTokenRequest({ clientId, clientSecret, audience }) {
  * ankò si repons lan pèdi (timeout), paske nan ka sa a nou pa gen
  * `transactionId` Reloadly a.
  */
-function buildTopupRequest({ operatorId, amountMinor, useLocalAmount, customIdentifier, phone }) {
+function buildTopupRequest({ operatorId, amountMinor, useLocalAmount, customIdentifier, phone, countryCode = "HT" }) {
+  const iso = String(countryCode || "HT").toUpperCase();
   return {
     operatorId: Number(operatorId),
     amount: fromMinor(amountMinor),
     useLocalAmount: Boolean(useLocalAmount),
     customIdentifier,
     recipientPhone: {
-      countryCode: "HT",
-      number: normalizeHaitiPhone(phone).international,
+      countryCode: iso,
+      // Nimewo a deja valide (ak kòd peyi li) pa `normalizePhone` nan airtime.js.
+      number: iso === "HT" ? normalizeHaitiPhone(phone).international : `+${String(phone).replace(/\D/g, "")}`,
     },
   };
 }
@@ -295,6 +343,8 @@ module.exports = {
   fromMinor,
   normalizeStatus,
   normalizeHaitiPhone,
+  normalizePhone,
+  readCountry,
   buildTokenRequest,
   buildTopupRequest,
   readTokenResponse,

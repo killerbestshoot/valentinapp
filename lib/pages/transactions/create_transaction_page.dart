@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:mon_premye_app/core/format/haiti_phone.dart';
 import 'package:mon_premye_app/core/network/api_client.dart';
@@ -16,6 +17,7 @@ import 'package:mon_premye_app/features/payments/presentation/widgets/payment_er
 import 'package:mon_premye_app/features/transactions/data/transaction_api.dart';
 import 'package:mon_premye_app/features/wallet/data/wallet_api.dart';
 import 'package:mon_premye_app/pages/receipts/receipt_page.dart';
+import 'package:mon_premye_app/widgets/network_logo.dart';
 
 class CreateTransactionPage extends StatefulWidget {
   const CreateTransactionPage({super.key, this.initialName, this.initialPhone, this.initialService});
@@ -60,6 +62,13 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   /// Devi Minit Haiti (operatè + sa benefisyè a resevwa).
   AirtimeQuote? _airtimeQuote;
 
+  /// Peyi benefisyè minit la (tout peyi Reloadly). Ayiti pa defo.
+  AirtimeCountry _country = AirtimeCountry.haiti;
+  List<AirtimeCountry> _countries = const [AirtimeCountry.haiti];
+
+  /// Yon nimewo entènasyonal (favori, "Voye ankò") k ap tann lis peyi a.
+  String? _pendingPhone;
+
   /// Yon erè devi ajan an ka korije (montan anba minimòm NatCash, nimewo,
   /// deviz...). Li parèt PANDAN l ap tape, pa apre li fin anrejistre.
   PaymentException? _quoteError;
@@ -89,14 +98,22 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
     // Devi Minit Haiti a depann de nimewo a (se li ki bay operatè a).
     phoneCtrl.addListener(_scheduleQuote);
     if (widget.initialName != null) nameCtrl.text = widget.initialName!;
-    if (widget.initialPhone != null) phoneCtrl.text = HaitiPhone.localPart(widget.initialPhone!);
     if (widget.initialService != null && services.contains(widget.initialService)) {
       serviceName = widget.initialService!;
     }
+    if (widget.initialPhone != null) _setPhone(widget.initialPhone!);
     _loadContext();
   }
 
   Future<void> _loadContext() async {
+    try {
+      final countries = await _airtime.countries();
+      if (mounted && countries.isNotEmpty) {
+        setState(() => _countries = countries);
+        final pending = _pendingPhone;
+        if (pending != null) setState(() => _setPhone(pending));
+      }
+    } catch (_) {}
     try {
       final wallet = await WalletApi.instance.mine();
       if (mounted) setState(() => _wallet = wallet);
@@ -110,8 +127,9 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
       final seen = <String>{};
       final favorites = <TransactionRecord>[];
       for (final tx in recent) {
-        final key = HaitiPhone.localPart(tx.customerPhone);
-        if (key.isEmpty || tx.customerName.trim().isEmpty || !seen.add(key)) continue;
+        // Non an opsyonèl: se nimewo a ki idantifye benefisyè a.
+        final key = tx.customerPhone.replaceAll(RegExp(r'\D'), '');
+        if (key.isEmpty || !seen.add(key)) continue;
         favorites.add(tx);
         if (favorites.length == 6) break;
       }
@@ -123,16 +141,80 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   void _useFavorite(TransactionRecord tx) {
     setState(() {
       nameCtrl.text = tx.customerName.trim();
-      phoneCtrl.text = HaitiPhone.localPart(tx.customerPhone);
       if (services.contains(tx.serviceName)) serviceName = tx.serviceName;
+      _setPhone(tx.customerPhone);
     });
     _refreshQuote();
   }
 
+  /// Mete yon nimewo konplè nan fòm nan. Yon nimewo etranje (`+1809...`) chwazi
+  /// peyi a tou pou minit; MonCash/NatCash rete sou nimewo Ayiti.
+  void _setPhone(String phone) {
+    final raw = phone.trim();
+    final foreign = raw.startsWith('+') && !raw.replaceAll(RegExp(r'\D'), '').startsWith(HaitiPhone.code);
+    if (!foreign || !_isAirtimeService) {
+      _country = AirtimeCountry.haiti;
+      phoneCtrl.text = HaitiPhone.localPart(raw);
+      _pendingPhone = null;
+      return;
+    }
+    final country = AirtimeCountry.detect(raw, _countries);
+    if (country == null) {
+      _pendingPhone = raw; // lis peyi a poko chaje
+      phoneCtrl.text = raw.replaceAll(RegExp(r'\D'), '');
+      return;
+    }
+    _pendingPhone = null;
+    _country = country;
+    phoneCtrl.text = raw.replaceAll(RegExp(r'\D'), '').substring(country.dialPrefix.length);
+  }
+
   void _selectService(String service) {
     if (loading || service == serviceName) return;
-    setState(() => serviceName = service);
+    setState(() {
+      serviceName = service;
+      // MonCash/NatCash: Ayiti sèlman. Yon nimewo etranje pa gen sans la.
+      if (!_isAirtimeService && !_country.isHaiti) {
+        _country = AirtimeCountry.haiti;
+        phoneCtrl.clear();
+      }
+    });
     _refreshQuote();
+  }
+
+  Future<void> _pickCountry() async {
+    final picked = await showModalBottomSheet<AirtimeCountry>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _CountryPicker(countries: _countries, selected: _country),
+    );
+    if (picked == null || picked.countryCode == _country.countryCode) return;
+    setState(() {
+      _country = picked;
+      phoneCtrl.clear();
+      _airtimeQuote = null;
+      _quoteError = null;
+    });
+  }
+
+  /// Ajan an kole yon nimewo konplè (`+52 55...`): nou chwazi peyi a pou li.
+  void _onAirtimePhoneChanged(String value) {
+    final country = AirtimeCountry.detect(value, _countries);
+    if (country != null) {
+      var digits = value.replaceAll(RegExp(r'\D'), '');
+      if (value.trim().startsWith('00')) digits = digits.substring(2);
+      final local = digits.substring(country.dialPrefix.length);
+      _country = country;
+      final text = country.isHaiti ? HaitiPhone.localPart(local) : local;
+      phoneCtrl.value = TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+    } else if (_country.isHaiti && !value.contains('+')) {
+      // Ayiti: menm limit 8 chif ak MonCash/NatCash.
+      final local = HaitiPhone.localPart(value);
+      if (local != value) {
+        phoneCtrl.value = TextEditingValue(text: local, selection: TextSelection.collapsed(offset: local.length));
+      }
+    }
+    setState(() {});
   }
 
   @override
@@ -156,7 +238,21 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   /// Sèvis ki livre otomatikman apre anrejistreman (Bazik oswa Reloadly).
   bool get _deliversAutomatically => _isGatewayService || _isAirtimeService;
 
-  bool get _hasHaitiPhone => HaitiPhone.isValid(phoneCtrl.text);
+  /// Nimewo Ayiti (8 chif) — tout sèvis, sof minit pou yon lòt peyi.
+  bool get _haitiPhone => !_isAirtimeService || _country.isHaiti;
+
+  bool get _hasValidPhone {
+    if (_haitiPhone) return HaitiPhone.isValid(phoneCtrl.text);
+    final digits = phoneCtrl.text.replaceAll(RegExp(r'\D'), '');
+    return digits.length >= 6 && digits.length <= 13;
+  }
+
+  /// Nimewo konplè nou voye bay serveur a.
+  String get _internationalPhone =>
+      _haitiPhone ? HaitiPhone.international(phoneCtrl.text) : _country.international(phoneCtrl.text);
+
+  /// NatCash mande non benefisyè a; tout lòt sèvis yo, non an opsyonèl.
+  bool get _nameRequired => PaymentNetworkX.forServiceName(serviceName)?.requiresReceiverName ?? false;
 
   /// Devi an dirèk, ak yon ti delè pou nou pa rele serveur a sou chak lèt.
   void _scheduleQuote() {
@@ -189,7 +285,7 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
 
       // 2) Devi pasrèl la sou sa benefisyè a resevwa vre (minimòm NatCash,
       //    operatè minit...).
-      final ready = _deliversAutomatically && (!_isAirtimeService || _hasHaitiPhone);
+      final ready = _deliversAutomatically && (!_isAirtimeService || _hasValidPhone);
       if (ready) {
         await _fetchQuote(fee.netAmount);
       } else if (mounted) {
@@ -245,7 +341,8 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   Future<void> _fetchQuote(double amount) async {
     if (_isAirtimeService) {
       final quote = await _airtime.quote(
-        phone: HaitiPhone.international(phoneCtrl.text),
+        phone: _internationalPhone,
+        countryCode: _country.countryCode,
         amount: amount,
         currency: paymentCurrency,
       );
@@ -284,7 +381,7 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
     if (!_formKey.currentState!.validate()) return;
 
     final name = nameCtrl.text.trim();
-    final phone = HaitiPhone.international(phoneCtrl.text);
+    final phone = _internationalPhone;
     final amount = _num(amountCtrl.text);
 
     setState(() {
@@ -320,6 +417,8 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
         amount: amount,
         currency: paymentCurrency,
         feeMode: _feeMode,
+        // Minit: peyi benefisyè a. Serveur a livre sou peyi sa a.
+        country: _isAirtimeService ? _country.countryCode : '',
       );
 
       final txId = created.txId;
@@ -453,8 +552,8 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   // --- Etap yo (agoch) ---
 
   Widget _buildSteps() {
-    final phoneOk = HaitiPhone.localPart(phoneCtrl.text).length == HaitiPhone.localDigits;
-    final benefOk = nameCtrl.text.trim().isNotEmpty && phoneOk;
+    final phoneOk = _hasValidPhone;
+    final benefOk = phoneOk && (!_nameRequired || nameCtrl.text.trim().isNotEmpty);
     final amountOk = _num(amountCtrl.text) > 0 && _feeError == null && _quoteError == null;
 
     return Column(
@@ -523,40 +622,24 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
                 ),
                 const SizedBox(height: 12),
               ],
+              if (_isAirtimeService) ...[
+                _CountryButton(country: _country, onTap: loading ? null : _pickCountry),
+                const SizedBox(height: 12),
+              ],
               LayoutBuilder(builder: (context, box) {
                 final name = TextFormField(
                   controller: nameCtrl,
                   enabled: !loading,
                   textInputAction: TextInputAction.next,
-                  decoration: _inputDecoration(label: 'Non benefisyè', icon: Icons.person_outline),
-                  validator: (value) =>
-                      (value ?? '').trim().isEmpty ? 'Non benefisyè a obligatwa.' : null,
-                  onChanged: (_) => setState(() {}),
-                );
-                final phone = TextFormField(
-                  controller: phoneCtrl,
-                  enabled: !loading,
-                  keyboardType: TextInputType.phone,
-                  textInputAction: TextInputAction.next,
-                  // Prefiks la se yon bagay app la konnen, se pa yon bagay ajan an
-                  // tape. Formatè a retire l tou si moun nan kole yon nimewo konplè.
-                  inputFormatters: const [HaitiPhoneInputFormatter()],
                   decoration: _inputDecoration(
-                    label: 'Telefòn',
-                    icon: Icons.phone_outlined,
-                    prefixText: '+${HaitiPhone.code} ',
-                    helperText: '${HaitiPhone.localDigits} chif',
+                    label: _nameRequired ? 'Non benefisyè' : 'Non benefisyè (opsyonèl)',
+                    icon: Icons.person_outline,
                   ),
-                  validator: (value) {
-                    final digits = HaitiPhone.localPart(value ?? '');
-                    if (digits.isEmpty) return 'Telefòn obligatwa.';
-                    if (digits.length != HaitiPhone.localDigits) {
-                      return 'Nimewo a dwe gen ${HaitiPhone.localDigits} chif.';
-                    }
-                    return null;
-                  },
+                  validator: (value) =>
+                      _nameRequired && (value ?? '').trim().isEmpty ? 'NatCash mande non benefisyè a.' : null,
                   onChanged: (_) => setState(() {}),
                 );
+                final phone = _isAirtimeService ? _airtimePhoneField() : _haitiPhoneField();
                 if (box.maxWidth < 520) {
                   return Column(children: [name, const SizedBox(height: 12), phone]);
                 }
@@ -781,6 +864,69 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
     );
   }
 
+  /// MonCash / NatCash: nimewo Ayiti, 8 chif, prefiks +509 fiks.
+  Widget _haitiPhoneField() {
+    return TextFormField(
+      controller: phoneCtrl,
+      enabled: !loading,
+      keyboardType: TextInputType.phone,
+      textInputAction: TextInputAction.next,
+      // Prefiks la se yon bagay app la konnen, se pa yon bagay ajan an
+      // tape. Formatè a retire l tou si moun nan kole yon nimewo konplè.
+      inputFormatters: const [HaitiPhoneInputFormatter()],
+      decoration: _inputDecoration(
+        label: 'Telefòn',
+        icon: Icons.phone_outlined,
+        prefixText: '+${HaitiPhone.code} ',
+        helperText: '${HaitiPhone.localDigits} chif',
+      ),
+      validator: (value) {
+        final digits = HaitiPhone.localPart(value ?? '');
+        if (digits.isEmpty) return 'Telefòn obligatwa.';
+        if (digits.length != HaitiPhone.localDigits) {
+          return 'Nimewo a dwe gen ${HaitiPhone.localDigits} chif.';
+        }
+        return null;
+      },
+      onChanged: (_) => setState(() {}),
+    );
+  }
+
+  /// Minit: nenpòt peyi. Prefiks peyi a devan; si ajan an kole yon nimewo
+  /// konplè (`+1 809...`), peyi a chwazi pou kont li. Operatè a soti nan devi a.
+  Widget _airtimePhoneField() {
+    final haiti = _country.isHaiti;
+    final operator = _airtimeQuote?.operator.name;
+    return TextFormField(
+      key: const ValueKey('airtime-phone'),
+      controller: phoneCtrl,
+      enabled: !loading,
+      keyboardType: TextInputType.phone,
+      textInputAction: TextInputAction.next,
+      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]')), LengthLimitingTextInputFormatter(20)],
+      decoration: _inputDecoration(
+        label: 'Telefòn',
+        icon: Icons.phone_outlined,
+        prefixText: '+${_country.dialPrefix} ',
+        helperText: operator != null
+            ? 'Operatè: $operator'
+            : haiti
+                ? '${HaitiPhone.localDigits} chif · operatè detekte otomatikman'
+                : 'Operatè detekte otomatikman',
+      ),
+      validator: (value) {
+        final digits = (value ?? '').replaceAll(RegExp(r'\D'), '');
+        if (digits.isEmpty) return 'Telefòn obligatwa.';
+        if (haiti && HaitiPhone.localPart(value ?? '').length != HaitiPhone.localDigits) {
+          return 'Nimewo a dwe gen ${HaitiPhone.localDigits} chif.';
+        }
+        if (!haiti && (digits.length < 6 || digits.length > 13)) return 'Nimewo a pa valid pou ${_country.name}.';
+        return null;
+      },
+      onChanged: _onAirtimePhoneChanged,
+    );
+  }
+
   InputDecoration _inputDecoration({
     required String label,
     IconData? icon,
@@ -927,7 +1073,7 @@ String _m(double v, {int decimals = 2}) {
 const _serviceStyle = {
   'MonCash': ('M', Color(0xFFC8102E), 'Digicel · min 100 HTG'),
   'NatCash': ('N', Color(0xFF0B5FA5), 'Natcom · min 3 998 HTG'),
-  'Minit Haiti': ('%', Color(0xFF6B4FA0), 'Rechaj Digicel ak Natcom'),
+  'Minit Haiti': ('%', Color(0xFF6B4FA0), 'Tout peyi · operatè otomatik'),
 };
 
 class _StepCard extends StatelessWidget {
@@ -1011,14 +1157,17 @@ class _ServiceCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Container(
-                width: 34,
-                height: 34,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(9)),
-                child: Text(letter,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15)),
-              ),
+              if (name == 'MonCash' || name == 'NatCash')
+                NetworkLogo(name, size: 34)
+              else
+                Container(
+                  width: 34,
+                  height: 34,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(9)),
+                  child: Text(letter,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15)),
+                ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -1051,8 +1200,10 @@ class _FavoriteChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (_, color, _) = _serviceStyle[tx.serviceName] ?? ('?', _cBrand, '');
-    final digits = HaitiPhone.localPart(tx.customerPhone);
-    final masked = digits.length == 8 ? '${digits.substring(0, 2)} •• •• ${digits.substring(6)}' : digits;
+    final haiti = tx.customerPhone.replaceAll(RegExp(r'\D'), '').startsWith(HaitiPhone.code) ||
+        !tx.customerPhone.trim().startsWith('+');
+    final digits = haiti ? HaitiPhone.localPart(tx.customerPhone) : tx.customerPhone.trim();
+    final masked = haiti && digits.length == 8 ? '${digits.substring(0, 2)} •• •• ${digits.substring(6)}' : digits;
     final initials = tx.customerName
         .trim()
         .split(RegExp(r'[\s-]+'))
@@ -1078,15 +1229,18 @@ class _FavoriteChip extends StatelessWidget {
               CircleAvatar(
                 radius: 16,
                 backgroundColor: color,
-                child: Text(initials,
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+                child: initials.isEmpty
+                    ? const Icon(Icons.phone, size: 15, color: Colors.white)
+                    : Text(initials,
+                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
               ),
               const SizedBox(width: 8),
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(tx.customerName.trim(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                  Text(tx.customerName.trim().isEmpty ? masked : tx.customerName.trim(),
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                   Text('${tx.serviceName} · $masked', style: const TextStyle(fontSize: 11, color: _cMuted)),
                 ],
               ),
@@ -1285,6 +1439,116 @@ class _TicketLine extends StatelessWidget {
           Text(value,
               style: TextStyle(color: valueColor, fontSize: 13, fontWeight: bold || good ? FontWeight.w800 : FontWeight.w600)),
         ],
+      ),
+    );
+  }
+}
+
+/// Peyi benefisyè minit la; peze l pou chanje.
+class _CountryButton extends StatelessWidget {
+  const _CountryButton({required this.country, required this.onTap});
+
+  final AirtimeCountry country;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFF9FCF7),
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        key: const ValueKey('airtime-country'),
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _cLine),
+          ),
+          child: Row(children: [
+            Text(country.flag, style: const TextStyle(fontSize: 22)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Peyi benefisyè a', style: TextStyle(fontSize: 11.5, color: _cMuted)),
+                Text(
+                  '${country.name}  +${country.dialPrefix}',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w800, color: _cInk),
+                ),
+              ]),
+            ),
+            const Icon(Icons.expand_more, color: _cMuted),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Lis tout peyi Reloadly yo, ak rechèch pa non, kòd ISO oswa endikatif.
+class _CountryPicker extends StatefulWidget {
+  const _CountryPicker({required this.countries, required this.selected});
+
+  final List<AirtimeCountry> countries;
+  final AirtimeCountry selected;
+
+  @override
+  State<_CountryPicker> createState() => _CountryPickerState();
+}
+
+class _CountryPickerState extends State<_CountryPicker> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _query.trim().toLowerCase().replaceFirst('+', '');
+    final rows = q.isEmpty
+        ? widget.countries
+        : widget.countries
+            .where((c) =>
+                c.name.toLowerCase().contains(q) ||
+                c.countryCode.toLowerCase() == q ||
+                c.callingCodes.any((code) => code.startsWith(q)))
+            .toList();
+
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.75,
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: TextField(
+              autofocus: true,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: 'Chèche yon peyi (non, HT, +52...)',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
+          Expanded(
+            child: rows.isEmpty
+                ? const Center(child: Text('Pa gen peyi ki koresponn.', style: TextStyle(color: _cMuted)))
+                : ListView.builder(
+                    itemCount: rows.length,
+                    itemBuilder: (context, k) {
+                      final c = rows[k];
+                      return ListTile(
+                        leading: Text(c.flag, style: const TextStyle(fontSize: 24)),
+                        title: Text(c.name),
+                        subtitle: Text('+${c.dialPrefix} · ${c.currencyCode}'),
+                        trailing: c.countryCode == widget.selected.countryCode
+                            ? const Icon(Icons.check_circle, color: _cBrand)
+                            : null,
+                        onTap: () => Navigator.pop(context, c),
+                      );
+                    },
+                  ),
+          ),
+        ]),
       ),
     );
   }

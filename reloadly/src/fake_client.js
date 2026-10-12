@@ -68,6 +68,18 @@ const DEFAULT_OPERATORS = [
   },
 ];
 
+/** Peyi similasyon (fòm `GET /countries`). */
+const DEFAULT_COUNTRIES = [
+  { isoName: "HT", name: "Haiti", currencyCode: "HTG", callingCodes: ["+509"] },
+  { isoName: "US", name: "United States", currencyCode: "USD", callingCodes: ["+1"] },
+  { isoName: "CA", name: "Canada", currencyCode: "CAD", callingCodes: ["+1"] },
+  { isoName: "DO", name: "Dominican Republic", currencyCode: "DOP", callingCodes: ["+1809", "+1829", "+1849"] },
+  { isoName: "MX", name: "Mexico", currencyCode: "MXN", callingCodes: ["+52"] },
+  { isoName: "CL", name: "Chile", currencyCode: "CLP", callingCodes: ["+56"] },
+  { isoName: "BR", name: "Brazil", currencyCode: "BRL", callingCodes: ["+55"] },
+  { isoName: "FR", name: "France", currencyCode: "EUR", callingCodes: ["+33"] },
+];
+
 /** Prefiks Natcom yo; tout lòt nimewo mobil (3x, 4x, 5x) tonbe sou Digicel. */
 const NATCOM_PREFIXES = ["32", "33", "35", "40", "41", "42", "43", "44", "55"];
 
@@ -86,6 +98,7 @@ function createFakeReloadlyClient({
     "read-prepaid-commissions",
   ],
   promotions = [],
+  countries = DEFAULT_COUNTRIES,
 } = {}) {
   let balanceMinor = mapper.toMinor(balance);
   let counter = 0;
@@ -93,8 +106,31 @@ function createFakeReloadlyClient({
   /** transactionId -> tranzaksyon (fòm JSON API a) */
   const records = new Map();
 
+  /**
+   * Lòt peyi yo: yon operatè jenerik pa peyi ("Mexico Mobile", #9xx), RANGE
+   * 1–100 USD. Ase pou devlope flux entènasyonal la san kle.
+   */
+  const generated = new Map();
+  function foreignOperator(iso) {
+    if (generated.has(iso)) return generated.get(iso);
+    const country = countries.find((c) => c.isoName === iso);
+    if (!country) {
+      throw new ReloadlyError("could_not_auto_detect_operator", `Country not supported: ${iso}`, { status: 404 });
+    }
+    const id = 900 + countries.indexOf(country);
+    const operator = {
+      id, operatorId: id, name: `${country.name} Mobile`, bundle: false, data: false, pin: false,
+      supportsLocalAmounts: false, denominationType: "RANGE", senderCurrencyCode: "USD",
+      destinationCurrencyCode: country.currencyCode, minAmount: 1, maxAmount: 100, fixedAmounts: [],
+      localFixedAmounts: [], suggestedAmounts: [5, 10, 20], country: { isoName: iso, name: country.name },
+      fx: { rate: 1, currencyCode: country.currencyCode }, internationalDiscount: 3, localDiscount: 0, status: "ACTIVE",
+    };
+    generated.set(iso, operator);
+    return operator;
+  }
+
   function operatorById(id) {
-    const operator = operators.find((op) => Number(op.id) === Number(id));
+    const operator = [...operators, ...generated.values()].find((op) => Number(op.id) === Number(id));
     if (!operator) {
       throw new ReloadlyError("operator_not_found", `Operator not found: ${id}`, { status: 404 });
     }
@@ -186,18 +222,28 @@ function createFakeReloadlyClient({
       return [...records.values()].map(mapper.readTopup).reverse().slice(0, limit);
     },
 
-    async detectOperator(phone) {
+    async detectOperator(phone, countryCode = "HT") {
+      const iso = String(countryCode || "HT").toUpperCase();
+      if (iso !== "HT") return mapper.readOperator(foreignOperator(iso));
       const { local } = mapper.normalizeHaitiPhone(phone);
       return mapper.readOperator(detect(local));
+    },
+
+    async countries() {
+      return countries.map(mapper.readCountry);
     },
 
     async operator(operatorId) {
       return mapper.readOperator(operatorById(operatorId));
     },
 
-    async topup({ operatorId, amountMinor, useLocalAmount = false, customIdentifier, phone }) {
-      const { local, international } = mapper.normalizeHaitiPhone(phone);
+    async topup({ operatorId, amountMinor, useLocalAmount = false, customIdentifier, phone, countryCode = "HT" }) {
       const operator = operatorById(operatorId);
+      const iso = String(countryCode || "HT").toUpperCase();
+      const { local, international } =
+        iso === "HT"
+          ? mapper.normalizeHaitiPhone(phone)
+          : { local: String(phone).replace(/\D/g, ""), international: `+${String(phone).replace(/\D/g, "")}` };
       const parsed = assertAmount(operator, amountMinor, useLocalAmount);
 
       if ([...records.values()].some((r) => r.customIdentifier === customIdentifier)) {
@@ -239,7 +285,7 @@ function createFakeReloadlyClient({
         operatorTransactionId: pending ? null : `OP${counter}`,
         customIdentifier,
         recipientPhone: international.slice(1),
-        countryCode: "HT",
+        countryCode: iso,
         operatorId: parsed.operatorId,
         operatorName: parsed.name,
         discount: discountMinor / 100,
@@ -281,4 +327,4 @@ function createFakeReloadlyClient({
   };
 }
 
-module.exports = { createFakeReloadlyClient, DEFAULT_OPERATORS };
+module.exports = { createFakeReloadlyClient, DEFAULT_OPERATORS, DEFAULT_COUNTRIES };

@@ -369,6 +369,10 @@ class PayoutRequest {
     required this.phone,
     required this.status,
     this.failureReason = '',
+    this.bankName = '',
+    this.bankAccountName = '',
+    this.bankAccountNumber = '',
+    this.transferId = '',
     this.createdAt,
   });
 
@@ -380,9 +384,16 @@ class PayoutRequest {
   final String phone;
   final String status;
   final String failureReason;
+  final String bankName;
+  final String bankAccountName;
+  final String bankAccountNumber;
+
+  /// Bazik: id transfè a. Bank: referans virement admin nan bay la.
+  final String transferId;
   final DateTime? createdAt;
 
   bool get isPending => status == 'pending';
+  bool get isBank => network == 'bank';
 
   factory PayoutRequest.fromJson(Map<String, dynamic> j) => PayoutRequest(
         requestId: '${j['requestId'] ?? ''}',
@@ -393,6 +404,10 @@ class PayoutRequest {
         phone: '${j['phone'] ?? ''}',
         status: '${j['status'] ?? 'pending'}',
         failureReason: '${j['failureReason'] ?? ''}',
+        bankName: '${j['bankName'] ?? ''}',
+        bankAccountName: '${j['bankAccountName'] ?? ''}',
+        bankAccountNumber: '${j['bankAccountNumber'] ?? ''}',
+        transferId: '${j['transferId'] ?? ''}',
         createdAt: _date(j['createdAt']),
       );
 }
@@ -417,25 +432,39 @@ class PayoutsApi {
   }
 
   /// Mande yon payout. Wallet la PA debite: se apwobasyon an ki voye lajan an.
+  ///
+  /// `network: 'bank'` → [bankName], [bankAccountName] ak [bankAccountNumber]
+  /// obligatwa; [phone] pa itilize.
   Future<PayoutRequest> request({
     required double amount,
-    required String phone,
+    String phone = '',
     String network = 'moncash',
     String receiverName = '',
     String note = '',
+    String bankName = '',
+    String bankAccountName = '',
+    String bankAccountNumber = '',
   }) async {
     final json = await _client.post('/api/payouts', {
       'amount': amount,
-      'phone': phone,
       'network': network,
+      if (phone.isNotEmpty) 'phone': phone,
       if (receiverName.isNotEmpty) 'receiverName': receiverName,
       if (note.isNotEmpty) 'note': note,
+      if (network == 'bank') ...{
+        'bankName': bankName,
+        'bankAccountName': bankAccountName,
+        'bankAccountNumber': bankAccountNumber,
+      },
     });
     return PayoutRequest.fromJson(json['payout'] as Map<String, dynamic>);
   }
 
-  Future<PayoutRequest> approve(String requestId) async {
-    final json = await _client.post('/api/payouts/$requestId/approve');
+  /// Payout bank: [reference] = referans virement an (opsyonèl).
+  Future<PayoutRequest> approve(String requestId, {String reference = ''}) async {
+    final json = await _client.post('/api/payouts/$requestId/approve', {
+      if (reference.isNotEmpty) 'reference': reference,
+    });
     return PayoutRequest.fromJson(json['payout'] as Map<String, dynamic>);
   }
 

@@ -52,6 +52,43 @@ class WalletSummary {
   }
 }
 
+/// Yon kont bank antrepriz la — kote ajan yo vire pou yon rechaj.
+class BankAccount {
+  const BankAccount({
+    this.id = '',
+    required this.bankName,
+    required this.accountName,
+    required this.accountNumber,
+    this.currency = 'HTG',
+    this.instructions = '',
+  });
+
+  final String id;
+  final String bankName;
+  final String accountName;
+  final String accountNumber;
+  final String currency;
+  final String instructions;
+
+  factory BankAccount.fromJson(Map<String, dynamic> json) => BankAccount(
+        id: '${json['id'] ?? ''}',
+        bankName: '${json['bankName'] ?? ''}',
+        accountName: '${json['accountName'] ?? ''}',
+        accountNumber: '${json['accountNumber'] ?? ''}',
+        currency: '${json['currency'] ?? 'HTG'}',
+        instructions: '${json['instructions'] ?? ''}',
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (id.isNotEmpty) 'id': id,
+        'bankName': bankName,
+        'accountName': accountName,
+        'accountNumber': accountNumber,
+        'currency': currency,
+        'instructions': instructions,
+      };
+}
+
 class PslFallbackSettings {
   const PslFallbackSettings({required this.configured, required this.enabled});
 
@@ -120,6 +157,9 @@ class TopupRequest {
     this.note = '',
     this.requestedByName = '',
     this.processed = false,
+    this.method = 'manual',
+    this.bankReference = '',
+    this.bankAccount = '',
     this.createdAt,
   });
 
@@ -132,9 +172,15 @@ class TopupRequest {
   final String note;
   final String requestedByName;
   final bool processed;
+
+  /// `manual` (kach / admin) oswa `bank` (virement bancaire).
+  final String method;
+  final String bankReference;
+  final String bankAccount;
   final DateTime? createdAt;
 
   bool get isPending => !processed && status == 'pending';
+  bool get isBank => method == 'bank';
 
   factory TopupRequest.fromJson(Map<String, dynamic> json) {
     final created = json['createdAt'];
@@ -149,6 +195,9 @@ class TopupRequest {
       note: '${json['note'] ?? ''}',
       requestedByName: '${json['requestedByName'] ?? ''}',
       processed: json['processed'] == true,
+      method: '${json['method'] ?? 'manual'}',
+      bankReference: '${json['bankReference'] ?? ''}',
+      bankAccount: '${json['bankAccount'] ?? ''}',
       createdAt: created is num
           ? DateTime.fromMillisecondsSinceEpoch(created.toInt())
           : null,
@@ -220,6 +269,24 @@ class WalletApi {
     return value is num ? value.toDouble() : 0;
   }
 
+  /// Kont bank antrepriz la. Tout staff ka li yo.
+  Future<List<BankAccount>> bankAccounts() async {
+    final json = await _client.get('/api/settings/bank-accounts');
+    return ((json['accounts'] as List?) ?? const [])
+        .map((e) => BankAccount.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Ranplase tout lis la. Owner/admin sèlman.
+  Future<List<BankAccount>> saveBankAccounts(List<BankAccount> accounts) async {
+    final json = await _client.patch('/api/settings/bank-accounts', {
+      'accounts': accounts.map((a) => a.toJson()).toList(),
+    });
+    return ((json['accounts'] as List?) ?? const [])
+        .map((e) => BankAccount.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<PslFallbackSettings> pslFallbackSettings() async {
     final json = await _client.get('/api/settings/psl-fallback');
     return PslFallbackSettings(
@@ -288,6 +355,8 @@ class WalletApi {
     String currency = 'USD',
     String note = '',
     bool autoApprove = false,
+    String? bankReference,
+    String? bankAccountId,
   }) async {
     final json = await _client.post('/api/wallets/topups', {
       'targetUid': targetUid,
@@ -295,6 +364,12 @@ class WalletApi {
       'currency': currency,
       if (note.isNotEmpty) 'note': note,
       if (autoApprove) 'autoApprove': true,
+      // Virement bancaire: referans lan + kont antrepriz ajan an vire sou li a.
+      if (bankReference != null) ...{
+        'method': 'bank',
+        'bankReference': bankReference,
+        if (bankAccountId != null) 'bankAccountId': bankAccountId,
+      },
     });
 
     return '${json['requestId'] ?? ''}';

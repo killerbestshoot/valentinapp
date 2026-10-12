@@ -8,6 +8,7 @@ import 'package:mon_premye_app/features/payments/domain/payment_models.dart';
 import 'package:mon_premye_app/features/payments/presentation/widgets/payment_error_view.dart';
 import 'package:mon_premye_app/widgets/async_view.dart';
 import 'package:mon_premye_app/widgets/dashboard_ui.dart';
+import 'package:mon_premye_app/widgets/network_logo.dart';
 
 /// Payout: yon staff mande pou yo peye l sòld li; yon admin apwouve.
 ///
@@ -16,6 +17,9 @@ import 'package:mon_premye_app/widgets/dashboard_ui.dart';
 ///
 /// Apwobasyon an voye lajan an VRE atravè Bazik. Erè Bazik yo (pwovizyon,
 /// minimòm, nimewo) parèt ak `PaymentErrorView`.
+///
+/// Payout BANK: apwobasyon an debite wallet la, epi admin nan fè virement an
+/// li menm sou kont ajan an bay la.
 class PayoutsPage extends StatefulWidget {
   const PayoutsPage({super.key});
 
@@ -41,7 +45,13 @@ class _PayoutsPageState extends State<PayoutsPage> {
   Future<void> _request() async {
     final amountCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
+    final bankNameCtrl = TextEditingController();
+    final accountNameCtrl = TextEditingController(
+      text: AuthRepositoryProvider.instance.currentUser?.displayName ?? '',
+    );
+    final accountNumberCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
+    String? required(String? v) => (v ?? '').trim().isEmpty ? 'Obligatwa.' : null;
     var network = 'moncash';
 
     final ok = await showDialog<bool>(
@@ -51,42 +61,80 @@ class _PayoutsPageState extends State<PayoutsPage> {
               title: const Text('Mande yon payout'),
               content: Form(
                 key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(value: 'moncash', label: Text('MonCash')),
-                        ButtonSegment(value: 'natcash', label: Text('NatCash')),
-                      ],
-                      selected: {network},
-                      onSelectionChanged: (s) => setDialogState(() => network = s.first),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: amountCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: 'Montan'),
-                      validator: (v) {
-                        final n = double.tryParse((v ?? '').replaceAll(',', '.').trim());
-                        return (n == null || n <= 0) ? 'Montan an pa valid.' : null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: phoneCtrl,
-                      keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(
-                        labelText: 'Nimewo ou',
-                        hintText: '+509 3712 3456',
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SegmentedButton<String>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(
+                            value: 'moncash',
+                            icon: NetworkLogo('moncash', size: 20),
+                            label: Text('MonCash'),
+                          ),
+                          ButtonSegment(
+                            value: 'natcash',
+                            icon: NetworkLogo('natcash', size: 20),
+                            label: Text('NatCash'),
+                          ),
+                          ButtonSegment(
+                            value: 'bank',
+                            icon: NetworkLogo('bank', size: 20),
+                            label: Text('Bank'),
+                          ),
+                        ],
+                        selected: {network},
+                        onSelectionChanged: (s) => setDialogState(() => network = s.first),
                       ),
-                      validator: (v) {
-                        final digits = (v ?? '').replaceAll(RegExp(r'\D'), '');
-                        final local = digits.startsWith('509') ? digits.substring(3) : digits;
-                        return local.length != 8 ? 'Nimewo a dwe gen 8 chif.' : null;
-                      },
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: amountCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(labelText: 'Montan'),
+                        validator: (v) {
+                          final n = double.tryParse((v ?? '').replaceAll(',', '.').trim());
+                          return (n == null || n <= 0) ? 'Montan an pa valid.' : null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      if (network == 'bank') ...[
+                        TextFormField(
+                          controller: bankNameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Bank',
+                            hintText: 'Egz. Unibank, Sogebank, BNC',
+                          ),
+                          validator: required,
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: accountNameCtrl,
+                          decoration: const InputDecoration(labelText: 'Non sou kont lan'),
+                          validator: required,
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: accountNumberCtrl,
+                          decoration: const InputDecoration(labelText: 'Nimewo kont lan'),
+                          validator: required,
+                        ),
+                      ] else
+                        TextFormField(
+                          controller: phoneCtrl,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                            labelText: 'Nimewo ou',
+                            hintText: '+509 3712 3456',
+                          ),
+                          validator: (v) {
+                            final digits = (v ?? '').replaceAll(RegExp(r'\D'), '');
+                            final local = digits.startsWith('509') ? digits.substring(3) : digits;
+                            return local.length != 8 ? 'Nimewo a dwe gen 8 chif.' : null;
+                          },
+                        ),
+                    ],
+                  ),
                 ),
               ),
               actions: [
@@ -112,13 +160,24 @@ class _PayoutsPageState extends State<PayoutsPage> {
 
     final amount = double.tryParse(amountCtrl.text.replaceAll(',', '.').trim());
     final phone = phoneCtrl.text.trim();
-    amountCtrl.dispose();
-    phoneCtrl.dispose();
+    final bankName = bankNameCtrl.text.trim();
+    final accountName = accountNameCtrl.text.trim();
+    final accountNumber = accountNumberCtrl.text.trim();
+    for (final c in [amountCtrl, phoneCtrl, bankNameCtrl, accountNameCtrl, accountNumberCtrl]) {
+      c.dispose();
+    }
 
     if (!ok || amount == null) return;
 
     try {
-      await PayoutsApi.instance.request(amount: amount, phone: phone, network: network);
+      await PayoutsApi.instance.request(
+        amount: amount,
+        network: network,
+        phone: network == 'bank' ? '' : phone,
+        bankName: bankName,
+        bankAccountName: accountName,
+        bankAccountNumber: accountNumber,
+      );
       _toast('Demann lan voye. Yon administratè ap apwouve l.');
       _listKey.currentState?.reload();
     } on ApiException catch (err) {
@@ -126,7 +185,71 @@ class _PayoutsPageState extends State<PayoutsPage> {
     }
   }
 
+  /// Payout bank: admin nan konfime, wallet la debite, epi li fè virement an.
+  Future<void> _approveBank(PayoutRequest payout) async {
+    final refCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Apwouve payout bank la?'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Sòld ${payout.staffName} ap debite '
+                  '${payout.amount.toStringAsFixed(2)} ${payout.currency}. '
+                  'Apre sa, fè virement an sou kont sa a:',
+                ),
+                const SizedBox(height: 10),
+                SelectableText(
+                  '${payout.bankName}\n${payout.bankAccountName}\n${payout.bankAccountNumber}',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: refCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Referans virement (opsyonèl)',
+                    hintText: 'Egz. nimewo resi bank lan',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Anile'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Apwouve'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    final reference = refCtrl.text.trim();
+    refCtrl.dispose();
+    if (!ok) return;
+
+    setState(() {
+      _busyId = payout.requestId;
+      _error = null;
+    });
+    try {
+      await PayoutsApi.instance.approve(payout.requestId, reference: reference);
+      _toast('Payout apwouve. Fè virement an sou kont ${payout.bankAccountNumber}.');
+    } on ApiException catch (err) {
+      _toast(err.message);
+    } finally {
+      if (mounted) setState(() => _busyId = null);
+      _listKey.currentState?.reload();
+    }
+  }
+
   Future<void> _approve(PayoutRequest payout) async {
+    if (payout.isBank) return _approveBank(payout);
     final ok = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
@@ -191,7 +314,7 @@ class _PayoutsPageState extends State<PayoutsPage> {
           title: 'Payout',
           subtitle: _isManager
               ? 'Apwouve demann payout staff yo.'
-              : 'Mande pou yo peye sòld ou sou MonCash oswa NatCash.',
+              : 'Mande pou yo peye sòld ou sou MonCash, NatCash oswa kont bank ou.',
         ),
         const SizedBox(height: 18),
         if (!_isManager) ...[
@@ -224,6 +347,8 @@ class _PayoutsPageState extends State<PayoutsPage> {
                     children: [
                       Row(
                         children: [
+                          NetworkLogo(payout.network, size: 28),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               payout.staffName,
@@ -243,9 +368,17 @@ class _PayoutsPageState extends State<PayoutsPage> {
                         ],
                       ),
                       Text(
-                        '${payout.network} • ${payout.phone} • ${payout.status}',
+                        payout.isBank
+                            ? '${payout.bankName} • ${payout.bankAccountName} • '
+                                '${payout.bankAccountNumber} • ${payout.status}'
+                            : '${NetworkLogo.labelOf(payout.network)} • ${payout.phone} • ${payout.status}',
                         style: const TextStyle(color: DashboardColors.muted, fontSize: 12),
                       ),
+                      if (payout.isBank && payout.transferId.isNotEmpty)
+                        Text(
+                          'Referans: ${payout.transferId}',
+                          style: const TextStyle(color: DashboardColors.muted, fontSize: 12),
+                        ),
                       if (payout.failureReason.isNotEmpty)
                         Text(
                           payout.failureReason,
@@ -258,7 +391,7 @@ class _PayoutsPageState extends State<PayoutsPage> {
                             FilledButton.icon(
                               onPressed: busy ? null : () => _approve(payout),
                               icon: const Icon(Icons.send_outlined, size: 18),
-                              label: const Text('Apwouve epi voye'),
+                              label: Text(payout.isBank ? 'Apwouve' : 'Apwouve epi voye'),
                             ),
                             const SizedBox(width: 8),
                             OutlinedButton(
