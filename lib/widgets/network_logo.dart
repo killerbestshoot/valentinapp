@@ -57,15 +57,19 @@ class NetworkLogo extends StatelessWidget {
     );
     if (key == null) return fallback;
 
+    // `contain` sou fon blan: logo MonCash la gen maj blan, `cover` ta koupe l.
     return ClipRRect(
       borderRadius: radius,
-      child: Image.asset(
-        'assets/logos/$key.png',
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        semanticLabel: labelOf(key),
-        errorBuilder: (_, __, ___) => fallback,
+      child: ColoredBox(
+        color: Colors.white,
+        child: Image.asset(
+          'assets/logos/$key.png',
+          width: size,
+          height: size,
+          fit: BoxFit.contain,
+          semanticLabel: labelOf(key),
+          errorBuilder: (_, __, ___) => fallback,
+        ),
       ),
     );
   }
