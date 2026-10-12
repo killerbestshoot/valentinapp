@@ -18,6 +18,7 @@ RUN flutter pub get --enforce-lockfile
 COPY analysis_options.yaml ./
 COPY lib lib
 COPY web web
+COPY assets assets
 
 # Vide = l'app appelle l'API sur sa propre origine (nginx relaie /api).
 # Une seule image fonctionne donc sur n'importe quel domaine.
