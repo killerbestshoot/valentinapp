@@ -115,12 +115,17 @@ class _SolvencyCard extends StatelessWidget {
     final liabilities = (solvency['liabilities'] as Map?)?.cast<String, dynamic>() ?? const {};
     final bazik = (coverage['bazik'] as Map?)?.cast<String, dynamic>() ?? const {};
     final reloadly = (coverage['reloadly'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final psl = (coverage['psl'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final overCap = (solvency['agentsOverCap'] as List?) ?? const [];
     final reasons = ((solvency['reasons'] as List?) ?? const []).join(' · ');
 
     final detail = switch (status) {
       'covered' => 'Float ajan yo: ${liabilities['total']} HTG · pwovizyon: ${coverage['total']} HTG.',
       'thin' =>
         'Pwovizyon jis-jis: ${coverage['total']} HTG pou ${liabilities['total']} HTG float ajan.',
+      'fragmented' =>
+        'Kouvri an total (${coverage['total']} HTG), men pi gwo transfè an yon sèl fwa se '
+            '${solvency['maxSingleTransfer']} HTG: ${overCap.length} ajan gen plis pase sa.',
       'uncovered' =>
         'MANKE ${solvency['gap']} HTG: ${liabilities['total']} HTG float ajan pou '
             '${coverage['total']} HTG pwovizyon.',
@@ -136,9 +141,11 @@ class _SolvencyCard extends StatelessWidget {
             padding: const EdgeInsets.only(top: 6, left: 4),
             child: Text(
               'Bazik: ${bazik['available'] ?? '—'} ${bazik['currency'] ?? ''} · '
+              'PSL: ${psl['configured'] != true ? 'pa konfigire' : '${psl['available'] ?? '—'} ${psl['currency'] ?? 'HTG'}'
+                  '${psl['enabled'] == true ? '' : ' (relè fèmen, pa konte)'}'} · '
               'Reloadly: ${reloadly['available'] ?? '—'} ${reloadly['currency'] ?? ''}'
               '${reloadly['enabled'] == false ? ' (dezaktive)' : ''} — '
-              'HTG Bazik la pa ka peye minit, USD Reloadly la pa ka peye MonCash.',
+              'yon transfè pase pa YON pasrèl; HTG Bazik/PSL pa ka peye minit, USD Reloadly pa ka peye MonCash.',
               style: const TextStyle(color: DashboardColors.muted, fontSize: 11),
             ),
           ),

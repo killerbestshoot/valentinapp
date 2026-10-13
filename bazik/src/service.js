@@ -70,6 +70,14 @@ function createBazikService({ store, client, pslClient, config, env, ratesPolicy
       return resolvedClient.wallet();
     },
 
+    /** PSL Wallet: kliyan an (oswa `null` si PSL pa konfigire). */
+    pslClient: resolvedPslClient,
+
+    /** Èske relè PSL la aktive kounye a (kle + paramèt owner a). */
+    pslFallbackEnabled() {
+      return Boolean(resolvedPslClient) && (isPslFallbackEnabled ? isPslFallbackEnabled() : true);
+    },
+
     async close() {
       await store.close();
     },

@@ -18,11 +18,14 @@ const USD = (amount) => Math.round(amount * 100);
 // 37000000: nimewo similatè Bazik la toujou refize.
 const BAZIK_FAILS = "37000000";
 
-function makeFakePsl({ status = "pending" } = {}) {
+function makeFakePsl({ status = "pending", balanceHtg = 1000000 } = {}) {
   const calls = [];
   return {
     calls,
     nextStatus: status,
+    async balance() {
+      return { availableMinor: Math.round(balanceHtg * 100), currency: "HTG", accountStatus: "active" };
+    },
     async createPayout(args) {
       calls.push(args);
       return { gatewayId: `po_${calls.length}`, status: "processing", rawStatus: "pending", failureReason: "" };
@@ -39,10 +42,10 @@ function makeFakePsl({ status = "pending" } = {}) {
   };
 }
 
-function makeService(psl) {
+function makeService(psl, { bazikHtg } = {}) {
   const service = createBazikService({
     store: createSqliteStore({ file: ":memory:" }),
-    client: createFakeBazikClient(),
+    client: createFakeBazikClient(bazikHtg === undefined ? {} : { availableMinor: Math.round(bazikHtg * 100) }),
     pslClient: psl,
     config: { ...TEST_CONFIG },
     isPslFallbackEnabled: () => true,
@@ -139,4 +142,49 @@ test("kliyan PSL: provider voye nan kò a, rezo enkoni refize anvan rezo a", asy
   await assert.rejects(client.createPayout({ amountHtgMinor: 100, phone: "37123456", reference: "x" }), (err) =>
     err instanceof PslError && err.code === "invalid_provider");
   assert.equal(sent.length, 1, "pa gen apèl si provider a manke");
+});
+
+test("float: Bazik 20 000 + PSL 30 000 → 25 000 pase pa PSL dirèkteman, 40 000 refize san debi", async (t) => {
+  const psl = makeFakePsl({ balanceHtg: 30000 });
+  const service = makeService(psl, { bazikHtg: 20000 });
+  t.after(() => service.close());
+  // Ajan an an HTG pou chif yo klè.
+  await service.store.ensureWallet({ uid: "a", enterpriseId: "E", role: "agent", currency: "HTG" });
+  await service.store.creditWallet({ uid: "a", enterpriseId: "E", amountMinor: 10000000, currency: "HTG", type: "seed", idempotencyKey: "s" });
+  const agent = { uid: "a", enterpriseId: "E" };
+  const send = (htg, seed) => service.transfers.send({
+    network: "moncash", amountMinor: htg * 100, currency: "HTG", uid: "a", enterpriseId: "E", phone: "37123456", idempotencySeed: seed,
+  });
+
+  // 25 000 + 5 % = 26 250 > 20 000 Bazik; 25 000 + 7 % = 26 750 ≤ 30 000 PSL.
+  const quote = await service.transfers.quote({ network: "moncash", amountMinor: 2500000, currency: "HTG" });
+  assert.equal(quote.provider, "psl");
+  const viaPsl = await send(25000, "f-1");
+  assert.equal(viaPsl.provider, "psl");
+  assert.equal(psl.calls.length, 1, "Bazik pa eseye: PSL dirèkteman");
+  assert.equal(psl.calls[0].provider, "moncash");
+
+  // 10 000: Bazik kouvri l (10 500 ≤ 20 000).
+  const viaBazik = await send(10000, "f-2");
+  assert.notEqual(viaBazik.provider, "psl");
+
+  // 40 000: ni Bazik (20 000) ni PSL (30 000) pa ka voye l an yon fwa.
+  const before = await balanceOf(service.store, agent);
+  await assert.rejects(send(40000, "f-3"), (err) =>
+    err.code === "gateway_underfunded" && /Bazik 20000 HTG.*PSL 30000 HTG/.test(err.message));
+  assert.equal(await balanceOf(service.store, agent), before, "pa gen debi");
+});
+
+test("float: relè PSL dezaktive → mesaj Bazik sèlman", async (t) => {
+  const service = createBazikService({
+    store: createSqliteStore({ file: ":memory:" }),
+    client: createFakeBazikClient({ availableMinor: 2000000 }),
+    pslClient: makeFakePsl({ balanceHtg: 30000 }),
+    config: { ...TEST_CONFIG },
+    isPslFallbackEnabled: () => false,
+  });
+  t.after(() => service.close());
+  await assert.rejects(
+    service.transfers.quote({ network: "moncash", amountMinor: 2500000, currency: "HTG" }),
+    (err) => err.code === "gateway_underfunded" && /Kont Bazik la pa gen ase/.test(err.message));
 });

@@ -77,6 +77,16 @@ function createPslClient(config, { fetchImpl = globalThis.fetch } = {}) {
       return readPayout(data);
     },
 
+    /** GET /v1/balance — `{ balance: "25400.00", currency: "HTG", account_status }`. */
+    async balance() {
+      const data = await request("/v1/balance");
+      return {
+        availableMinor: Math.round(Number(data.balance || 0) * 100),
+        currency: String(data.currency || "HTG").toUpperCase(),
+        accountStatus: String(data.account_status || ""),
+      };
+    },
+
     async payoutStatus(id) {
       return readPayout(await request(`/v1/payouts/${encodeURIComponent(id)}`));
     },

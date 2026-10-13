@@ -152,3 +152,34 @@ test("chak pwovizyon parèt apa: HTG Bazik pa ka peye yon rechaj minit", async (
   assert.equal(result.coverage.reloadly.currency, "USD");
   assert.equal(result.coverage.reloadly.htg, 660, "5 USD × 132");
 });
+
+test("PSL: 20 000 Bazik + 30 000 PSL kouvri 40 000 an total, men pa yon sèl transfè", async () => {
+  await seedWallets([["agent", "HTG", 4000000]]); // 40 000 HTG
+  mockGateways({ bazikHtg: 20000, reloadlyUsd: 0 });
+  const bazik = getBazikService();
+  const saved = { psl: bazik.pslClient, enabled: bazik.pslFallbackEnabled };
+  bazik.pslClient = { balance: async () => ({ availableMinor: 3000000, currency: "HTG", accountStatus: "active" }) };
+  bazik.pslFallbackEnabled = () => true;
+  try {
+    const result = await checkSolvency({ enterpriseId: ENT });
+    assert.equal(result.coverage.psl.htg, 30000);
+    assert.equal(result.coverage.total, 50000, "Bazik + PSL");
+    assert.equal(result.status, "fragmented", "kouvri an total (50 000 ≥ 44 000), men...");
+    assert.equal(result.maxSingleTransfer, 28037.38, "30 000 / 1,07: PSL se pi gwo pasrèl la");
+    assert.equal(result.agentsOverCap.length, 1);
+    assert.equal(result.agentsOverCap[0].htg, 40000);
+    const alert = solvencyNotification(result);
+    assert.equal(alert.type, "solvency_fragmented");
+    assert.match(alert.title, /pi gwo transfè posib/);
+
+    // Relè PSL dezaktive: sòld la parèt men li pa konte.
+    bazik.pslFallbackEnabled = () => false;
+    const off = await checkSolvency({ enterpriseId: ENT });
+    assert.equal(off.coverage.psl.htg, 30000);
+    assert.equal(off.coverage.total, 20000);
+    assert.equal(off.status, "uncovered");
+  } finally {
+    bazik.pslClient = saved.psl;
+    bazik.pslFallbackEnabled = saved.enabled;
+  }
+});

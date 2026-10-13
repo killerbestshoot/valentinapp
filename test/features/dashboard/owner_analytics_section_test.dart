@@ -55,17 +55,19 @@ class _FakeAnalyticsApi extends AnalyticsApi {
 }
 
 class _FakeSystemApi extends SystemApi {
-  _FakeSystemApi() : super(client: ApiClient());
+  _FakeSystemApi([this.solvency = _covered]) : super(client: ApiClient());
+
+  final Map<String, dynamic> solvency;
+
+  static const _covered = {
+    'status': 'covered',
+    'ratio': 1.44,
+    'liabilities': {'total': 2148300},
+    'coverage': {'total': 3098500},
+  };
 
   @override
-  Future<SystemHealth> health() async => const SystemHealth(healthy: true, checks: {
-        'solvency': {
-          'status': 'covered',
-          'ratio': 1.44,
-          'liabilities': {'total': 2148300},
-          'coverage': {'total': 3098500},
-        },
-      });
+  Future<SystemHealth> health() async => SystemHealth(healthy: true, checks: {'solvency': solvency});
 }
 
 void main() {
@@ -107,6 +109,34 @@ void main() {
     expect(find.text('1 transfè pou verifye'), findsOneWidget);
     expect(find.text('Lè chaje'), findsOneWidget);
     expect(find.textContaining('+509 37 •• •• 89'), findsOneWidget);
+  });
+
+  testWidgets('solvabilite: Bazik + PSL, pi gwo transfè, ajan ki depase', (tester) async {
+    // Egzanp owner a: 20 000 Bazik + 30 000 PSL kouvri 40 000 an total, men pa an yon fwa.
+    SystemApi.override(_FakeSystemApi(const {
+      'status': 'fragmented',
+      'ratio': 1.25,
+      'liabilities': {'total': 40000},
+      'coverage': {
+        'total': 50000,
+        'bazik': {'htg': 20000},
+        'psl': {'configured': true, 'enabled': true, 'htg': 30000},
+        'reloadly': {'enabled': false},
+      },
+      'maxSingleTransfer': 28037.38,
+      'agentsOverCap': [
+        {'name': 'Mirlande', 'htg': 40000},
+      ],
+    }));
+    await pump(tester);
+
+    expect(find.text('Divize'), findsOneWidget);
+    expect(find.text('20 000,00 HTG'), findsOneWidget, reason: 'Bazik');
+    expect(find.text('30 000,00 HTG'), findsOneWidget, reason: 'PSL');
+    expect(find.text('50 000,00 HTG'), findsOneWidget, reason: 'total');
+    expect(find.text('28 037,38 HTG'), findsOneWidget, reason: 'pi gwo transfè an yon fwa');
+    expect(find.byKey(const ValueKey('over-cap')), findsOneWidget);
+    expect(find.text('• Mirlande: 40 000,00 HTG'), findsOneWidget);
   });
 
   testWidgets('chanje peryòd, deviz, gwoupman ak rezo rele serveur a ankò', (tester) async {

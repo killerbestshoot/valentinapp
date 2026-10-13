@@ -771,13 +771,26 @@ class _SolvencyCardState extends State<_SolvencyCard> {
           final ratio = s['ratio'] is num ? (s['ratio'] as num).toDouble() : null;
           double toD(dynamic v) => v is num ? v.toDouble() : 0;
           final debt = toD((s['liabilities'] as Map?)?['total']);
-          final cover = toD((s['coverage'] as Map?)?['total']);
+          final coverage = (s['coverage'] as Map?) ?? const {};
+          final cover = toD(coverage['total']);
+          final bazik = (coverage['bazik'] as Map?) ?? const {};
+          final psl = (coverage['psl'] as Map?) ?? const {};
+          final reloadly = (coverage['reloadly'] as Map?) ?? const {};
+          final maxSingle = s['maxSingleTransfer'] is num ? toD(s['maxSingleTransfer']) : null;
+          final overCap = ((s['agentsOverCap'] as List?) ?? const []).cast<Map>();
           final (label, color, bg) = switch (status) {
             'covered' => ('Kouvri', _ok, _okBg),
             'thin' => ('Jis', _warn, _warnBg),
+            'fragmented' => ('Divize', _warn, _warnBg),
             'uncovered' => ('Dekouvri', _crit, _critBg),
             _ => ('Enkoni', DashboardColors.muted, DashboardColors.surface),
           };
+          // PSL: sòld la parèt menm si relè a fèmen, men li konte sèlman si l aktive.
+          final pslValue = psl['configured'] != true
+              ? 'pa konfigire'
+              : psl['htg'] == null
+                  ? 'pa reponn'
+                  : '${fmtMoney(toD(psl['htg']))} HTG${psl['enabled'] == true ? '' : ' · relè fèmen'}';
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -819,9 +832,39 @@ class _SolvencyCardState extends State<_SolvencyCard> {
                 ],
               ),
               const SizedBox(height: 10),
-              _kv('Pwovizyon (Bazik + Reloadly)', '${fmtMoney(cover)} HTG'),
+              _kv('Bazik (MonCash · NatCash)', bazik['htg'] == null ? 'pa reponn' : '${fmtMoney(toD(bazik['htg']))} HTG'),
+              _kv('PSL Wallet (relè)', pslValue),
+              if (reloadly['enabled'] != false)
+                _kv('Reloadly (Minit)', reloadly['htg'] == null ? 'pa reponn' : '${fmtMoney(toD(reloadly['htg']))} HTG'),
+              _kv('Total pwovizyon', '${fmtMoney(cover)} HTG', bold: true),
               _kv('Wallet ajan yo pou kouvri', '${fmtMoney(debt)} HTG'),
               _kv('Maj', '${fmtMoney(cover - debt)} HTG', bold: true),
+              if (maxSingle != null)
+                _kv('Pi gwo transfè an yon sèl fwa', '${fmtMoney(maxSingle)} HTG'),
+              if (overCap.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  key: const ValueKey('over-cap'),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: _warnBg, borderRadius: BorderRadius.circular(8)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text(
+                      'Yon transfè pase pa YON pasrèl: ajan sa yo pa ka voye tout float yo an yon sèl fwa.',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+                    ),
+                    const SizedBox(height: 4),
+                    for (final a in overCap.take(5))
+                      Text('• ${'${a['name'] ?? ''}'.trim().isEmpty ? 'Ajan' : a['name']}: ${fmtMoney(toD(a['htg']))} HTG',
+                          style: const TextStyle(fontSize: 12.5)),
+                    if (overCap.length > 5)
+                      Text('… ak ${overCap.length - 5} lòt', style: const TextStyle(fontSize: 12, color: DashboardColors.muted)),
+                    const SizedBox(height: 4),
+                    const Text('Mete kòb sou Bazik oswa PSL, oswa divize transfè yo.',
+                        style: TextStyle(fontSize: 12, color: DashboardColors.muted)),
+                  ]),
+                ),
+              ],
             ],
           );
         },

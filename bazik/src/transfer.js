@@ -48,35 +48,61 @@ function createTransferUseCases({
     return wallet;
   }
 
+  let cachedPslBalance = null;
+
+  /** Sòld PSL Wallet (HTG), ak menm ti kach ak Bazik. `null` = PSL pa itilizab. */
+  async function pslBalance() {
+    if (!pslClient || typeof pslClient.balance !== "function") return null;
+    if (cachedPslBalance && cachedPslBalance.at > Date.now() - 30000) return cachedPslBalance.value;
+    const value = await pslClient.balance();
+    cachedPslBalance = { at: Date.now(), value };
+    return value;
+  }
+
   /**
-   * Verifye float Bazik la AVAN nou debite ajan an.
+   * Ki pasrèl ki ka voye transfè sa a AN YON SÈL FWA?
    *
-   * San sa, yon wallet Bazik vid bay yon sekans absid: nou debite ajan an,
-   * Bazik refize, nou ranbouse. Ajan an wè sòld li desann epi remonte san
-   * okenn esplikasyon, e nou pèdi 2 apèl rezo.
+   * Yon transfè pase pa YON pasrèl: 20 000 HTG sou Bazik + 30 000 sou PSL pa
+   * ka voye 40 000. Bazik an premye (5 %); si float li pa ase, PSL (7 % / 6 %)
+   * si relè a aktive e sòld li kouvri montan an + frè PSL. Si okenn pa ka,
+   * nou refize ANVAN debi a, ak sòld de pasrèl yo nan mesaj la.
    *
-   * Nou echwe FÈMEN sèlman lè nou KONNEN float la pa ase. Si tchèk la li menm
-   * echwe (rezo, endpoint bloke), nou kontinye: se Bazik ki otorite, pa nou.
+   * Si nou pa ka li yon sòld (rezo), nou pa bloke: se pasrèl la ki otorite.
+   * @returns {Promise<'bazik'|'psl'>}
    */
-  async function assertGatewayFunded(totalHtgMinor) {
-    let wallet;
-
+  async function resolveRoute({ network, amounts }) {
+    let bazik = null;
     try {
-      wallet = await gatewayBalance();
+      bazik = await gatewayBalance();
     } catch (err) {
-      if (err instanceof BazikError) return { checked: false, reason: err.code };
-      throw err;
+      if (!(err instanceof BazikError)) throw err;
     }
+    if (!bazik || bazik.availableMinor >= amounts.totalHtgMinor) return "bazik";
 
-    if (wallet.availableMinor < totalHtgMinor) {
+    if (canUsePsl(network)) {
+      const pslTotalHtgMinor = amounts.amountHtgMinor + Math.round((amounts.amountHtgMinor * PSL_FEE_PCT[network]) / 100);
+      let psl = null;
+      try {
+        psl = await pslBalance();
+      } catch (err) {
+        if (!(err instanceof PslError)) throw err;
+        return "psl"; // sòld PSL enkoni: PSL ap deside
+      }
+      if (!psl || psl.availableMinor >= pslTotalHtgMinor) return "psl";
       throw new DomainError(
         "gateway_underfunded",
-        `Kont Bazik la pa gen ase pwovizyon: ${fromMinor(wallet.availableMinor)} HTG disponib, ` +
-          `${fromMinor(totalHtgMinor)} HTG nesesè (frè ladan). Kontakte administratè a.`
+        `Okenn pasrèl pa ka voye ${fromMinor(amounts.amountHtgMinor)} HTG an yon sèl transfè: ` +
+          `Bazik ${fromMinor(bazik.availableMinor)} HTG (bezwen ${fromMinor(amounts.totalHtgMinor)}), ` +
+          `PSL ${fromMinor(psl.availableMinor)} HTG (bezwen ${fromMinor(pslTotalHtgMinor)}). ` +
+          `Divize l an plizyè transfè oswa kontakte administratè a.`
       );
     }
 
-    return { checked: true, availableMinor: wallet.availableMinor };
+    throw new DomainError(
+      "gateway_underfunded",
+      `Kont Bazik la pa gen ase pwovizyon: ${fromMinor(bazik.availableMinor)} HTG disponib, ` +
+        `${fromMinor(amounts.totalHtgMinor)} HTG nesesè (frè ladan). Kontakte administratè a.`
+    );
   }
 
   /**
@@ -153,9 +179,12 @@ function createTransferUseCases({
     const amountCurrency = String(currency || walletCurrency).toUpperCase();
 
     const amounts = await prepareAmounts({ amountMinor, currency: amountCurrency, walletCurrency, network });
+    // Menm règ ak `send`: yon devi ki pase vle di yon pasrèl ka voye l.
+    const provider = await resolveRoute({ network, amounts });
 
     return {
       network,
+      provider,
       currency: amountCurrency,
       amountMinor,
       amountHtg: fromMinor(amounts.amountHtgMinor),
@@ -207,7 +236,7 @@ function createTransferUseCases({
     return (network === "moncash" || network === "natcash") && Boolean(pslClient) && isPslFallbackEnabled();
   }
 
-  async function sendPslFallback({ transferId, network, amounts, walletCurrency, chargeFeeToWallet, phone, note, kind }) {
+  async function sendPslFallback({ transferId, network, amounts, walletCurrency, chargeFeeToWallet, phone, note, kind, why = "Bazik echwe" }) {
     if (!pslClient) return null;
 
     // PSL: 7 % MonCash, 6 % NatCash — kont 5 % ki te provizyone pou Bazik.
@@ -249,11 +278,11 @@ function createTransferUseCases({
         transferId,
         status: "failed",
         gatewayStatus: "psl_fee_unfunded",
-        failureReason: `Bazik echwe; ajisteman frè PSL pa pase: ${err.message}`,
+        failureReason: `${why}; ajisteman frè PSL pa pase: ${err.message}`,
       });
       throw new DomainError(
         err.code || "insufficient_funds",
-        `Bazik echwe epi sòld la pa kouvri frè PSL yo. Wallet la ranbouse. ${err.message}`,
+        `${why} epi sòld la pa kouvri frè PSL yo. Wallet la ranbouse. ${err.message}`,
         { transfer: settled.transfer }
       );
     }
@@ -283,7 +312,7 @@ function createTransferUseCases({
         });
         throw new DomainError(
           "transfer_pending_verification",
-          `Bazik pa t pase; PSL pa konfime repons li (${reason}). Transfè a an verifikasyon — pa voye l ankò.`,
+          `${why}; PSL pa konfime repons li (${reason}). Transfè a an verifikasyon — pa voye l ankò.`,
           { transfer: pending }
         );
       }
@@ -292,11 +321,11 @@ function createTransferUseCases({
         transferId,
         status: "failed",
         gatewayStatus: "psl_rejected",
-        failureReason: `Bazik echwe; PSL: ${reason}`,
+        failureReason: `${why}; PSL: ${reason}`,
       });
       throw new DomainError(
         err.code || "transfer_failed",
-        `Transfè a pa pase, wallet la ranbouse. Bazik echwe; PSL: ${reason}`,
+        `Transfè a pa pase, wallet la ranbouse. ${why}; PSL: ${reason}`,
         { transfer: settled.transfer }
       );
     }
@@ -417,7 +446,7 @@ function createTransferUseCases({
     const debitMinor =
       (chargeFeeToWallet ? amounts.debitMinor : amounts.amountWalletMinor) + platformFeeWalletMinor;
 
-    await assertGatewayFunded(amounts.totalHtgMinor);
+    const route = await resolveRoute({ network, amounts });
 
     // --- 1) Liy + debi ann ATOMIK ---
     const opened = await store.openTransfer(
@@ -467,6 +496,14 @@ function createTransferUseCases({
     // Yon lòt apèl te louvri l anvan nou (kous konkiran): pa gen dezyèm voye.
     if (opened.duplicate) {
       return { transfer: opened.transfer, duplicate: true, mode: client.mode };
+    }
+
+    // Float Bazik pa ase men PSL kouvri l: nou pa menm eseye Bazik.
+    if (route === "psl") {
+      return sendPslFallback({
+        transferId, network, amounts, walletCurrency, chargeFeeToWallet, phone, note, kind,
+        why: "Bazik pa gen ase float",
+      });
     }
 
     // --- 2) Rele Bazik ---

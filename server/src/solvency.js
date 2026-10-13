@@ -16,6 +16,12 @@
  * apa tou.
  *
  * Wallet owner an PA konte kòm dèt: se antrepriz la menm.
+ *
+ * PSL WALLET: lè relè a aktive, sòld PSL la peye MonCash/NatCash tou — li
+ * konte nan pwovizyon an. Men yon transfè pase pa YON SÈL pasrèl: 20 000 HTG
+ * sou Bazik + 30 000 sou PSL pa ka voye 40 000 an yon fwa. `maxSingleTransfer`
+ * = pi gwo transfè yon sèl pasrèl ka voye (frè ladan); yon ajan ki gen plis
+ * pase sa pa ka depanse float li an yon sèl transfè (`agentsOverCap`).
  */
 
 const { getDb } = require("./db/db");
@@ -25,6 +31,10 @@ const { money } = require("../../bazik/index.js");
 
 /** Konbyen pwovizyon anplis nou vle anvan nou rete trankil (10%). */
 const DEFAULT_BUFFER = 0.1;
+
+/** Frè pasrèl la sou montan an: Bazik 5 %, PSL 7 % (MonCash, pi chè a). */
+const BAZIK_FEE = 0.05;
+const PSL_FEE = 0.07;
 
 function bufferRatio(env = process.env) {
   const value = Number(env.SOLVENCY_BUFFER);
@@ -82,6 +92,57 @@ async function bazikCoverage() {
   }
 }
 
+/**
+ * Sòld PSL Wallet (HTG). Li konte nan pwovizyon an SÈLMAN si relè a aktive:
+ * yon sòld PSL ki pa ka sèvi pa kouvri anyen.
+ */
+async function pslCoverage() {
+  const service = getBazikService();
+  const client = service.pslClient;
+  if (!client || typeof client.balance !== "function") {
+    return { ok: true, configured: false, enabled: false, htgMinor: 0, htg: 0 };
+  }
+  const enabled = typeof service.pslFallbackEnabled === "function" ? service.pslFallbackEnabled() : false;
+  try {
+    const balance = await client.balance();
+    const htgMinor = balance.currency === "HTG" ? balance.availableMinor : 0;
+    return {
+      ok: true,
+      configured: true,
+      enabled,
+      available: money.fromMinor(balance.availableMinor),
+      currency: balance.currency,
+      accountStatus: balance.accountStatus,
+      htgMinor: enabled ? htgMinor : 0,
+      htg: money.fromMinor(htgMinor),
+    };
+  } catch (err) {
+    // PSL se yon relè: si nou pa ka li sòld li, nou pa konte l — san bloke rès la.
+    return { ok: true, configured: true, enabled, error: err.code || err.message, htgMinor: 0, htg: null };
+  }
+}
+
+/** Float chak staff (pa owner), an HTG, ak non li. */
+async function staffFloats(enterpriseId, rates) {
+  const rows = getDb()
+    .prepare(
+      `SELECT w.uid, w.currency, w.balance_minor, COALESCE(u.display_name, '') AS name FROM wallets w
+         LEFT JOIN users u ON u.uid = w.uid
+        WHERE w.enterprise_id = ? AND w.role != 'owner' AND w.balance_minor > 0`
+    )
+    .all(enterpriseId);
+  const out = [];
+  for (const row of rows) {
+    try {
+      const htg = await rates.convert(row.balance_minor, row.currency, "HTG");
+      out.push({ uid: row.uid, name: row.name, currency: row.currency, amountMinor: row.balance_minor, htgMinor: htg.amountMinor });
+    } catch {
+      // deviz san to: deja rapòte pa `liabilities`.
+    }
+  }
+  return out;
+}
+
 /** Pwovizyon Reloadly la (USD -> HTG ak to jounen an). */
 async function reloadlyCoverage(rates) {
   const service = getAirtimeService();
@@ -119,7 +180,12 @@ async function checkSolvency({ enterpriseId }) {
   const buffer = bufferRatio();
 
   const debt = await liabilities(enterpriseId, rates);
-  const [bazik, reloadly] = await Promise.all([bazikCoverage(), reloadlyCoverage(rates)]);
+  const [bazik, reloadly, psl, floats] = await Promise.all([
+    bazikCoverage(),
+    reloadlyCoverage(rates),
+    pslCoverage(),
+    staffFloats(enterpriseId, rates),
+  ]);
 
   const reasons = [...debt.reasons];
   if (!bazik.ok) reasons.push(`Bazik: ${bazik.error}`);
@@ -127,8 +193,18 @@ async function checkSolvency({ enterpriseId }) {
   if (bazik.ok && bazik.htgMinor === null) reasons.push(`Bazik an ${bazik.currency}, pa HTG`);
 
   const measurable = reasons.length === 0;
-  const coverageHtgMinor = (bazik.htgMinor || 0) + (reloadly.htgMinor || 0);
+  const coverageHtgMinor = (bazik.htgMinor || 0) + (reloadly.htgMinor || 0) + (psl.htgMinor || 0);
   const gapHtgMinor = debt.htgMinor - coverageHtgMinor;
+
+  // Pi gwo transfè MonCash/NatCash YON pasrèl ka voye, frè li ladan.
+  const maxSingleHtgMinor = Math.max(
+    Math.floor((bazik.htgMinor || 0) / (1 + BAZIK_FEE)),
+    Math.floor((psl.htgMinor || 0) / (1 + PSL_FEE))
+  );
+  const agentsOverCap = floats
+    .filter((f) => f.htgMinor > maxSingleHtgMinor)
+    .sort((a, b) => b.htgMinor - a.htgMinor)
+    .map((f) => ({ uid: f.uid, name: f.name, amount: money.fromMinor(f.amountMinor), currency: f.currency, htg: money.fromMinor(f.htgMinor) }));
 
   let status;
   if (!measurable) {
@@ -137,6 +213,9 @@ async function checkSolvency({ enterpriseId }) {
     status = "uncovered";
   } else if (coverageHtgMinor < Math.round(debt.htgMinor * (1 + buffer))) {
     status = "thin";
+  } else if (agentsOverCap.length) {
+    // Kouvri an TOTAL, men yon ajan pa ka depanse float li an yon sèl transfè.
+    status = "fragmented";
   } else {
     status = "covered";
   }
@@ -151,7 +230,11 @@ async function checkSolvency({ enterpriseId }) {
       total: measurable ? money.fromMinor(coverageHtgMinor) : null,
       bazik,
       reloadly,
+      psl,
     },
+    /** Pi gwo transfè MonCash/NatCash yon sèl pasrèl ka voye kounye a (HTG). */
+    maxSingleTransfer: measurable ? money.fromMinor(maxSingleHtgMinor) : null,
+    agentsOverCap: measurable ? agentsOverCap : [],
     /** Pozitif = konbyen HTG ki manke. */
     gap: measurable ? money.fromMinor(gapHtgMinor) : null,
     ratio: measurable && debt.htgMinor > 0 ? Number((coverageHtgMinor / debt.htgMinor).toFixed(4)) : null,
@@ -182,6 +265,19 @@ function solvencyNotification(result) {
         `Float ajan yo PA kouvri: ${amount(result.liabilities.total)} dèt vs ` +
         `${amount(result.coverage.total)} pwovizyon — manke ${amount(result.gap)}`,
       count: 1,
+    };
+  }
+
+  if (result.status === "fragmented") {
+    const first = result.agentsOverCap[0];
+    return {
+      type: "solvency_fragmented",
+      severity: "warning",
+      title:
+        `Float la kouvri an total, men pi gwo transfè posib se ${amount(result.maxSingleTransfer)}: ` +
+        `${result.agentsOverCap.length} ajan gen plis (${first.name || "ajan"}: ${amount(first.htg)}). ` +
+        `Mete kòb sou Bazik oswa PSL.`,
+      count: result.agentsOverCap.length,
     };
   }
 
@@ -217,7 +313,7 @@ async function checkCreditCapacity({ enterpriseId, creditMinor, currency, target
   }
 
   const rates = getBazikService().rates;
-  const [debt, bazik] = await Promise.all([liabilities(enterpriseId, rates), bazikCoverage()]);
+  const [debt, bazik, psl] = await Promise.all([liabilities(enterpriseId, rates), bazikCoverage(), pslCoverage()]);
 
   const unknown = (detail) => ({
     allowed: false,
@@ -237,10 +333,13 @@ async function checkCreditCapacity({ enterpriseId, creditMinor, currency, target
     return unknown(`${currency}: ${err.code || err.message}`);
   }
 
-  const maxCreditHtgMinor = Math.max(0, bazik.htgMinor - debt.htgMinor);
+  // PSL (si relè a aktive) peye MonCash/NatCash tou: li antre nan kapasite a.
+  const mobileHtgMinor = bazik.htgMinor + (psl.htgMinor || 0);
+  const maxCreditHtgMinor = Math.max(0, mobileHtgMinor - debt.htgMinor);
   const result = {
     debtHtg: money.fromMinor(debt.htgMinor),
     bazikHtg: money.fromMinor(bazik.htgMinor),
+    pslHtg: money.fromMinor(psl.htgMinor || 0),
     creditHtg: money.fromMinor(creditHtgMinor),
     maxCreditHtg: money.fromMinor(maxCreditHtgMinor),
   };
@@ -254,7 +353,7 @@ async function checkCreditCapacity({ enterpriseId, creditMinor, currency, target
       status: 409,
       code: "insufficient_coverage",
       message:
-        `Pwovizyon Bazik la pa ka kouvri kredi sa a: ${fmt(bazik.htgMinor)} disponib, ` +
+        `Pwovizyon ${psl.htgMinor ? "Bazik + PSL" : "Bazik"} la pa ka kouvri kredi sa a: ${fmt(mobileHtgMinor)} disponib, ` +
         `${fmt(debt.htgMinor)} deja pwomèt bay staff la. ` +
         `Maksimòm ou ka kredite kounye a: ${fmt(maxCreditHtgMinor)} ` +
         `(ou mande ${fmt(creditHtgMinor)}).`,
