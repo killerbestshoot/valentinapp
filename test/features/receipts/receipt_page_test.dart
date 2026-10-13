@@ -66,28 +66,25 @@ void main() {
     await pumpReceipt(tester, record: _tx(), delivery: _delivery);
 
     expect(find.text('Vanessa resevwa'), findsOneWidget);
-    expect(find.textContaining('14 500,00'), findsOneWidget,
+    expect(find.textContaining('14 500,00'), findsWidgets,
         reason: 'chif yo gwoupe: yon ajan pa dwe konte zewo yo');
     expect(find.text('LIVRE'), findsOneWidget);
   });
 
-  testWidgets('resi a montre to echanj lan ak montan voye a', (tester) async {
-    await pumpReceipt(tester, record: _tx(), delivery: _delivery);
-
-    expect(find.text('To echanj'), findsOneWidget);
-    expect(find.text('1 MXN = 7,25 HTG'), findsOneWidget);
-    expect(find.text('2 000,00 MXN'), findsWidgets);
-  });
-
-  testWidgets('anvwayè a peye frè a: 2100 an tou, 100 frè', (tester) async {
+  testWidgets('resi a: montan voye + konvèsyon, JANM to echanj ni frè', (tester) async {
     await pumpReceipt(tester, record: _tx(senderFee: 100), delivery: _delivery);
 
-    expect(find.text('KLIYAN AN PEYE AN TOU'), findsOneWidget);
-    expect(find.text('2 100,00 MXN'), findsOneWidget);
-    expect(find.text('100,00 MXN — anvwayè a peye l anplis'), findsOneWidget);
+    expect(find.text('KLIYAN AN VOYE'), findsOneWidget);
+    expect(find.text('2 000,00 MXN'), findsOneWidget, reason: 'montan voye a, frè a pa ladan l');
+    expect(find.text('2 000,00 MXN → 14 500,00 HTG'), findsOneWidget);
+    expect(find.text('To echanj'), findsNothing);
+    expect(find.textContaining('7,25'), findsNothing, reason: 'to a pa parèt');
+    expect(find.text('Frè'), findsNothing);
+    expect(find.textContaining('frè'), findsNothing);
+    expect(find.textContaining('2 100'), findsNothing, reason: 'total ak frè a pa parèt');
   });
 
-  testWidgets('frè dedwi: resi a di l', (tester) async {
+  testWidgets('frè dedwi: kliyan an wè sa l bay la, pa frè a', (tester) async {
     await pumpReceipt(
       tester,
       record: const TransactionRecord(
@@ -97,15 +94,11 @@ void main() {
       ),
     );
 
-    expect(find.text('100,00 MXN — dedwi sou montan an'), findsOneWidget);
-    expect(find.text('2 000,00 MXN'), findsOneWidget, reason: 'kliyan an bay 2000 an tou');
-  });
-
-  testWidgets('san frè', (tester) async {
-    await pumpReceipt(tester, record: _tx(), delivery: _delivery);
-
-    expect(find.text('Pa gen frè'), findsOneWidget);
-    expect(find.text('san frè'), findsOneWidget);
+    // San konvèsyon: "voye 2000 / resevwa 1900" ta revele frè a — sèlman sa benefisyè a resevwa.
+    expect(find.textContaining('1 900,00'), findsOneWidget);
+    expect(find.text('KLIYAN AN VOYE'), findsNothing);
+    expect(find.textContaining('2 000'), findsNothing);
+    expect(find.textContaining('100,00'), findsNothing);
   });
 
   testWidgets('resi a pa janm montre frè pasrèl la', (tester) async {
@@ -144,11 +137,11 @@ void main() {
     expect(find.text('Pa livre bay Vanessa'), findsOneWidget);
   });
 
-  testWidgets('san transfè, resi a sote konvèsyon an men li kenbe frè a', (tester) async {
+  testWidgets('san transfè: pa gen konvèsyon ni frè', (tester) async {
     await pumpReceipt(tester, record: _tx(senderFee: 100));
 
     expect(find.text('To echanj'), findsNothing);
-    expect(find.text('Frè'), findsOneWidget, reason: 'frè a pa depann de to a');
+    expect(find.text('Frè'), findsNothing, reason: 'frè a pa janm sou resi a');
   });
 
   test('tèks resi a pou kopye', () {
@@ -156,7 +149,10 @@ void main() {
       ReceiptData(record: _tx(senderFee: 100), delivery: _delivery, receipt: _receipt),
     );
     expect(text, contains('Vanessa resevwa: 14 500,00 HTG'));
-    expect(text, contains('Kliyan an peye an tou: 2 100,00 MXN'));
+    expect(text, contains('Montan voye: 2 000,00 MXN'));
+    expect(text, isNot(contains('Frè')));
+    expect(text, isNot(contains('To echanj')));
+    expect(text, isNot(contains('2 100')));
     expect(text, contains('+509 37 •• •• 56'));
     expect(text, contains('Verifye: https://voupvapcash.com/api/receipts/verify'));
   });

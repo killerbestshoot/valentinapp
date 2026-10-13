@@ -52,7 +52,7 @@ router.get("/verify", (req, res) => {
   const given = String(req.query.s || "").trim().toLowerCase();
 
   const row = txId
-    ? getDb().prepare("SELECT tx_id, amount_minor, currency, sender_fee_minor, status, service, created_at FROM transactions WHERE tx_id = ?").get(txId)
+    ? getDb().prepare("SELECT tx_id, amount_minor, currency, sender_fee_minor, fee_mode, status, service, created_at FROM transactions WHERE tx_id = ?").get(txId)
     : null;
 
   const expected = row ? signReceipt(row) : "";
@@ -75,8 +75,8 @@ router.get("/verify", (req, res) => {
     reference: row.tx_id,
     service: row.service,
     status: row.status,
-    amount: money.fromMinor(row.amount_minor),
-    fee: money.fromMinor(row.sender_fee_minor || 0),
+    // Montan kliyan an voye, san frè (menm règ ak resi a): frè dedwi = sa l bay.
+    amount: money.fromMinor(row.fee_mode === "deducted" ? row.amount_minor + (row.sender_fee_minor || 0) : row.amount_minor),
     currency: row.currency,
     createdAt: row.created_at,
   });

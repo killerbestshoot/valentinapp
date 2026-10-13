@@ -308,46 +308,45 @@ class ShareableReceipt extends StatelessWidget {
                         ),
                         Text('sou ${tx.serviceName} · ${receiptDate(tx.createdAt)}',
                             style: const TextStyle(color: _muted, fontSize: 11.5)),
-                        const SizedBox(height: 14),
-                        Container(
-                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                          decoration: BoxDecoration(
-                            color: failed ? const Color(0xFFFBE4E4) : _paper2,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(failed ? 'RANBOUSE BAY KLIYAN AN' : 'KLIYAN AN PEYE AN TOU',
-                                        style: TextStyle(
-                                            fontSize: 10,
-                                            letterSpacing: 0.8,
-                                            fontWeight: FontWeight.w800,
-                                            color: failed ? const Color(0xFFB91C1C) : _muted)),
-                                    const SizedBox(height: 2),
-                                    FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerLeft,
-                                      child: Text('${groupedMoney(tx.totalPaid)} ${tx.currency}',
-                                          style: const TextStyle(
-                                              fontSize: 22, fontWeight: FontWeight.w900, color: _ink)),
-                                    ),
-                                  ],
+                        if (showSentAmount(tx, delivery) || failed) ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                            decoration: BoxDecoration(
+                              color: failed ? const Color(0xFFFBE4E4) : _paper2,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(failed ? 'RANBOUSE BAY KLIYAN AN' : 'KLIYAN AN VOYE',
+                                          style: TextStyle(
+                                              fontSize: 10,
+                                              letterSpacing: 0.8,
+                                              fontWeight: FontWeight.w800,
+                                              color: failed ? const Color(0xFFB91C1C) : _muted)),
+                                      const SizedBox(height: 2),
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        // Ranbousman: tout sa kliyan an te bay. Sinon: montan li voye a,
+                                        // SAN frè ni to (demann kliyan an).
+                                        child: Text(
+                                            '${groupedMoney(failed ? tx.totalPaid : sentAmount(tx))} ${tx.currency}',
+                                            style: const TextStyle(
+                                                fontSize: 22, fontWeight: FontWeight.w900, color: _ink)),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                tx.hasSenderFee
-                                    ? '${groupedMoney(tx.amount)} + ${groupedMoney(tx.senderFee)} frè'
-                                    : 'san frè',
-                                style: const TextStyle(fontSize: 11, color: _muted),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
+                        ],
                         const SizedBox(height: 8),
                         ..._rows(tx, delivery),
                       ],
@@ -411,9 +410,13 @@ class ShareableReceipt extends StatelessWidget {
       ('Sèvis', tx.serviceName, false),
       ('Benefisyè', tx.customerName.trim().isEmpty ? '—' : tx.customerName.trim(), false),
       ('Telefòn', maskPhone ? maskedPhone(tx.customerPhone) : tx.customerPhone, true),
-      if (delivery != null) ('Montan voye', '${groupedMoney(tx.amount)} ${tx.currency}', false),
-      if (delivery != null) ('To echanj', rateLine(delivery), true),
-      ('Frè', senderFeeLine(tx), false),
+      // Pa gen ni frè ni to echanj sou resi a: sèlman montan voye a ak konvèsyon an.
+      if (delivery != null)
+        (
+          'Konvèsyon',
+          '${groupedMoney(sentAmount(tx))} ${tx.currency} → ${groupedMoney(delivery.amountHtg)} HTG',
+          false
+        ),
       if (tx.staffName.trim().isNotEmpty) ('Ajan', tx.staffName.trim(), false),
     ];
     return [
@@ -534,9 +537,15 @@ String groupedMoney(double value) {
   return '${value < 0 ? '−' : ''}$grouped,${parts.last}';
 }
 
-/// `1 USD = 132,00 HTG`. Sa kliyan an bezwen pou l verifye kalkil la li menm.
-String rateLine(DeliveryDetails delivery) =>
-    '1 ${delivery.rateCurrency} = ${groupedMoney(delivery.rateToHtg)} HTG';
+/// Montan kliyan an voye, jan li konnen l: sa ajan an te tape.
+///   - frè anplis: montan an (benefisyè a resevwa tout montan sa a)
+///   - frè dedwi: sa kliyan an bay (frè a deja ladan l)
+/// Frè a pa janm parèt sou resi a (demann kliyan an).
+double sentAmount(TransactionRecord tx) => tx.feeDeducted ? tx.totalPaid : tx.amount;
+
+/// San konvèsyon (menm deviz) ak frè dedwi, "voye 2000 / resevwa 1900" ta
+/// revele frè a pa soustraksyon: nou montre sèlman sa benefisyè a resevwa.
+bool showSentAmount(TransactionRecord tx, DeliveryDetails? delivery) => delivery != null || sentAmount(tx) == tx.amount;
 
 /// `+509 37 •• •• 89`: imaj la sikile, nimewo konplè a pa dwe ladan l.
 String maskedPhone(String phone) {
@@ -547,8 +556,18 @@ String maskedPhone(String phone) {
 }
 
 const _months = [
-  'janvye', 'fevriye', 'mas', 'avril', 'me', 'jen',
-  'jiyè', 'out', 'septanm', 'oktòb', 'novanm', 'desanm',
+  'janvye',
+  'fevriye',
+  'mas',
+  'avril',
+  'me',
+  'jen',
+  'jiyè',
+  'out',
+  'septanm',
+  'oktòb',
+  'novanm',
+  'desanm',
 ];
 
 String receiptDate(DateTime? at) {
@@ -556,16 +575,6 @@ String receiptDate(DateTime? at) {
   final l = at.toLocal();
   String two(int v) => v.toString().padLeft(2, '0');
   return '${l.day} ${_months[l.month - 1]} ${l.year} · ${two(l.hour)}:${two(l.minute)}';
-}
-
-/// Frè kliyan an peye — pa frè pasrèl la.
-///
-/// Frè pasrèl la (Bazik, PSL) se yon depans antrepriz la: li pa gade kliyan
-/// an, e montre l sou resi a ta fè l kwè se nan lajan pa l li soti.
-String senderFeeLine(TransactionRecord tx) {
-  if (!tx.hasSenderFee) return 'Pa gen frè';
-  final amount = '${groupedMoney(tx.senderFee)} ${tx.currency}';
-  return tx.feeDeducted ? '$amount — dedwi sou montan an' : '$amount — anvwayè a peye l anplis';
 }
 
 /// Vèsyon tèks resi a (pou kopye).
@@ -582,11 +591,8 @@ String receiptText(ReceiptData data, {bool maskPhone = true}) {
     'VOUPVAPCASH · Resi ${tx.txId}',
     receiptDate(tx.createdAt),
     '$name — ${maskPhone ? maskedPhone(tx.customerPhone) : tx.customerPhone} (${tx.serviceName})',
+    if (showSentAmount(tx, d)) 'Montan voye: ${groupedMoney(sentAmount(tx))} ${tx.currency}',
     if (d != null) '$name resevwa: ${groupedMoney(d.amountHtg)} HTG',
-    'Montan voye: ${groupedMoney(tx.amount)} ${tx.currency}',
-    if (d != null) 'To echanj: ${rateLine(d)}',
-    'Frè: ${senderFeeLine(tx)}',
-    'Kliyan an peye an tou: ${groupedMoney(tx.totalPaid)} ${tx.currency}',
     'Estati: $status',
     if (data.receipt != null) 'Verifye: ${data.receipt!.verifyUrl}',
   ].join('\n');
