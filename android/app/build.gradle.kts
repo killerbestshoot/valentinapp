@@ -1,6 +1,18 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Kle siyati pwodiksyon an: android/key.properties (pa nan git). Li pwente sou
+// ~/.voupvapcash/voupvapcash-release.jks. PÈDI KLE SA A = pa ka mete app la ajou
+// sou telefòn yo ankò: fè yon kopi sekirize.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -10,22 +22,38 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    namespace = "com.example.mon_premye_app"
+    namespace = "com.voupvapcash.app"
 
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
     defaultConfig {
-        applicationId = "com.example.mon_premye_app"
+        applicationId = "com.voupvapcash.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            // San key.properties, yon build release ta siyen ak kle debug la:
+            // nou refize pito pase distribye yon APK ki pa ka mete ajou.
+            if (!keystorePropertiesFile.exists()) {
+                throw GradleException("android/key.properties manke: build release la bezwen kle siyati VOUPVAPCASH la.")
+            }
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
