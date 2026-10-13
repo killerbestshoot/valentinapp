@@ -78,7 +78,7 @@ function setExchangeMargin(margin, updatedBy = "") {
  */
 const BANK_ACCOUNTS_KEY = "bank_accounts";
 const MAX_BANK_ACCOUNTS = 5;
-const BANK_CURRENCIES = ["HTG", "USD"];
+const BANK_CURRENCIES = ["HTG", "USD", "MXN"];
 
 function bankKey(enterpriseId) {
   return `${BANK_ACCOUNTS_KEY}:${enterpriseId}`;

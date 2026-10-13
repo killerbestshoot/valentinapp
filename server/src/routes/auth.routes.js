@@ -13,10 +13,10 @@
  */
 
 const express = require("express");
-const { randomInt } = require("node:crypto");
+const { randomInt, randomBytes, timingSafeEqual } = require("node:crypto");
 
 const users = require("../auth/users");
-const { createSession, destroySession } = require("../auth/sessions");
+const { createSession, destroySession, hashToken } = require("../auth/sessions");
 const { requireAuth, readToken } = require("../auth/middleware");
 const { getDb, now } = require("../db/db");
 const AppIds = require("../../../bazik/src/ids");
@@ -216,6 +216,78 @@ router.post("/login", async (req, res) => {
   } catch (err) {
     return send(res, err);
   }
+});
+
+// --- Koneksyon byometrik ----------------------------------------------------
+//
+// Telefòn nan pa janm kenbe modpas la. Lè moun nan aktive byometri, sèvè a bay
+// yon kle (`deviceId` + `secret`) ke app la mete nan kofrefò Android la, dèyè
+// anprent/figi. Pou konekte, app la debloke kle a epi voye l isit la.
+
+const MAX_BIOMETRIC_DEVICES = 5;
+
+router.post("/biometric/enroll", requireAuth, (req, res) => {
+  try {
+    const db = getDb();
+    const deviceId = randomBytes(16).toString("hex");
+    const secret = randomBytes(32).toString("base64url");
+    db.prepare(
+      `INSERT INTO biometric_devices (device_id, uid, secret_hash, label, created_at)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(deviceId, req.user.uid, hashToken(secret), String(req.body?.label || "").slice(0, 80), Date.now());
+    // Pa plis pase 5 aparèy: pi ansyen an soti.
+    db.prepare(
+      `DELETE FROM biometric_devices WHERE uid = ? AND device_id NOT IN (
+         SELECT device_id FROM biometric_devices WHERE uid = ? ORDER BY created_at DESC LIMIT ?)`
+    ).run(req.user.uid, req.user.uid, MAX_BIOMETRIC_DEVICES);
+    return res.json({ ok: true, deviceId, secret });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+router.post("/biometric/login", async (req, res) => {
+  const deviceId = String(req.body?.deviceId || "");
+  const secret = String(req.body?.secret || "");
+  const gate = throttle(`bio:${deviceId}`);
+  if (!gate.allowed) {
+    return res.status(429).json({
+      ok: false, code: "too_many_attempts",
+      message: `Twòp tantativ. Tann ${gate.retryAfterSeconds} segond.`, retryAfterSeconds: gate.retryAfterSeconds,
+    });
+  }
+
+  const db = getDb();
+  const device = db.prepare("SELECT * FROM biometric_devices WHERE device_id = ?").get(deviceId);
+  const expected = Buffer.from(device?.secret_hash || "0".repeat(64), "hex");
+  const given = Buffer.from(hashToken(secret), "hex");
+  if (!device || !secret || !timingSafeEqual(expected, given)) {
+    return res.status(401).json({
+      ok: false, code: "biometric_revoked",
+      message: "Koneksyon byometrik la pa valid ankò. Konekte ak modpas ou epi reaktive l nan Paramèt.",
+    });
+  }
+
+  const user = db.prepare("SELECT uid, is_active FROM users WHERE uid = ?").get(device.uid);
+  if (!user || user.is_active !== 1) {
+    return res.status(403).json({ ok: false, code: "account_disabled", message: "Kont sa a dezaktive." });
+  }
+
+  clearThrottle(`bio:${deviceId}`);
+  db.prepare("UPDATE biometric_devices SET last_used_at = ? WHERE device_id = ?").run(Date.now(), deviceId);
+  const session = createSession(user.uid, { userAgent: req.header("user-agent") || "" });
+  return res.json({
+    ok: true,
+    user: users.profileOf(user.uid),
+    token: session.token,
+    expiresAt: session.expiresAt,
+    idleTimeoutMs: session.idleTimeoutMs,
+  });
+});
+
+router.delete("/biometric/:deviceId", requireAuth, (req, res) => {
+  getDb().prepare("DELETE FROM biometric_devices WHERE device_id = ? AND uid = ?").run(req.params.deviceId, req.user.uid);
+  return res.json({ ok: true });
 });
 
 router.post("/logout", (req, res) => {

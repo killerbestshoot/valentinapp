@@ -15,9 +15,9 @@
  * MIN_BUILD si vèsyon anvan an pa dwe mache ankò (oswa APP_MIN_BUILD nan .env).
  */
 
-const LATEST_VERSION = "1.2.0";
-const LATEST_BUILD = 7;
-const MIN_BUILD = 7;
+const LATEST_VERSION = "1.3.0";
+const LATEST_BUILD = 8;
+const MIN_BUILD = 8;
 const DOWNLOAD_URL = "https://voupvapcash.com/download/voupvapcash.apk";
 
 /** Wout ki pa soti nan app la (webhook pasrèl yo) oswa ki deja kontwole. */

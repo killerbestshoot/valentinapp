@@ -55,6 +55,8 @@ app.use(
 // bytes orijinal yo, donk yon JSON.parse -> stringify t ap kase verifikasyon an.
 app.use(
   express.json({
+    // Prèv virement (foto) an base64 nan demann rechaj la: ~1 Mo, menm limit ak nginx.
+    limit: "1mb",
     verify: (req, res, buf) => {
       req.rawBody = buf.toString("utf8");
     },

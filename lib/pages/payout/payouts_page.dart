@@ -1,3 +1,4 @@
+import 'package:mon_premye_app/core/security/biometric_service.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mon_premye_app/core/models/app_role.dart';
@@ -168,6 +169,7 @@ class _PayoutsPageState extends State<PayoutsPage> {
     }
 
     if (!ok || amount == null) return;
+    if (!await BiometricService.instance.confirm('Konfime demann payout la')) return;
 
     try {
       await PayoutsApi.instance.request(
@@ -232,6 +234,7 @@ class _PayoutsPageState extends State<PayoutsPage> {
     final reference = refCtrl.text.trim();
     refCtrl.dispose();
     if (!ok) return;
+    if (!await BiometricService.instance.confirm('Konfime payout bank la')) return;
 
     setState(() {
       _busyId = payout.requestId;
@@ -274,6 +277,7 @@ class _PayoutsPageState extends State<PayoutsPage> {
         false;
 
     if (!ok) return;
+    if (!await BiometricService.instance.confirm('Konfime payout la')) return;
 
     setState(() {
       _busyId = payout.requestId;

@@ -21,7 +21,9 @@ const express = require("express");
 
 const { getRatesRefresher } = require("../rates/rates_refresher");
 
-const { getDb, now } = require("../db/db");
+const fs = require("node:fs");
+const path = require("node:path");
+const { getDb, now, uploadsDir } = require("../db/db");
 const { getBazikService } = require("../bazik_service");
 const { requireAuth, requireRole, requireEnterprise } = require("../auth/middleware");
 const { money } = require("../../../bazik/index.js");
@@ -90,6 +92,25 @@ async function walletOf(uid, enterpriseId) {
     exists: true,
   };
 }
+
+/** Prèv virement: foto JPEG/PNG/WebP, 700 Ko maksimòm (app la konprese l avan). */
+const PROOF_TYPES = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+const PROOF_MAX_BYTES = 700 * 1024;
+
+function readProof(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const ext = PROOF_TYPES[String(raw.mime || "").toLowerCase()];
+  if (!ext) throw { code: "invalid_proof", message: "Prèv la dwe yon foto (JPEG, PNG oswa WebP)." };
+  const bytes = Buffer.from(String(raw.data || ""), "base64");
+  if (bytes.length < 100) throw { code: "invalid_proof", message: "Foto prèv la vid oswa domaje." };
+  if (bytes.length > PROOF_MAX_BYTES) {
+    throw { code: "proof_too_large", message: "Foto a twò lou (700 Ko maksimòm). Pran l ankò oswa koupe l." };
+  }
+  return { ext, bytes };
+}
+
+/** Referans bank yo konpare san espas ni majiskil: "TRX 889" = "trx889". */
+const normRef = (value) => String(value || "").replace(/\s+/g, "").toUpperCase();
 
 router.get("/me", requireAuth, requireEnterprise, async (req, res) => {
   try {
@@ -175,6 +196,7 @@ router.get("/topups", requireAuth, requireEnterprise, (req, res) => {
         method: row.network === "bank" ? "bank" : "manual",
         bankReference: row.bank_reference || "",
         bankAccount: row.bank_account || "",
+        hasProof: Boolean(row.proof_file),
         requestedByName: row.requested_by_name,
         createdAt: row.created_at,
         creditedAt: row.credited_at,
@@ -229,6 +251,7 @@ router.post(
       const method = body.method === "bank" ? "bank" : "manual";
       let bankReference = "";
       let bankAccount = "";
+      let proof = null;
 
       if (method === "bank") {
         bankReference = String(body.bankReference || "").trim().slice(0, 80);
@@ -237,6 +260,33 @@ router.post(
             code: "missing_bank_reference",
             message: "Antre referans virement an (nimewo resi bank lan).",
           });
+        }
+
+        // Yon referans = yon virement: menm resi a pa ka kredite de fwa.
+        // Sèl yon demann REJTE libere referans lan (moun nan te ka tape mal).
+        const dup = getDb()
+          .prepare(
+            `SELECT request_id FROM wallet_topup_requests
+              WHERE enterprise_id = ? AND network = 'bank' AND status != 'rejected'
+                AND UPPER(REPLACE(bank_reference, ' ', '')) = ?`
+          )
+          .get(req.user.enterpriseId, normRef(bankReference));
+        if (dup) {
+          return send(res, {
+            status: 409,
+            code: "duplicate_bank_reference",
+            message: `Referans "${bankReference}" deja itilize pou yon lòt demann rechaj. Chak virement gen pwòp referans li.`,
+          });
+        }
+
+        // Foto resi / kaptire virement an: obligatwa, admin nan verifye l.
+        try {
+          proof = readProof(body.proof);
+        } catch (err) {
+          return send(res, err);
+        }
+        if (!proof) {
+          return send(res, { code: "missing_proof", message: "Mete foto prèv virement an (resi bank lan oswa yon kaptire ekran)." });
         }
 
         const accounts = getBankAccounts(req.user.enterpriseId);
@@ -303,6 +353,12 @@ router.post(
           String(body.note || "") + rateNote, bankReference, bankAccount, now(), now()
         );
 
+      if (proof) {
+        const name = `${requestId}.${proof.ext}`;
+        fs.writeFileSync(path.join(uploadsDir("topups"), name), proof.bytes);
+        getDb().prepare("UPDATE wallet_topup_requests SET proof_file = ? WHERE request_id = ?").run(name, requestId);
+      }
+
       // `autoApprove` = owner/admin ap mete kòb dirèkteman, san de etap.
       // Nou pase pa MENM chemen an (`settleTopup`), donk rejis la ekri menm
       // jan an: pa gen "rakousi" ki sote tras la.
@@ -346,6 +402,25 @@ router.post(
     }
   }
 );
+
+/** Foto prèv la, an base64 (app la montre l ak Image.memory, sou web tou). */
+router.get("/topups/:id/proof", requireAuth, requireEnterprise, (req, res) => {
+  try {
+    const row = getDb()
+      .prepare("SELECT target_uid, proof_file FROM wallet_topup_requests WHERE request_id = ? AND enterprise_id = ?")
+      .get(req.params.id, req.user.enterpriseId);
+    if (!row || !row.proof_file) return res.status(404).json({ ok: false, code: "proof_not_found", message: "Pa gen prèv pou demann sa a." });
+    const manager = ["owner", "admin", "administrator"].includes(req.user.role);
+    if (!manager && row.target_uid !== req.user.uid) return res.status(403).json({ ok: false, code: "forbidden" });
+
+    const file = path.join(uploadsDir("topups"), path.basename(row.proof_file));
+    const ext = path.extname(file).slice(1);
+    const mime = Object.keys(PROOF_TYPES).find((m) => PROOF_TYPES[m] === ext) || "image/jpeg";
+    return res.json({ ok: true, mime, data: fs.readFileSync(file).toString("base64") });
+  } catch (err) {
+    return send(res, err);
+  }
+});
 
 router.post(
   "/topups/:id/approve",

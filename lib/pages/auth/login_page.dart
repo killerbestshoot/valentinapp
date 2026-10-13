@@ -1,3 +1,4 @@
+import 'package:mon_premye_app/core/security/biometric_service.dart';
 import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -49,6 +50,23 @@ class _LoginPageState extends State<LoginPage> {
     _loginUseCase = LoginUseCase(repository: widget.authRepository);
     _loadRememberedLogin();
     _announceTimeout();
+    // Koneksyon byometrik aktive: nou mande anprent lan touswit.
+    if (BiometricService.instance.loginEnabled.value) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _biometricSignIn());
+    }
+  }
+
+  Future<void> _biometricSignIn() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      final user = await BiometricService.instance.signIn();
+      if (user != null && mounted) context.go('/');
+    } catch (e) {
+      _showMessage(_authErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   /// Si se minitè inaktivite a ki te dekonekte moun nan, nou di l poukisa.
@@ -360,6 +378,22 @@ class _LoginPageState extends State<LoginPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Logo a anlè fòm nan: li parèt menm sou telefòn, kote panno mak la piti.
+              Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Image.asset(
+                    'assets/logos/voupvapcash.png',
+                    key: const ValueKey('login-logo'),
+                    width: 96,
+                    height: 96,
+                    fit: BoxFit.contain,
+                    semanticLabel: 'VOUPVAPCASH',
+                    errorBuilder: (_, __, ___) => const SizedBox(height: 96),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               Text(
                 _isLogin ? 'Konekte' : 'Kreye kont',
                 style: theme.textTheme.headlineSmall?.copyWith(
@@ -525,6 +559,25 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                 ),
               ),
+              if (_isLogin)
+                ValueListenableBuilder<bool>(
+                  valueListenable: BiometricService.instance.loginEnabled,
+                  builder: (context, enabled, _) => !enabled
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: OutlinedButton.icon(
+                            key: const ValueKey('biometric-login'),
+                            onPressed: _loading ? null : _biometricSignIn,
+                            icon: const Icon(Icons.fingerprint),
+                            label: Text(
+                              'Konekte ak anprent'
+                              '${BiometricService.instance.loginEmail.value == null ? '' : ' · ${BiometricService.instance.loginEmail.value}'}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                ),
               const SizedBox(height: 14),
               OutlinedButton.icon(
                 onPressed: _loading ? null : _toggleMode,
@@ -620,16 +673,24 @@ class _LoginBrandPanel extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 56,
-            height: 56,
+            width: 72,
+            height: 72,
+            padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: const Color(0xFFE7F6E9),
-              borderRadius: BorderRadius.circular(8),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: const Icon(
-              Icons.account_balance_wallet_outlined,
-              color: Color(0xFF1F7A3A),
-              size: 30,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.asset(
+                'assets/logos/voupvapcash.png',
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: Color(0xFF1F7A3A),
+                  size: 30,
+                ),
+              ),
             ),
           ),
           SizedBox(height: compact ? 18 : 32),

@@ -72,6 +72,8 @@ const COMMISSION_LOG_EXTRA_COLUMNS = [
 const TOPUP_EXTRA_COLUMNS = [
   ["bank_reference", "TEXT NOT NULL DEFAULT ''"],
   ["bank_account", "TEXT NOT NULL DEFAULT ''"],
+  // Foto prèv virement an (non fichye a nan uploads/topups).
+  ["proof_file", "TEXT NOT NULL DEFAULT ''"],
 ];
 
 /** Payout sou yon kont bank (`network = 'bank'`) olye MonCash/NatCash. */
@@ -210,4 +212,13 @@ function now() {
   return Date.now();
 }
 
-module.exports = { getDb, getDbFile, transaction, resetDb, now };
+/** Dosye fichye yo (prèv virement...): bò kote baz la, nan menm volim /data la. */
+function uploadsDir(...parts) {
+  const file = getDbFile();
+  const base = file === ":memory:" ? path.join(require("node:os").tmpdir(), "voupvapcash-uploads") : path.join(path.dirname(file), "uploads");
+  const dir = path.join(base, ...parts);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+module.exports = { getDb, getDbFile, uploadsDir, transaction, resetDb, now };

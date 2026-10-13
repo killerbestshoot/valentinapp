@@ -219,6 +219,7 @@ class _BankAccountDialogState extends State<_BankAccountDialog> {
                 segments: const [
                   ButtonSegment(value: 'HTG', label: Text('HTG')),
                   ButtonSegment(value: 'USD', label: Text('USD')),
+                  ButtonSegment(value: 'MXN', label: Text('MXN')),
                 ],
                 selected: {_currency},
                 onSelectionChanged: (s) => setState(() => _currency = s.first),

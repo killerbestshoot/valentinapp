@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/core/realtime/realtime.dart';
@@ -143,6 +144,7 @@ class AgentHomeState extends State<AgentHome> {
         note: result.note,
         bankReference: result.bankReference,
         bankAccountId: result.bankAccountId,
+        proof: result.proof,
       );
       _toast(result.bankReference == null
           ? 'Demann rechaj la voye bay administratè a.'
@@ -787,7 +789,7 @@ class _TxList extends StatelessWidget {
   }
 }
 
-typedef _TopupResult = ({double amount, String note, String? bankReference, String? bankAccountId});
+typedef _TopupResult = ({double amount, String note, String? bankReference, String? bankAccountId, TopupProof? proof});
 
 /// Mande yon rechaj: kach (bay administratè a) oswa virement bancaire sou
 /// youn nan kont antrepriz la. Pou virement, ajan an bay referans resi a.
@@ -807,6 +809,31 @@ class _TopupDialogState extends State<_TopupDialog> {
   final _refCtrl = TextEditingController();
   final _accounts = WalletApi.instance.bankAccounts().catchError((_) => <BankAccount>[]);
   bool _bank = false;
+
+  /// Foto resi / kaptire virement an: obligatwa pou yon virement.
+  TopupProof? _proof;
+  String? _proofError;
+
+  Future<void> _pickProof(ImageSource source) async {
+    try {
+      // Konprese sou telefòn nan: sèvè a aksepte 700 Ko maksimòm.
+      final file = await ImagePicker().pickImage(source: source, imageQuality: 60, maxWidth: 1400, maxHeight: 1400);
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (bytes.length > 700 * 1024) {
+        setState(() => _proofError = 'Foto a twò lou. Pran l ankò pi pre resi a.');
+        return;
+      }
+      final name = file.name.toLowerCase();
+      final mime = name.endsWith('.png') ? 'image/png' : name.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+      setState(() {
+        _proof = TopupProof(mime: mime, bytes: bytes);
+        _proofError = null;
+      });
+    } catch (_) {
+      setState(() => _proofError = 'Nou pa ka louvri foto a. Eseye ankò.');
+    }
+  }
   String? _accountId;
 
   @override
@@ -890,6 +917,39 @@ class _TopupDialogState extends State<_TopupDialog> {
             ),
             validator: (v) => (v ?? '').trim().length < 3 ? 'Antre referans virement an.' : null,
           ),
+          const SizedBox(height: 12),
+          const Text('Foto prèv virement an (obligatwa)',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: DashboardColors.muted)),
+          const SizedBox(height: 6),
+          Row(children: [
+            if (_proof != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.memory(_proof!.bytes, key: const ValueKey('proof-preview'), width: 64, height: 64, fit: BoxFit.cover),
+                ),
+              ),
+            Expanded(
+              child: Wrap(spacing: 8, runSpacing: 6, children: [
+                OutlinedButton.icon(
+                  onPressed: () => _pickProof(ImageSource.camera),
+                  icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                  label: Text(_proof == null ? 'Pran foto' : 'Lòt foto'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _pickProof(ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_outlined, size: 18),
+                  label: const Text('Galri'),
+                ),
+              ]),
+            ),
+          ]),
+          if (_proofError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(_proofError!, style: const TextStyle(color: _crit, fontSize: 12.5)),
+            ),
         ]);
       },
     );
@@ -949,12 +1009,17 @@ class _TopupDialogState extends State<_TopupDialog> {
             if (!_formKey.currentState!.validate()) return;
             // Pa gen kont konfigire: virement an pa posib.
             if (_bank && (await _accounts).isEmpty) return;
+            if (_bank && _proof == null) {
+              setState(() => _proofError = 'Mete foto resi bank lan oswa kaptire ekran virement an.');
+              return;
+            }
             if (!context.mounted) return;
             Navigator.pop<_TopupResult>(context, (
               amount: double.parse(_amountCtrl.text.replaceAll(',', '.').trim()),
               note: _noteCtrl.text.trim(),
               bankReference: _bank ? _refCtrl.text.trim() : null,
               bankAccountId: _bank ? _accountId : null,
+              proof: _bank ? _proof : null,
             ));
           },
           child: const Text('Voye demann lan'),

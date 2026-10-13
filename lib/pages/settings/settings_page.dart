@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mon_premye_app/core/models/app_role.dart';
 import 'package:mon_premye_app/core/network/api_base.dart';
 import 'package:mon_premye_app/core/network/api_client.dart';
+import 'package:mon_premye_app/core/security/biometric_service.dart';
 import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
 import 'package:mon_premye_app/features/auth/data/http_auth_repository.dart';
 import 'package:mon_premye_app/features/wallet/data/wallet_api.dart';
@@ -179,6 +180,7 @@ class SettingsPage extends StatelessWidget {
           subtitle: 'Chanje modpas ou',
           onTap: () => _changePassword(context),
         ),
+        const _BiometricSection(),
         if (isOwner) ...[
           const SizedBox(height: 12),
           const _ExchangeMarginTile(),
@@ -500,6 +502,96 @@ class _AboutRow extends StatelessWidget {
           Expanded(child: Text(value)),
         ],
       ),
+    );
+  }
+}
+
+/// Byometri: konekte ak anprent/figi, epi konfime operasyon lajan yo.
+/// Parèt sèlman sou yon telefòn ki gen byometri (pa sou web).
+class _BiometricSection extends StatefulWidget {
+  const _BiometricSection();
+
+  @override
+  State<_BiometricSection> createState() => _BiometricSectionState();
+}
+
+class _BiometricSectionState extends State<_BiometricSection> {
+  final _bio = BiometricService.instance;
+  late final Future<bool> _available = _bio.available();
+  bool _busy = false;
+
+  void _toast(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  Future<void> _toggleLogin(bool on) async {
+    setState(() => _busy = true);
+    try {
+      if (on) {
+        final email = AuthRepositoryProvider.instance.currentUser?.email ?? '';
+        await _bio.enableLogin(email: email, label: 'Android');
+        _toast('Koneksyon ak anprent aktive sou telefòn sa a.');
+      } else {
+        await _bio.disableLogin();
+        _toast('Koneksyon ak anprent dezaktive.');
+      }
+    } on ApiException catch (err) {
+      if (err.code != 'biometric_cancelled') _toast(err.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _toggleConfirm(bool on) async {
+    setState(() => _busy = true);
+    final ok = await _bio.setConfirmOperations(on);
+    if (ok) {
+      _toast(on
+          ? 'Chak operasyon lajan ap mande anprent ou.'
+          : 'Operasyon lajan yo pa mande anprent ankò.');
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _available,
+      builder: (context, snap) {
+        if (snap.data != true) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: DashboardPanel(
+            padding: EdgeInsets.zero,
+            child: Column(children: [
+              ValueListenableBuilder<bool>(
+                valueListenable: _bio.loginEnabled,
+                builder: (context, on, _) => SwitchListTile(
+                  key: const ValueKey('bio-login'),
+                  secondary: const Icon(Icons.fingerprint, color: Color(0xFF1F7A3A)),
+                  title: const Text('Koneksyon ak anprent / figi', style: TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: const Text('Konekte san tape modpas. Chanje modpas la dezaktive l otomatikman.'),
+                  value: on,
+                  onChanged: _busy ? null : _toggleLogin,
+                ),
+              ),
+              const Divider(height: 1),
+              ValueListenableBuilder<bool>(
+                valueListenable: _bio.confirmOperations,
+                builder: (context, on, _) => SwitchListTile(
+                  key: const ValueKey('bio-confirm'),
+                  secondary: const Icon(Icons.verified_user_outlined, color: Color(0xFF1F7A3A)),
+                  title: const Text('Otorizasyon byometrik', style: TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: const Text('Mande anprent anvan chak operasyon lajan: voye, apwouve, ajoute fon.'),
+                  value: on,
+                  onChanged: _busy ? null : _toggleConfirm,
+                ),
+              ),
+            ]),
+          ),
+        );
+      },
     );
   }
 }

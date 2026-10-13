@@ -74,6 +74,9 @@ const call = (method, url, role, body) =>
     body: body ? JSON.stringify(body) : undefined,
   }).then(async (r) => ({ status: r.status, json: await r.json() }));
 
+/** Yon "foto" JPEG minim pou tès yo (tèt JPEG + done). */
+const PROOF = { mime: "image/jpeg", data: Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(300, 7)]).toString("base64") };
+
 const balance = async () =>
   (await getBazikService().store.getWallet({ uid: uids.agent, enterpriseId: ENT })).balanceMinor;
 
@@ -103,6 +106,7 @@ test("rechaj pa virement: ajan mande pou tèt li, admin apwouve", async () => {
   // Ajan an pa ka vize yon lòt moun ni otoapwouve.
   const created = await call("POST", "/api/wallets/topups", "agent", {
     targetUid: uids.admin, amount: 100, currency: "HTG", method: "bank", bankReference: "TRX-889", autoApprove: true,
+    proof: PROOF,
   });
   assert.equal(created.status, 200, JSON.stringify(created.json));
   assert.equal(created.json.credited, undefined);
@@ -120,6 +124,37 @@ test("rechaj pa virement: ajan mande pou tèt li, admin apwouve", async () => {
   const item = list.json.topups.find((t) => t.requestId === row.request_id);
   assert.equal(item.method, "bank");
   assert.equal(item.bankReference, "TRX-889");
+  assert.equal(item.hasProof, true);
+
+  // Admin nan wè foto prèv la; yon lòt ajan pa ta ka.
+  const proof = await call("GET", `/api/wallets/topups/${row.request_id}/proof`, "admin");
+  assert.equal(proof.status, 200);
+  assert.equal(proof.json.mime, "image/jpeg");
+  assert.equal(proof.json.data, PROOF.data);
+});
+
+test("rechaj pa virement: referans inik, foto obligatwa, MXN aksepte", async () => {
+  const noProof = await call("POST", "/api/wallets/topups", "agent", {
+    amount: 100, currency: "HTG", method: "bank", bankReference: "UNI-NEW-1",
+  });
+  assert.equal(noProof.json.code, "missing_proof");
+
+  const notImage = await call("POST", "/api/wallets/topups", "agent", {
+    amount: 100, currency: "HTG", method: "bank", bankReference: "UNI-NEW-1", proof: { mime: "application/pdf", data: PROOF.data },
+  });
+  assert.equal(notImage.json.code, "invalid_proof");
+
+  // Menm referans, ekri yon lòt jan ("trx 889" = "TRX-889"? non: tirè a konte) — men espas ak majiskil pa konte.
+  const dup = await call("POST", "/api/wallets/topups", "agent", {
+    amount: 100, currency: "HTG", method: "bank", bankReference: "trx-889 ", proof: PROOF,
+  });
+  assert.equal(dup.status, 409);
+  assert.equal(dup.json.code, "duplicate_bank_reference");
+
+  const mxn = await call("PATCH", "/api/settings/bank-accounts", "admin", {
+    accounts: [{ bankName: "BBVA", accountName: "VOUPVAPCASH MX", accountNumber: "0123", currency: "MXN" }],
+  });
+  assert.equal(mxn.json.accounts[0].currency, "MXN");
 });
 
 test("payout bank: detay obligatwa, apwobasyon debite wallet la yon sèl fwa", async () => {

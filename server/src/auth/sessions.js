@@ -150,6 +150,9 @@ function destroySession(token) {
 /** Dekonekte tout aparèy yon itilizatè (chanjman modpas, dezaktivasyon...). */
 function destroyAllSessions(uid) {
   getDb().prepare("DELETE FROM sessions WHERE uid = ?").run(uid);
+  // Kle byometrik yo tou: yon telefòn vòlè pa dwe ka rekonekte apre yon
+  // chanjman modpas oswa yon dezaktivasyon.
+  getDb().prepare("DELETE FROM biometric_devices WHERE uid = ?").run(uid);
 }
 
 /** Netwaye sesyon ki ekspire yo. */
@@ -161,6 +164,7 @@ function purgeExpiredSessions() {
 }
 
 module.exports = {
+  hashToken,
   createSession,
   resolveSession,
   destroySession,

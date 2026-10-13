@@ -69,6 +69,7 @@ class _FakeWallet extends WalletApi {
     bool autoApprove = false,
     String? bankReference,
     String? bankAccountId,
+    TopupProof? proof,
   }) async {
     requested.add('$targetUid:$amount:$currency:$bankReference:$bankAccountId');
     return 'TU_1';
@@ -165,8 +166,12 @@ void main() {
     expect(wallet.requested, isEmpty);
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Referans virement'), 'UNI-7781');
+    await tester.ensureVisible(find.text('Voye demann lan'));
     await tester.tap(find.text('Voye demann lan'));
     await tester.pumpAndSettle();
-    expect(wallet.requested, ['agent_1:1500.0:MXN:UNI-7781:b1']);
+    // Foto prèv la obligatwa: san li, anyen pa pati.
+    expect(find.text('Mete foto resi bank lan oswa kaptire ekran virement an.'), findsOneWidget);
+    expect(find.text('Pran foto'), findsOneWidget);
+    expect(wallet.requested, isEmpty);
   });
 }

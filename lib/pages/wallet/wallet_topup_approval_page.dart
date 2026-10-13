@@ -1,3 +1,4 @@
+import 'package:mon_premye_app/core/security/biometric_service.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mon_premye_app/core/network/api_client.dart';
@@ -67,6 +68,7 @@ class _WalletTopupApprovalPageState extends State<WalletTopupApprovalPage> {
         false;
 
     if (!ok) return;
+    if (!await BiometricService.instance.confirm('Konfime rechaj la')) return;
 
     setState(() => _busy = true);
     try {
@@ -277,6 +279,16 @@ class _TopupRow extends StatelessWidget {
                 ),
               ),
             ]),
+            if (request.hasProof)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: ValueKey('proof-${request.requestId}'),
+                  onPressed: () => showProofDialog(context, request),
+                  icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                  label: const Text('Wè prèv la'),
+                ),
+              ),
           ],
           if (request.isPending) ...[
             const SizedBox(height: 8),
@@ -301,4 +313,43 @@ class _TopupRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Foto prèv virement an, an gwo, ak zoom (de dwèt).
+Future<void> showProofDialog(BuildContext context, TopupRequest request) {
+  return showDialog<void>(
+    context: context,
+    builder: (dialogContext) => Dialog(
+      insetPadding: const EdgeInsets.all(16),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(
+          title: Text('Prèv · ${request.targetName}', style: const TextStyle(fontWeight: FontWeight.w800)),
+          subtitle: Text('Ref: ${request.bankReference} • ${request.amount.toStringAsFixed(2)} ${request.currency}'),
+          trailing: IconButton(
+            tooltip: 'Fèmen',
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(dialogContext),
+          ),
+        ),
+        Flexible(
+          child: FutureBuilder<TopupProof>(
+            future: WalletApi.instance.topupProof(request.requestId),
+            builder: (context, snap) {
+              if (snap.hasError) {
+                return const Padding(padding: EdgeInsets.all(24), child: Text('Nou pa ka chaje prèv la.'));
+              }
+              if (!snap.hasData) {
+                return const Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator());
+              }
+              return InteractiveViewer(
+                maxScale: 5,
+                child: Image.memory(snap.data!.bytes, fit: BoxFit.contain),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+      ]),
+    ),
+  );
 }

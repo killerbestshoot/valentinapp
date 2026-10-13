@@ -87,6 +87,12 @@ class HttpAuthRepository implements AuthRepository {
     return _acceptSession(json);
   }
 
+  /// Koneksyon byometrik: kle aparèy la (debloke ak anprent) olye modpas la.
+  Future<AuthUser> signInWithBiometricKey({required String deviceId, required String secret}) async {
+    final json = await _api.post('/api/auth/biometric/login', {'deviceId': deviceId, 'secret': secret});
+    return _acceptSession(json);
+  }
+
   /// Sou serveur SQLite la, yon moun pa ka kreye pwòp kont li: se yon admin ki
   /// kreye staff yo.
   ///

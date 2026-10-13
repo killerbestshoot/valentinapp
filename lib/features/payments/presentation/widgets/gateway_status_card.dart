@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:mon_premye_app/features/operations/data/operations_api.dart';
+
 import '../../data/payment_gateway_provider.dart';
 import '../../domain/payment_gateway.dart';
 import '../../domain/payment_models.dart';
@@ -24,12 +26,16 @@ class GatewayStatusCard extends StatefulWidget {
 class _GatewayStatusCardState extends State<GatewayStatusCard> {
   late Future<GatewayStatus> _future;
 
+  /// Sòld twa pasrèl yo (Bazik, PSL, Reloadly) — owner sèlman (solvabilite).
+  late Future<SystemHealth> _health;
+
   PaymentGateway get _gateway => widget.gateway ?? PaymentGatewayProvider.instance;
 
   @override
   void initState() {
     super.initState();
     _future = _gateway.status();
+    _health = SystemApi.instance.health();
   }
 
   void _reload() {
@@ -37,6 +43,7 @@ class _GatewayStatusCardState extends State<GatewayStatusCard> {
     // epi Flutter leve yon erè paske li kwè nou fè travay async ladan.
     setState(() {
       _future = _gateway.status();
+      _health = SystemApi.instance.health();
     });
   }
 
@@ -101,6 +108,7 @@ class _GatewayStatusCardState extends State<GatewayStatusCard> {
           detail:
               'Float disponib: ${status.available.toStringAsFixed(2)} ${status.currency}.',
           onRetry: _reload,
+          extra: _GatewayBalances(future: _health),
         );
       },
     );
@@ -114,6 +122,7 @@ class _Shell extends StatelessWidget {
     required this.title,
     required this.detail,
     this.onRetry,
+    this.extra,
   });
 
   final IconData icon;
@@ -121,6 +130,9 @@ class _Shell extends StatelessWidget {
   final String title;
   final String detail;
   final VoidCallback? onRetry;
+
+  /// Kontni anba detay la (sòld pasrèl yo).
+  final Widget? extra;
 
   @override
   Widget build(BuildContext context) {
@@ -161,6 +173,7 @@ class _Shell extends StatelessWidget {
                     height: 1.35,
                   ),
                 ),
+                if (extra != null) ...[const SizedBox(height: 10), extra!],
               ],
             ),
           ),
@@ -172,6 +185,83 @@ class _Shell extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Twa sòld yo kòt a kòt: Bazik (MonCash/NatCash), PSL (relè), Reloadly (minit).
+/// Chif pwovizyon yo rezève pou owner: pou yon admin, anyen pa parèt.
+class _GatewayBalances extends StatelessWidget {
+  const _GatewayBalances({required this.future});
+
+  final Future<SystemHealth> future;
+
+  static String _fmt(num v) {
+    final parts = v.toStringAsFixed(2).split('.');
+    final d = parts[0].replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ' ');
+    return '$d,${parts[1]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<SystemHealth>(
+      future: future,
+      builder: (context, snap) {
+        final solvency = snap.data?.solvency ?? const {};
+        final coverage = (solvency['coverage'] as Map?) ?? const {};
+        if (coverage.isEmpty) return const SizedBox.shrink();
+        Map g(String k) => (coverage[k] as Map?) ?? const {};
+        final bazik = g('bazik');
+        final psl = g('psl');
+        final reloadly = g('reloadly');
+
+        String value(Map m, String fallbackCurrency) {
+          if (m['configured'] == false) return 'pa konfigire';
+          final available = m['available'];
+          if (available is! num) return m['enabled'] == false ? 'dezaktive' : 'pa reponn';
+          return '${_fmt(available)} ${m['currency'] ?? fallbackCurrency}';
+        }
+
+        final tiles = <(String, String, String, String?)>[
+          ('Bazik', 'MonCash · NatCash', value(bazik, 'HTG'), null),
+          ('PSL', psl['enabled'] == true ? 'Relè aktif' : 'Relè fèmen', value(psl, 'HTG'),
+              psl['configured'] == true && psl['enabled'] != true ? 'pa konte nan kouvèti a' : null),
+          ('Reloadly', 'Minit', value(reloadly, 'USD'),
+              reloadly['htg'] is num && reloadly['currency'] != 'HTG' ? '≈ ${_fmt(reloadly['htg'] as num)} HTG' : null),
+        ];
+        return LayoutBuilder(builder: (context, box) {
+          final cards = [
+            for (final t in tiles)
+              Container(
+                key: ValueKey('balance-${t.$1}'),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4F8F1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFDDE8D8)),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${t.$1} · ${t.$2}',
+                      style: const TextStyle(fontSize: 11, color: Color(0xFF667365), fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(t.$3, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF172116))),
+                  if (t.$4 != null) Text(t.$4!, style: const TextStyle(fontSize: 11, color: Color(0xFF667365))),
+                ]),
+              ),
+          ];
+          if (box.maxWidth < 420) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              for (final c in cards) Padding(padding: const EdgeInsets.only(bottom: 6), child: c),
+            ]);
+          }
+          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (var i = 0; i < cards.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              Expanded(child: cards[i]),
+            ],
+          ]);
+        });
+      },
     );
   }
 }

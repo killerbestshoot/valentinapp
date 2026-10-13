@@ -223,3 +223,17 @@ CREATE TABLE IF NOT EXISTS cash_closings (
 
 CREATE INDEX IF NOT EXISTS idx_cash_closings_ent
   ON cash_closings (enterprise_id, business_date DESC, status);
+
+-- Koneksyon byometrik: yon kle pa aparèy, bay pa sèvè a, kenbe nan kofrefò
+-- sekirize telefòn nan (Android Keystore) e debloke ak anprent/figi. Nou
+-- kenbe sèlman HACH kle a. Chanjman modpas / dezaktivasyon = tout kle revoke.
+CREATE TABLE IF NOT EXISTS biometric_devices (
+  device_id    TEXT PRIMARY KEY,
+  uid          TEXT NOT NULL,
+  secret_hash  TEXT NOT NULL,
+  label        TEXT NOT NULL DEFAULT '',
+  created_at   INTEGER NOT NULL,
+  last_used_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_biometric_devices_uid ON biometric_devices (uid, created_at DESC);

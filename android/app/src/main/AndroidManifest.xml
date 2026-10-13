@@ -3,6 +3,8 @@
     <!-- Obligatwa pou app la pale ak sèvè a (voupvapcash.com). Modèl Flutter la
          mete l sèlman nan debug/profile: san li, APK release la pa t ka konekte. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Koneksyon ak otorizasyon byometrik (anprent / figi). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
 
     <application
         android:label="VOUPVAPCASH"

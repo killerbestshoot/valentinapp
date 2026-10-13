@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import '../../../core/network/api_client.dart';
 
 /// To echanj yo vè HTG (majin owner an deja soustrè), ak dat yo.
@@ -50,6 +53,14 @@ class WalletSummary {
       role: '${json['role'] ?? ''}',
     );
   }
+}
+
+/// Foto prèv yon virement (JPEG/PNG/WebP, 700 Ko maksimòm sou sèvè a).
+class TopupProof {
+  const TopupProof({required this.mime, required this.bytes});
+
+  final String mime;
+  final Uint8List bytes;
 }
 
 /// Yon kont bank antrepriz la — kote ajan yo vire pou yon rechaj.
@@ -160,6 +171,7 @@ class TopupRequest {
     this.method = 'manual',
     this.bankReference = '',
     this.bankAccount = '',
+    this.hasProof = false,
     this.createdAt,
   });
 
@@ -177,6 +189,9 @@ class TopupRequest {
   final String method;
   final String bankReference;
   final String bankAccount;
+
+  /// Ajan an te mete yon foto prèv virement ([WalletApi.topupProof]).
+  final bool hasProof;
   final DateTime? createdAt;
 
   bool get isPending => !processed && status == 'pending';
@@ -198,6 +213,7 @@ class TopupRequest {
       method: '${json['method'] ?? 'manual'}',
       bankReference: '${json['bankReference'] ?? ''}',
       bankAccount: '${json['bankAccount'] ?? ''}',
+      hasProof: json['hasProof'] == true,
       createdAt: created is num
           ? DateTime.fromMillisecondsSinceEpoch(created.toInt())
           : null,
@@ -357,6 +373,7 @@ class WalletApi {
     bool autoApprove = false,
     String? bankReference,
     String? bankAccountId,
+    TopupProof? proof,
   }) async {
     final json = await _client.post('/api/wallets/topups', {
       'targetUid': targetUid,
@@ -369,10 +386,17 @@ class WalletApi {
         'method': 'bank',
         'bankReference': bankReference,
         if (bankAccountId != null) 'bankAccountId': bankAccountId,
+        if (proof != null) 'proof': {'mime': proof.mime, 'data': base64Encode(proof.bytes)},
       },
     });
 
     return '${json['requestId'] ?? ''}';
+  }
+
+  /// Foto prèv virement yon demann rechaj.
+  Future<TopupProof> topupProof(String requestId) async {
+    final json = await _client.get('/api/wallets/topups/$requestId/proof');
+    return TopupProof(mime: '${json['mime'] ?? 'image/jpeg'}', bytes: base64Decode('${json['data'] ?? ''}'));
   }
 
   /// Kredite wallet la. Serveur a pwoteje kont doub kredi.

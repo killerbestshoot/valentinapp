@@ -1,3 +1,4 @@
+import 'package:mon_premye_app/core/security/biometric_service.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mon_premye_app/core/models/app_role.dart';
@@ -40,6 +41,7 @@ class _AgentsPageState extends State<AgentsPage> {
       builder: (_) => _AdjustDialog(staff: staff),
     );
     if (result == null) return;
+    if (!await BiometricService.instance.confirm('Konfime ajisteman sòld la')) return;
     try {
       final wallet = await WalletApi.instance.adjust(staff.uid, balance: result.balance, note: result.note);
       if (!mounted) return;
@@ -261,6 +263,7 @@ class _AgentsPageState extends State<AgentsPage> {
         false;
 
     if (!confirmed) return;
+    if (!await BiometricService.instance.confirm('Konfime fon an')) return;
 
     final amount = double.parse(amountCtrl.text.replaceAll(',', '.').trim());
 

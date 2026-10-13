@@ -1,5 +1,6 @@
 package com.voupvapcash.app
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity: FlutterActivity()
+// FlutterFragmentActivity: obligatwa pou local_auth (anprent / figi).
+class MainActivity: FlutterFragmentActivity()

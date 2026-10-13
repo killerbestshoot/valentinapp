@@ -1,3 +1,4 @@
+import 'package:mon_premye_app/core/security/biometric_service.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -379,6 +380,8 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
     FocusScope.of(context).unfocus();
 
     if (!_formKey.currentState!.validate()) return;
+    // Otorizasyon byometrik (si l aktive nan Paramèt): anvan lajan an deplase.
+    if (!await BiometricService.instance.confirm('Konfime tranzaksyon an')) return;
 
     final name = nameCtrl.text.trim();
     final phone = _internationalPhone;
