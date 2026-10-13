@@ -1,4 +1,8 @@
-﻿<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Obligatwa pou app la pale ak sèvè a (voupvapcash.com). Modèl Flutter la
+         mete l sèlman nan debug/profile: san li, APK release la pa t ka konekte. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
         android:label="VOUPVAPCASH"
@@ -25,4 +29,12 @@
             android:value="2" />
 
     </application>
+
+    <!-- Android 11+: url_launcher bezwen deklare ki lyen li louvri (https). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+    </queries>
 </manifest>
