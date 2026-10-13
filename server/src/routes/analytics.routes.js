@@ -35,6 +35,8 @@ const NETWORK_LABEL = {
 const GROUPS = ["agent", "network", "currency", "week", "status"];
 /** Yon transfè ki rete `processing` plis pase sa a bezwen yon moun gade l. */
 const STUCK_AFTER_MS = 15 * 60000;
+/** NatCash via PSL: voye alamen pa ekip PSL la, plizyè èdtan se nòmal. */
+const PSL_NATCASH_STUCK_AFTER_MS = 24 * 3600000;
 
 function send(res, err) {
   const status = err.status || 400;
@@ -72,7 +74,8 @@ function networkOf(row) {
 function statusOf(row, now) {
   if (row.status === "delivered") return "delivered";
   if (row.status === "failed" || row.status === "canceled") return "failed";
-  if (row.transfer_status === "processing" && now - row.transfer_created_at > STUCK_AFTER_MS) return "verifying";
+  const stuckAfter = row.provider === "psl" && networkOf(row) === "natcash" ? PSL_NATCASH_STUCK_AFTER_MS : STUCK_AFTER_MS;
+  if (row.transfer_status === "processing" && now - row.transfer_created_at > stuckAfter) return "verifying";
   return "pending";
 }
 

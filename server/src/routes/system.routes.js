@@ -173,8 +173,11 @@ router.get("/notifications", requireAuth, requireEnterprise, async (req, res) =>
       "Transfè bloke pou verifye",
       n(
         `SELECT COUNT(*) AS n FROM bazik_transfers
-          WHERE enterprise_id = ? AND status IN ('pending','processing') AND created_at <= ?`,
+          WHERE enterprise_id = ? AND status IN ('pending','processing')
+            AND created_at <= CASE WHEN provider = 'psl' AND network = 'natcash' THEN ? ELSE ? END`,
         ent,
+        // NatCash via PSL: voye alamen, 24 h avan nou alète.
+        Date.now() - 24 * 3600000,
         Date.now() - 15 * 60000
       )
     );

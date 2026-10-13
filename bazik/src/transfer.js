@@ -16,7 +16,7 @@
 
 const AppIds = require("./ids");
 const { DomainError, BazikError } = require("./errors");
-const { PslError } = require("./psl_client");
+const { PslError, PSL_FEE_PCT } = require("./psl_client");
 const { assertNetworkAmount, feeMinor, fromMinor, DEFAULT_FEE_PERCENT } = require("./money");
 const { createRateBook } = require("./rates");
 
@@ -202,11 +202,17 @@ function createTransferUseCases({
     return result.failureReason || result.message || "Bazik pa bay yon rezon.";
   }
 
-  async function sendPslFallback({ transferId, amounts, walletCurrency, chargeFeeToWallet, phone, note, kind }) {
+  /** Rezo PSL ka pran relè a: MonCash (otomatik) ak NatCash (voye alamen pa PSL). */
+  function canUsePsl(network) {
+    return (network === "moncash" || network === "natcash") && Boolean(pslClient) && isPslFallbackEnabled();
+  }
+
+  async function sendPslFallback({ transferId, network, amounts, walletCurrency, chargeFeeToWallet, phone, note, kind }) {
     if (!pslClient) return null;
 
-    // PSL facture 7 %, contre 5 % provisionnés au départ pour Bazik.
-    const pslFeeHtgMinor = Math.round(amounts.amountHtgMinor * 0.07);
+    // PSL: 7 % MonCash, 6 % NatCash — kont 5 % ki te provizyone pou Bazik.
+    const feePct = PSL_FEE_PCT[network];
+    const pslFeeHtgMinor = Math.round((amounts.amountHtgMinor * feePct) / 100);
     const previouslyChargedFee = chargeFeeToWallet ? amounts.feeHtgMinor : 0;
     // Frè pasrèl la pa sou wallet ajan an (règ frè platfòm nan: se owner a ki
     // peye l sou pati pa l): pa gen anyen pou ajiste.
@@ -228,11 +234,11 @@ function createTransferUseCases({
           amountMinor: extraDebit.amountMinor,
           currency: walletCurrency,
           type: `${kind}_psl_fee`,
-          note: "Ajisteman frè PSL Wallet (7%)",
+          note: `Ajisteman frè PSL Wallet ${network === "natcash" ? "NatCash" : "MonCash"} (${feePct}%)`,
           sourceCollection: "bazik_transfers",
           sourceId: transferId,
           txId: transferBeforeFallback.txId,
-          serviceName: "moncash",
+          serviceName: network,
           createdBy: "psl",
           createdByRole: "system",
           idempotencyKey: `transfer:psl-fee:${transferId}`,
@@ -261,6 +267,7 @@ function createTransferUseCases({
     let result;
     try {
       result = await pslClient.createPayout({
+        provider: network,
         amountHtgMinor: amounts.amountHtgMinor,
         phone,
         reference: transferId,
@@ -491,8 +498,8 @@ function createTransferUseCases({
         );
       }
 
-      if (network === "moncash" && pslClient && isPslFallbackEnabled()) {
-        return sendPslFallback({ transferId, amounts, walletCurrency, chargeFeeToWallet, phone, note, kind });
+      if (canUsePsl(network)) {
+        return sendPslFallback({ transferId, network, amounts, walletCurrency, chargeFeeToWallet, phone, note, kind });
       }
 
       // Refi klè: ranbousman san risk.
@@ -514,8 +521,8 @@ function createTransferUseCases({
 
     // --- 3) Bazik aksepte ---
     if (result.status === "completed" || result.status === "failed") {
-      if (result.status === "failed" && network === "moncash" && pslClient && isPslFallbackEnabled()) {
-        return sendPslFallback({ transferId, amounts, walletCurrency, chargeFeeToWallet, phone, note, kind });
+      if (result.status === "failed" && canUsePsl(network)) {
+        return sendPslFallback({ transferId, network, amounts, walletCurrency, chargeFeeToWallet, phone, note, kind });
       }
       const settled = await store.settleTransfer({
         transferId,
@@ -558,6 +565,7 @@ function createTransferUseCases({
           // PSL garantit l'idempotence sur reference + montant + téléphone :
           // rejouer la création résout les timeouts sans créer un second payout.
           payout = await pslClient.createPayout({
+            provider: transfer.network,
             amountHtgMinor: transfer.amountHtgMinor,
             phone: transfer.phone,
             reference: transfer.reference,

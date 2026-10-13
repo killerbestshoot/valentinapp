@@ -11,6 +11,10 @@ class PslError extends Error {
   }
 }
 
+/** Rezo PSL voye yo, ak frè PSL la (an % montan an, anplis montan an). */
+const PSL_PROVIDERS = ["moncash", "natcash"];
+const PSL_FEE_PCT = { moncash: 7, natcash: 6 };
+
 function createPslClient(config, { fetchImpl = globalThis.fetch } = {}) {
   async function request(path, { method = "GET", body } = {}) {
     const controller = new AbortController();
@@ -51,10 +55,19 @@ function createPslClient(config, { fetchImpl = globalThis.fetch } = {}) {
   }
 
   return {
-    async createPayout({ amountHtgMinor, phone, reference, description }) {
+    /**
+     * `provider` OBLIGATWA depi PSL mete NatCash: san li, PSL reponn
+     * `422 provider_required`. "moncash" = otomatik (≈ 1 min), "natcash" =
+     * voye alamen pa ekip PSL la (rete `pending` jiskaske yo voye l).
+     */
+    async createPayout({ provider, amountHtgMinor, phone, reference, description }) {
+      if (!PSL_PROVIDERS.includes(provider)) {
+        throw new PslError("invalid_provider", `Rezo PSL pa valid: ${provider || "(vid)"}.`);
+      }
       const data = await request("/v1/payouts", {
         method: "POST",
         body: {
+          provider,
           amount: (amountHtgMinor / 100).toFixed(2),
           phone: `509${String(phone).replace(/\D/g, "").replace(/^509/, "")}`,
           reference,
@@ -80,4 +93,4 @@ function readPayout(data) {
   };
 }
 
-module.exports = { createPslClient, PslError, readPayout };
+module.exports = { createPslClient, PslError, readPayout, PSL_PROVIDERS, PSL_FEE_PCT };

@@ -230,7 +230,7 @@ class SettingsPage extends StatelessWidget {
   }
 }
 
-/// Owner sèlman: pèmèt oswa koupe manyèlman PSL kòm fallback pou MonCash.
+/// Owner sèlman: pèmèt oswa koupe PSL kòm relè lè Bazik refize (MonCash ak NatCash).
 class _PslFallbackTile extends StatefulWidget {
   const _PslFallbackTile();
 
@@ -284,8 +284,8 @@ class _PslFallbackTileState extends State<_PslFallbackTile> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(saved.enabled
-              ? 'Fallback PSL MonCash aktive.'
-              : 'Fallback PSL MonCash dezaktive.'),
+              ? 'Relè PSL aktive (MonCash ak NatCash).'
+              : 'Relè PSL dezaktive.'),
         ),
       );
     } on ApiException catch (err) {
@@ -309,7 +309,7 @@ class _PslFallbackTileState extends State<_PslFallbackTile> {
             : !configured
                 ? 'PSL pa konfigire sou sèvè a.'
                 : settings!.enabled
-                    ? 'Si Bazik pa ka voye MonCash, PSL pran relè a (frè 7%).'
+                    ? 'Si Bazik refize, PSL pran relè a: MonCash 7 % (≈ 1 min), NatCash 6 % (voye alamen, ka pran kèk èdtan).'
                     : 'Fallback dezaktive; se Bazik sèlman k ap sèvi.';
 
     return DashboardPanel(
@@ -317,7 +317,7 @@ class _PslFallbackTileState extends State<_PslFallbackTile> {
       child: SwitchListTile(
         secondary: const Icon(Icons.swap_horiz, color: Color(0xFF0F766E)),
         title: const Text(
-          'Fallback MonCash via PSL',
+          'Relè PSL (MonCash ak NatCash)',
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
         subtitle: Text(subtitle),

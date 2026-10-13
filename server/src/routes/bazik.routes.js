@@ -256,6 +256,11 @@ router.post("/transfers", requireAuth, requireEnterprise, async (req, res) => {
 
 /** Yon transfè ki poko fini depi plis pase sa a parèt nan lis pou verifye a. */
 const REVIEW_AFTER_MS = 15 * 60000;
+/**
+ * NatCash via PSL: ekip PSL la voye l alamen, li ka rete `pending` plizyè èdtan
+ * san pa gen anyen anòmal. Li parèt nan lis la sèlman apre 24 èdtan.
+ */
+const PSL_NATCASH_REVIEW_AFTER_MS = 24 * 3600000;
 
 /**
  * Transfè ki bloke (pending/processing depi plis pase 15 minit), ak sa owner
@@ -269,10 +274,11 @@ router.get("/transfers/review", requireAuth, requireEnterprise, requireRole("own
         `SELECT b.*, t.staff_name, t.status AS tx_status, t.client_name
            FROM bazik_transfers b
            LEFT JOIN transactions t ON t.tx_id = b.tx_id
-          WHERE b.enterprise_id = ? AND b.status IN ('pending', 'processing') AND b.created_at <= ?
+          WHERE b.enterprise_id = ? AND b.status IN ('pending', 'processing')
+            AND b.created_at <= CASE WHEN b.provider = 'psl' AND b.network = 'natcash' THEN ? ELSE ? END
           ORDER BY b.created_at ASC`
       )
-      .all(req.user.enterpriseId, Date.now() - REVIEW_AFTER_MS);
+      .all(req.user.enterpriseId, Date.now() - PSL_NATCASH_REVIEW_AFTER_MS, Date.now() - REVIEW_AFTER_MS);
 
     return res.json({
       ok: true,

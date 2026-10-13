@@ -135,6 +135,7 @@ class Transfer {
     this.failureReason = '',
     this.refunded = false,
     this.gatewayId = '',
+    this.provider = 'bazik',
   });
 
   final String transferId;
@@ -153,6 +154,14 @@ class Transfer {
   /// ID Bazik la. Se li ou chèche sou dashboard Bazik pou jwenn transfè a.
   /// Vid = transfè a pa janm rive sou Bazik.
   final String gatewayId;
+
+  /// `bazik`, oswa `psl` lè PSL Wallet te pran relè a.
+  final String provider;
+
+  bool get viaPsl => provider == 'psl';
+
+  /// NatCash via PSL: ekip PSL la voye l alamen, li ka rete an kou plizyè èdtan.
+  bool get isManualPsl => viaPsl && network == PaymentNetwork.natcash && !isFinal;
 
   bool get isFinal =>
       status == TransferStatus.completed ||
@@ -177,6 +186,7 @@ class Transfer {
       failureReason: '${json['failureReason'] ?? ''}',
       refunded: json['refunded'] == true,
       gatewayId: '${json['gatewayId'] ?? ''}',
+      provider: '${json['provider'] ?? 'bazik'}',
     );
   }
 }

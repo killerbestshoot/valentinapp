@@ -982,7 +982,11 @@ class _SentPanel extends StatelessWidget {
               Icon(failed ? Icons.cancel_outlined : Icons.check_circle_outline),
               const SizedBox(width: 8),
               Text(
-                failed ? 'Transfè a pa pase' : 'Lajan an pati',
+                failed
+                    ? 'Transfè a pa pase'
+                    : transfer.isManualPsl
+                        ? 'Transfè a an kou (NatCash via PSL)'
+                        : 'Lajan an pati',
                 style: const TextStyle(fontWeight: FontWeight.w900),
               ),
             ],
@@ -991,10 +995,20 @@ class _SentPanel extends StatelessWidget {
           SelectableText('Referans: ${transfer.reference}'),
           // Vid = transfè a pa janm rive sou Bazik.
           SelectableText(
-            transfer.gatewayId.isEmpty
-                ? 'ID Bazik: — (pa rive sou Bazik)'
-                : 'ID Bazik: ${transfer.gatewayId}',
+            transfer.viaPsl
+                ? 'ID PSL: ${transfer.gatewayId.isEmpty ? '—' : transfer.gatewayId}'
+                : transfer.gatewayId.isEmpty
+                    ? 'ID Bazik: — (pa rive sou Bazik)'
+                    : 'ID Bazik: ${transfer.gatewayId}',
           ),
+          if (transfer.isManualPsl)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text(
+                'Bazik pa t ka voye l: PSL pran relè a. Ekip PSL la voye NatCash alamen, '
+                'sa ka pran kèk èdtan. Tranzaksyon an ap pase « Livre » poukont li.',
+              ),
+            ),
           if (failed && transfer.refunded)
             const Padding(
               padding: EdgeInsets.only(top: 6),
