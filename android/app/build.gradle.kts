@@ -3,6 +3,9 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
+    // San plugin Kotlin an, MainActivity.kt pa janm konpile: app la te kraze
+    // lè l louvri (ClassNotFoundException MainActivity).
+    id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -20,6 +23,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     namespace = "com.voupvapcash.app"
