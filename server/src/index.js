@@ -17,6 +17,7 @@ const systemRoutes = require("./routes/system.routes");
 const analyticsRoutes = require("./routes/analytics.routes");
 const eventsRoutes = require("./routes/events.routes");
 const cashRoutes = require("./routes/cash.routes");
+const { requireAppVersion, versionInfo } = require("./app_version");
 const { publishMutations } = require("./realtime/bus");
 const { router: receiptRoutes } = require("./routes/receipts.routes");
 const { attachUser } = require("./auth/middleware");
@@ -62,6 +63,10 @@ app.use(
 
 // Idantite a soti nan jeton an, sou chak demand.
 app.use(attachUser);
+
+// Vèsyon app la: yon APK twò ansyen resevwa 426 sou tout apèl yo.
+app.get("/api/app/version", (req, res) => res.json({ ok: true, ...versionInfo() }));
+app.use("/api", requireAppVersion);
 
 // Tan reyèl: chak chanjman ki reyisi pibliye yon evènman pou ekran ki ouvè yo.
 app.use(publishMutations);

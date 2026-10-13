@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mon_premye_app/app/app_router.dart';
 import 'package:mon_premye_app/core/pwa/pwa_install_banner.dart';
 import 'package:mon_premye_app/core/session/session_timeout_guard.dart';
+import 'package:mon_premye_app/core/update/update_gate.dart';
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -19,8 +20,11 @@ class App extends StatelessWidget {
       // siviv chanjman wout.
       // Gad la anwo bandwòl la: yon touche sou « Enstale » se yon siy
       // navigasyon tankou yon lòt.
-      builder: (context, child) => SessionTimeoutGuard(
-        child: PwaInstallBanner(child: child ?? const SizedBox.shrink()),
+      // Gad vèsyon an an deyò tout: yon app twò ansyen pa montre okenn ekran.
+      builder: (context, child) => UpdateGate(
+        child: SessionTimeoutGuard(
+          child: PwaInstallBanner(child: child ?? const SizedBox.shrink()),
+        ),
       ),
     );
   }

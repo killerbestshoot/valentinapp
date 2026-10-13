@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'api_base.dart';
+import '../config/app_version.dart';
 import '../session/session_store.dart';
+import '../update/app_update.dart';
 
 /// Erè ki soti nan serveur a, ak yon kòd nou ka trete.
 class ApiException implements Exception {
@@ -60,6 +62,9 @@ class ApiClient {
     final token = asToken ?? _session.token;
     return {
       'content-type': 'application/json',
+      // Sèvè a bloke yon app twò ansyen (426) gras a de tèt sa yo.
+      'x-app-build': '$appBuild',
+      'x-app-platform': appPlatform,
       if (token != null && token.isNotEmpty) 'authorization': 'Bearer $token',
     };
   }
@@ -122,6 +127,11 @@ class ApiClient {
         'Serveur a voye yon repons nou pa konprann (${response.statusCode}).',
         status: response.statusCode,
       );
+    }
+
+    if (response.statusCode == 426 || json['code'] == 'app_outdated') {
+      // App la twò ansyen: tout app la bloke dèyè ekran "Mete ajou" a.
+      AppUpdate.instance.block(UpdateInfo.fromJson(json));
     }
 
     if (response.statusCode == 401) {
