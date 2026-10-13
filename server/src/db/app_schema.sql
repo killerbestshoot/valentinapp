@@ -195,3 +195,31 @@ CREATE TABLE IF NOT EXISTS airtime_recharge_requests (
 
 CREATE INDEX IF NOT EXISTS idx_airtime_recharge_ent
   ON airtime_recharge_requests (enterprise_id, status, created_at DESC);
+
+-- Fèmti kès: chak ajan, chak jou (lè Ayiti), konte kach li pa deviz.
+-- `lines` = JSON [{currency, openingMinor, salesMinor, txCount, depositMinor,
+-- expectedMinor, countedMinor, varianceMinor}]. Lavant yo kalkile pa sèvè a,
+-- pa ajan an. Yon fèmti `validated` fèmen: pèsonn pa ka chanje l ankò.
+CREATE TABLE IF NOT EXISTS cash_closings (
+  closing_id      TEXT PRIMARY KEY,
+  enterprise_id   TEXT NOT NULL,
+  staff_uid       TEXT NOT NULL,
+  staff_name      TEXT NOT NULL DEFAULT '',
+  business_date   TEXT NOT NULL,
+  lines           TEXT NOT NULL DEFAULT '[]',
+  note            TEXT NOT NULL DEFAULT '',
+  status          TEXT NOT NULL DEFAULT 'submitted'
+                  CHECK (status IN ('submitted','validated','rejected')),
+  submitted_by    TEXT NOT NULL DEFAULT '',
+  submitted_at    INTEGER NOT NULL,
+  decided_by      TEXT NOT NULL DEFAULT '',
+  decided_by_name TEXT NOT NULL DEFAULT '',
+  decided_at      INTEGER,
+  decision_note   TEXT NOT NULL DEFAULT '',
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL,
+  UNIQUE (enterprise_id, staff_uid, business_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cash_closings_ent
+  ON cash_closings (enterprise_id, business_date DESC, status);

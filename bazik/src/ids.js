@@ -84,6 +84,7 @@ const AppIds = {
   history: (seed) => generate("HIS", seed),
   walletLog: (seed) => generate("WL", seed),
   notification: (seed) => generate("NTF", seed),
+  cashClosing: (seed) => generate("CK", seed),
   isUuid5: (value) => UUID5_PATTERN.test(String(value).trim()),
   isPrefixedUuid5: (value) => PREFIXED_UUID5_PATTERN.test(String(value).trim()),
 };

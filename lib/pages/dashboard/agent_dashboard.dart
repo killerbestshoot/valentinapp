@@ -1,3 +1,4 @@
+import 'package:mon_premye_app/pages/cash/cash_closing_page.dart';
 import 'package:mon_premye_app/app/admin_shell.dart';
 import 'package:mon_premye_app/pages/commission/commissions_page.dart';
 import 'package:mon_premye_app/pages/dashboard/agent_home.dart';
@@ -104,6 +105,13 @@ class _AgentShellState extends State<_AgentShell> {
           icon: Icons.account_balance_wallet_outlined,
           section: 'Lajan',
           builder: (_) => const WalletHistoryPage(),
+        ),
+        ShellDestination(
+          id: 'cash',
+          label: 'Fèmen kès',
+          icon: Icons.point_of_sale_outlined,
+          section: 'Lajan',
+          builder: (_) => const CashClosingPage(),
         ),
         ShellDestination(
           id: 'airtime',

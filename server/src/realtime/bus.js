@@ -28,6 +28,7 @@ const TOPICS_BY_PATH = [
   ["/api/services", ["services"]],
   ["/api/users", ["users", "wallets"]],
   ["/api/settings", ["settings"]],
+  ["/api/cash", ["cash"]],
 ];
 
 function topicsFor(path) {

@@ -1,3 +1,4 @@
+import 'package:mon_premye_app/pages/cash/cash_closing_page.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mon_premye_app/app/admin_shell.dart';
@@ -110,6 +111,13 @@ class _HomePageState extends State<HomePage> {
           icon: Icons.percent,
           section: 'Lajan',
           builder: (_) => const CommissionsPage(),
+        ),
+        ShellDestination(
+          id: 'cash',
+          label: 'Fèmen kès',
+          icon: Icons.point_of_sale_outlined,
+          section: 'Lajan',
+          builder: (_) => const CashClosingPage(),
         ),
         ShellDestination(
           id: 'services',
