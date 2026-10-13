@@ -166,6 +166,40 @@ router.get("/notifications", requireAuth, requireEnterprise, async (req, res) =>
         Date.now() - 24 * 60 * 60 * 1000
       )
     );
+    // Menm kritè ak lis "Pou verifye" a (bazik.routes.js): bloke depi 15 min.
+    push(
+      "transfer_review",
+      "warning",
+      "Transfè bloke pou verifye",
+      n(
+        `SELECT COUNT(*) AS n FROM bazik_transfers
+          WHERE enterprise_id = ? AND status IN ('pending','processing') AND created_at <= ?`,
+        ent,
+        Date.now() - 15 * 60000
+      )
+    );
+    push(
+      "airtime_recharge_pending",
+      "info",
+      "Demann rechaj airtime ki ap tann apwobasyon",
+      n("SELECT COUNT(*) AS n FROM airtime_recharge_requests WHERE enterprise_id = ? AND status = 'pending'", ent)
+    );
+    push(
+      "staff_pending_approval",
+      "info",
+      "Ajan ki enskri epi ki ap tann apwobasyon",
+      n(
+        `SELECT COUNT(*) AS n FROM enterprise_users eu JOIN users u ON u.uid = eu.uid
+          WHERE eu.enterprise_id = ? AND eu.is_active = 1 AND u.is_active = 0 AND u.created_by = 'self_register'`,
+        ent
+      )
+    );
+    push(
+      "cash_pending",
+      "info",
+      "Fèmti kès ki ap tann validasyon",
+      n("SELECT COUNT(*) AS n FROM cash_closings WHERE enterprise_id = ? AND status = 'submitted'", ent)
+    );
     push(
       "commission_pending",
       "info",
@@ -183,6 +217,16 @@ router.get("/notifications", requireAuth, requireEnterprise, async (req, res) =>
       "Payout ou ki ap tann apwobasyon",
       n(
         "SELECT COUNT(*) AS n FROM payout_requests WHERE enterprise_id = ? AND staff_uid = ? AND status = 'pending'",
+        ent,
+        req.user.uid
+      )
+    );
+    push(
+      "my_cash_rejected",
+      "warning",
+      "Fèmti kès ou rejte: refè l",
+      n(
+        "SELECT COUNT(*) AS n FROM cash_closings WHERE enterprise_id = ? AND staff_uid = ? AND status = 'rejected'",
         ent,
         req.user.uid
       )

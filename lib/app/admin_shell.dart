@@ -17,6 +17,7 @@ class ShellDestination {
     required this.builder,
     this.section = '',
     this.badge = false,
+    this.alerts = const {},
   });
 
   final String id;
@@ -29,6 +30,11 @@ class ShellDestination {
 
   /// Montre kantite notifikasyon an sou antre sa a.
   final bool badge;
+
+  /// Tip notifikasyon (`payout_pending`, `cash_pending`...) ki mande yon aksyon
+  /// SOU paj sa a. Tank youn ladan yo gen yon kantite, yon pwen wouj klignote
+  /// sou antre a nan meni an.
+  final Set<String> alerts;
 }
 
 /// Kad owner/admin: meni bò a (aksyon yo), ba anlè (paj la + moun ki konekte),
@@ -62,6 +68,9 @@ class AdminShellState extends State<AdminShell> {
   late int _index = widget.initial;
   bool _collapsed = false;
   int _notifications = 0;
+
+  /// Kantite pa tip notifikasyon, pou pwen wouj yo.
+  Map<String, int> _alertCounts = const {};
   StreamSubscription<RealtimeEvent>? _live;
 
   @override
@@ -71,7 +80,7 @@ class AdminShellState extends State<AdminShell> {
     // Kanal tan reyèl la rete ouvè tout tan kad la la.
     Realtime.instance.retain();
     _live = Realtime.instance.listen(
-      const {'topups', 'payouts', 'transfers', 'transactions', 'users'},
+      const {'topups', 'payouts', 'transfers', 'transactions', 'users', 'cash', 'commissions'},
       _loadNotifications,
     );
   }
@@ -87,8 +96,10 @@ class AdminShellState extends State<AdminShell> {
     try {
       final items = await SystemApi.instance.notifications();
       if (!mounted) return;
-      setState(() => _notifications =
-          items.fold(0, (s, n) => s + (n.count > 0 ? n.count : 1)));
+      setState(() {
+        _notifications = items.fold(0, (s, n) => s + (n.count > 0 ? n.count : 1));
+        _alertCounts = {for (final n in items) n.type: n.count > 0 ? n.count : 1};
+      });
     } catch (_) {
       // Badj la se yon konfò: si li pa chaje, meni an rete itilizab.
     }
@@ -127,6 +138,8 @@ class AdminShellState extends State<AdminShell> {
     if (ok == true) await AuthRepositoryProvider.instance.signOut();
   }
 
+  bool _needsAttention(ShellDestination d) => d.alerts.any((t) => (_alertCounts[t] ?? 0) > 0);
+
   void _openSettings() {
     final i = widget.destinations.indexWhere((d) => d.id == 'settings');
     if (i >= 0) _select(i);
@@ -143,6 +156,7 @@ class AdminShellState extends State<AdminShell> {
         selected: _index,
         collapsed: wide && _collapsed,
         notifications: _notifications,
+        alertCounts: _alertCounts,
         onSelect: (i) => _select(i, closeDrawer: !wide),
         onCreate: () {
           if (!wide) Navigator.of(context).pop();
@@ -186,6 +200,8 @@ class AdminShellState extends State<AdminShell> {
                           ? null
                           : () => widget.onRefresh!(current.id),
                       notifications: _notifications,
+                      // Telefòn: meni an kache nan tiwa a, pwen an parèt sou ☰.
+                      attention: widget.destinations.any((d) => d != current && _needsAttention(d)),
                       onNotifications: () {
                         final i =
                             widget.destinations.indexWhere((d) => d.badge);
@@ -219,12 +235,14 @@ class _SideMenu extends StatelessWidget {
     required this.onSelect,
     required this.onCreate,
     required this.onLogout,
+    this.alertCounts = const {},
   });
 
   final List<ShellDestination> destinations;
   final int selected;
   final bool collapsed;
   final int notifications;
+  final Map<String, int> alertCounts;
   final ValueChanged<int> onSelect;
   final VoidCallback onCreate;
   final VoidCallback onLogout;
@@ -258,6 +276,7 @@ class _SideMenu extends StatelessWidget {
         selected: i == selected,
         collapsed: collapsed,
         badge: d.badge ? notifications : 0,
+        attention: d.alerts.any((t) => (alertCounts[t] ?? 0) > 0),
         onTap: () => onSelect(i),
       ));
     }
@@ -342,6 +361,7 @@ class _MenuItem extends StatelessWidget {
     required this.collapsed,
     required this.badge,
     required this.onTap,
+    this.attention = false,
   });
 
   final ShellDestination destination;
@@ -350,17 +370,26 @@ class _MenuItem extends StatelessWidget {
   final int badge;
   final VoidCallback onTap;
 
+  /// Gen yon bagay pou trete sou paj sa a: pwen wouj klignotan.
+  final bool attention;
+
   @override
   Widget build(BuildContext context) {
     final fg = selected
         ? DashboardColors.brand
         : DashboardColors.ink.withValues(alpha: 0.82);
-    final icon = Badge(
+    final badged = Badge(
       isLabelVisible: badge > 0,
       label: Text(badge > 99 ? '99+' : '$badge'),
       backgroundColor: DashboardColors.danger,
       child: Icon(destination.icon, size: 21, color: fg),
     );
+    final icon = attention && badge == 0
+        ? Stack(clipBehavior: Clip.none, children: [
+            badged,
+            const Positioned(right: -3, top: -3, child: AttentionDot()),
+          ])
+        : badged;
 
     return Padding(
       padding:
@@ -387,6 +416,7 @@ class _MenuItem extends StatelessWidget {
                         Expanded(
                           child: Text(
                             destination.label,
+                            semanticsLabel: attention ? '${destination.label}, gen yon bagay pou trete' : null,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: fg,
@@ -514,7 +544,11 @@ class _TopBar extends StatelessWidget {
     required this.onSettings,
     required this.onLogout,
     this.onRefresh,
+    this.attention = false,
   });
+
+  /// Yon lòt paj bezwen atansyon (pwen sou ☰ lè meni an kache).
+  final bool attention;
 
   final String title;
   final bool wide;
@@ -555,9 +589,14 @@ class _TopBar extends StatelessWidget {
                   )
                 : Builder(
                     builder: (context) => IconButton(
-                      tooltip: 'Meni',
+                      tooltip: attention ? 'Meni · gen bagay pou trete' : 'Meni',
                       onPressed: () => Scaffold.of(context).openDrawer(),
-                      icon: const Icon(Icons.menu),
+                      icon: attention
+                          ? const Stack(clipBehavior: Clip.none, children: [
+                              Icon(Icons.menu),
+                              Positioned(right: -2, top: -2, child: AttentionDot()),
+                            ])
+                          : const Icon(Icons.menu),
                     ),
                   ),
             const SizedBox(width: 6),
@@ -708,6 +747,51 @@ class _LiveIndicator extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Pwen wouj ki klignote dousman: "gen yon bagay pou trete la a".
+///
+/// Si aparèy la mande mwens mouvman, pwen an rete fiks.
+class AttentionDot extends StatefulWidget {
+  const AttentionDot({super.key, this.size = 10});
+
+  final double size;
+
+  @override
+  State<AttentionDot> createState() => _AttentionDotState();
+}
+
+class _AttentionDotState extends State<AttentionDot> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dot = Container(
+      key: const ValueKey('attention-dot'),
+      width: widget.size,
+      height: widget.size,
+      decoration: BoxDecoration(
+        color: DashboardColors.danger,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 1.5),
+      ),
+    );
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return dot;
+    return FadeTransition(
+      opacity: Tween(begin: 1.0, end: 0.25).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut)),
+      child: ScaleTransition(
+        scale: Tween(begin: 1.0, end: 0.8).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut)),
+        child: dot,
       ),
     );
   }

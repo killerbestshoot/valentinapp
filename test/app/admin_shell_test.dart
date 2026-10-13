@@ -65,6 +65,36 @@ void main() {
     expect(created, 1);
   });
 
+  testWidgets('pwen wouj klignotan sou antre ki gen yon aksyon pou trete', (tester) async {
+    AuthRepositoryProvider.override(_FakeAuth());
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+      home: AdminShell(
+        onCreateTransaction: () {},
+        destinations: [
+          ShellDestination(id: 'dashboard', label: 'Tablo', icon: Icons.dashboard, builder: (_) => const Text('PAJ TABLO')),
+          ShellDestination(id: 'payouts', label: 'Payout', icon: Icons.task_alt, alerts: const {'payouts'}, builder: (_) => const Text('P')),
+          ShellDestination(id: 'cash', label: 'Fèmen kès', icon: Icons.point_of_sale, alerts: const {'cash_pending'}, builder: (_) => const Text('K')),
+        ],
+      ),
+    ));
+    // Animasyon an pa janm fini: `pump` ak yon dire, pa `pumpAndSettle`.
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final dot = find.byKey(const ValueKey('attention-dot'));
+    expect(dot, findsOneWidget, reason: 'sèlman Payout gen yon notifikasyon (3)');
+    expect(find.ancestor(of: dot, matching: find.byType(InkWell)).evaluate().length, greaterThan(0));
+    final payoutRow = tester.getRect(find.text('Payout'));
+    expect((tester.getRect(dot).center.dy - payoutRow.center.dy).abs(), lessThan(20), reason: 'pwen an sou liy Payout la');
+
+    // Li klignote: opasite a chanje ak tan an.
+    final fade = find.ancestor(of: dot, matching: find.byType(FadeTransition)).first;
+    final before = tester.widget<FadeTransition>(fade).opacity.value;
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(tester.widget<FadeTransition>(fade).opacity.value, isNot(before));
+  });
+
   testWidgets('telefòn: meni an nan yon tiwa', (tester) async {
     AuthRepositoryProvider.override(_FakeAuth());
     await tester.binding.setSurfaceSize(const Size(400, 800));

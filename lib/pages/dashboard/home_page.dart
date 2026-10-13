@@ -79,6 +79,7 @@ class _HomePageState extends State<HomePage> {
         ),
         ShellDestination(
           id: 'payouts',
+          alerts: const {'payout_pending'},
           label: 'Payout',
           icon: Icons.task_alt_outlined,
           section: 'Operasyon',
@@ -86,6 +87,7 @@ class _HomePageState extends State<HomePage> {
         ),
         ShellDestination(
           id: 'topups',
+          alerts: const {'topup_pending'},
           label: 'Rechaj wallet',
           icon: Icons.fact_check_outlined,
           section: 'Operasyon',
@@ -93,6 +95,7 @@ class _HomePageState extends State<HomePage> {
         ),
         ShellDestination(
           id: 'airtime-recharge',
+          alerts: const {'airtime_recharge_pending'},
           label: 'Rechaj Airtime',
           icon: Icons.phone_android_outlined,
           section: 'Operasyon',
@@ -100,6 +103,7 @@ class _HomePageState extends State<HomePage> {
         ),
         ShellDestination(
           id: 'agents',
+          alerts: const {'staff_pending_approval'},
           label: 'Ajan',
           icon: Icons.groups_outlined,
           section: 'Operasyon',
@@ -107,6 +111,7 @@ class _HomePageState extends State<HomePage> {
         ),
         ShellDestination(
           id: 'commissions',
+          alerts: const {'commission_pending'},
           label: 'Komisyon',
           icon: Icons.percent,
           section: 'Lajan',
@@ -114,6 +119,7 @@ class _HomePageState extends State<HomePage> {
         ),
         ShellDestination(
           id: 'cash',
+          alerts: const {'cash_pending'},
           label: 'Fèmen kès',
           icon: Icons.point_of_sale_outlined,
           section: 'Lajan',
@@ -150,6 +156,7 @@ class _HomePageState extends State<HomePage> {
         ),
         ShellDestination(
           id: 'review',
+          alerts: const {'transfer_review', 'transfer_verifying'},
           label: 'Pou verifye',
           icon: Icons.rule_outlined,
           section: 'Sistèm',

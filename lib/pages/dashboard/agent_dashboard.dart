@@ -108,6 +108,7 @@ class _AgentShellState extends State<_AgentShell> {
         ),
         ShellDestination(
           id: 'cash',
+          alerts: const {'my_cash_rejected'},
           label: 'Fèmen kès',
           icon: Icons.point_of_sale_outlined,
           section: 'Lajan',
