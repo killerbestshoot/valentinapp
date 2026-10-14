@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 ///
 /// Chak apèl voye [appBuild] bay sèvè a (`X-App-Build`): anba vèsyon minimòm
 /// lan, sèvè a reponn 426 epi app la montre ekran "Mete ajou" a.
-const appVersion = '1.3.1';
-const appBuild = 9;
+const appVersion = '1.3.2';
+const appBuild = 10;
 
 String get appPlatform => kIsWeb ? 'web' : defaultTargetPlatform.name;
