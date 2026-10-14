@@ -46,7 +46,8 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
   String serviceName = 'MonCash';
 
   /// Kiyès ki peye frè platfòm nan. Frè a li menm soti nan règ owner a.
-  FeeMode _feeMode = FeeMode.sender;
+  /// Pa defo: frè a dedwi sou montan kliyan an bay (demann kliyan an).
+  FeeMode _feeMode = FeeMode.deducted;
 
   /// Devi frè a (serveur a): frè, sa benefisyè a resevwa, sa kliyan an peye.
   FeeQuote? _feeQuote;

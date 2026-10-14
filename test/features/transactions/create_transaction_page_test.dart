@@ -165,6 +165,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// Frè a dedwi pa defo; tès ki verifye montan egzak yo chwazi "anplis".
+  Future<void> feeSender(WidgetTester tester) async {
+    await tester.ensureVisible(find.text('Kliyan an peye l anplis'));
+    await tester.tap(find.text('Kliyan an peye l anplis'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> save(WidgetTester tester) async {
     await tester.ensureVisible(find.text('Anrejistre epi voye'));
     await tester.tap(find.text('Anrejistre epi voye'));
@@ -217,6 +225,7 @@ void main() {
       await chooseService(tester, 'NatCash');
       await chooseCurrency(tester, 'USD');
       await fill(tester, name: 'Jean Pierre', phone: '37123456', amount: '30.29');
+      await feeSender(tester);
 
       await save(tester);
 
@@ -291,6 +300,7 @@ void main() {
       await chooseService(tester, 'Minit Haiti');
       await chooseCurrency(tester, 'MXN');
       await fill(tester, name: 'Marie', phone: '3712 3456', amount: '100');
+      await feeSender(tester);
 
       // 100 MXN × 7,25 / 132 = 5,4924 USD: 5,49 voye (an ba), 5,49 debite.
       expect(find.text('Kliyan an peye'), findsOneWidget);
@@ -309,6 +319,7 @@ void main() {
       await pumpPage(tester);
       await chooseCurrency(tester, 'MXN');
       await fill(tester, name: 'Jean', phone: '37123456', amount: '100');
+      await feeSender(tester);
 
       // 100 MXN = 725 HTG, +5% = 761,25 HTG, / 132 = 5,77 USD
       expect(find.text('725,00 HTG'), findsOneWidget, reason: 'an goud, sou tikè a');
@@ -320,6 +331,7 @@ void main() {
       await chooseService(tester, 'Minit Haiti');
       await chooseCurrency(tester, 'USD');
       await fill(tester, name: 'Marie', phone: '3712 3456', amount: '5');
+      await feeSender(tester);
 
       expect(find.text('Digicel Haiti'), findsOneWidget);
       expect(find.text('607.30 HTG'), findsOneWidget);
@@ -412,10 +424,22 @@ void main() {
   });
 
   group('Frè platfòm nan (owner a fikse l)', () {
-    testWidgets('pa defo kliyan an peye l anplis: 5% sou 2000 = 2100', (tester) async {
+    testWidgets('pa defo frè a dedwi: kliyan an bay 2000, Vanessa resevwa 1900', (tester) async {
       await pumpPage(tester);
       await chooseService(tester, 'MonCash');
       await fill(tester, name: 'Vanessa', phone: '37123456', amount: '2000');
+
+      expect(find.text('1 900,00 MXN'), findsOneWidget, reason: 'dedwi pa defo, san okenn klik');
+      await save(tester);
+      expect(transactions.created.single.feeMode, 'deducted');
+      expect(transactions.created.single.totalPaid, 2000);
+    });
+
+    testWidgets('kliyan an peye l anplis: 5% sou 2000 = 2100', (tester) async {
+      await pumpPage(tester);
+      await chooseService(tester, 'MonCash');
+      await fill(tester, name: 'Vanessa', phone: '37123456', amount: '2000');
+      await feeSender(tester);
 
       expect(find.text('Vanessa resevwa'), findsOneWidget);
       expect(find.text('Frè 5%'), findsOneWidget);
