@@ -444,10 +444,12 @@ class PayoutsApi {
     String bankName = '',
     String bankAccountName = '',
     String bankAccountNumber = '',
+    String wallet = 'main',
   }) async {
     final json = await _client.post('/api/payouts', {
       'amount': amount,
       'network': network,
+      'wallet': wallet,
       if (phone.isNotEmpty) 'phone': phone,
       if (receiverName.isNotEmpty) 'receiverName': receiverName,
       if (note.isNotEmpty) 'note': note,

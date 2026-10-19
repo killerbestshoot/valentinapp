@@ -327,6 +327,22 @@ class WalletApi {
     return WalletSummary.fromJson(json['wallet'] as Map<String, dynamic>);
   }
 
+  Future<({WalletSummary main, WalletSummary commission})> mineWithCommission() async {
+    final json = await _client.get('/api/wallets/me');
+    return (
+      main: WalletSummary.fromJson(json['wallet'] as Map<String, dynamic>),
+      commission: WalletSummary.fromJson(json['commissionWallet'] as Map<String, dynamic>),
+    );
+  }
+
+  Future<void> transferCommission({required double amount, required String direction, required String idempotencyKey}) async {
+    await _client.post('/api/wallets/transfer-commission', {
+      'amount': amount,
+      'direction': direction,
+      'idempotencyKey': idempotencyKey,
+    });
+  }
+
   Future<WalletSummary> of(String uid) async {
     final json = await _client.get('/api/wallets/$uid');
     return WalletSummary.fromJson(json['wallet'] as Map<String, dynamic>);

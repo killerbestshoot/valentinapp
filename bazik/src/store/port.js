@@ -25,6 +25,7 @@
  * @property {(k: {uid: string, enterpriseId: string}) => Promise<object|null>} getWallet
  * @property {(m: MoneyMove) => Promise<object>} creditWallet
  * @property {(m: MoneyMove) => Promise<object>} debitWallet
+ * @property {(args: {from: MoneyMove, to: MoneyMove}) => Promise<object>} transferBetweenWallets ATOMIK
  * @property {(r: object) => Promise<object>} createTopup
  * @property {(id: string) => Promise<object|null>} getTopup
  * @property {(ref: string) => Promise<object|null>} findTopupByReference
@@ -51,6 +52,7 @@ const REQUIRED_METHODS = [
   "getWallet",
   "creditWallet",
   "debitWallet",
+  "transferBetweenWallets",
   "createTopup",
   "getTopup",
   "findTopupByReference",

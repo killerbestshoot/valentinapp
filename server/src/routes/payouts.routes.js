@@ -27,6 +27,7 @@ const { getBazikService } = require("../bazik_service");
 const { requireAuth, requireRole, requireEnterprise } = require("../auth/middleware");
 const { money, DomainError, BazikError } = require("../../../bazik/index.js");
 const AppIds = require("../../../bazik/src/ids");
+const { commissionUid } = require("../../../bazik/src/commission_wallet");
 
 const router = express.Router();
 
@@ -41,7 +42,8 @@ function send(res, err) {
 function toJson(row) {
   return {
     requestId: row.request_id,
-    staffUid: row.staff_uid,
+    staffUid: row.staff_uid.endsWith("#commission") ? row.staff_uid.slice(0, -"#commission".length) : row.staff_uid,
+    wallet: row.staff_uid.endsWith("#commission") ? "commission" : "main",
     staffName: row.staff_name,
     amount: money.fromMinor(row.amount_minor),
     currency: row.currency,
@@ -66,8 +68,11 @@ router.get("/", requireAuth, requireEnterprise, (req, res) => {
     const params = [req.user.enterpriseId];
 
     if (req.user.role === "agent" || req.user.role === "client") {
-      filters.push("staff_uid = ?");
-      params.push(req.user.uid);
+      filters.push("(staff_uid = ? OR staff_uid = ?)");
+      params.push(req.user.uid, commissionUid(req.user.uid));
+    } else if (req.user.role === "owner") {
+      filters.push("(staff_uid = ? OR staff_uid = ?)");
+      params.push(req.user.uid, commissionUid(req.user.uid));
     }
 
     const status = String(req.query.status || "").trim();
@@ -106,6 +111,14 @@ router.post("/", requireAuth, requireEnterprise, async (req, res) => {
       return send(res, { code: "missing_phone", message: "Nimewo MonCash/NatCash la obligatwa." });
     }
 
+    if (body.wallet === "commission" && !["agent", "owner"].includes(req.user.role)) {
+      return send(res, { code: "invalid_wallet", message: "Wallet komisyon sa a pa disponib pou wòl ou." });
+    }
+
+    if (body.wallet === "commission" && !["agent", "owner"].includes(req.user.role)) {
+      return send(res, { code: "invalid_wallet", message: "Wallet komisyon sa a pa disponib pou wòl ou." });
+    }
+
     const bank = { name: "", accountName: "", accountNumber: "" };
     if (network === "bank") {
       bank.name = String(body.bankName || "").trim().slice(0, 80);
@@ -120,8 +133,10 @@ router.post("/", requireAuth, requireEnterprise, async (req, res) => {
     }
 
     // Deviz la se sa wallet la — pa sa kliyan an voye (menm leson ak vòl pa deviz la).
+    const requestedCommission = body.wallet === "commission";
+    const sourceUid = requestedCommission ? commissionUid(req.user.uid) : req.user.uid;
     const wallet = await getBazikService().store.getWallet({
-      uid: req.user.uid,
+      uid: sourceUid,
       enterpriseId: req.user.enterpriseId,
     });
 
@@ -132,7 +147,7 @@ router.post("/", requireAuth, requireEnterprise, async (req, res) => {
     if (wallet.balanceMinor < amountMinor) {
       return send(res, {
         code: "insufficient_funds",
-        message: `Sòld ou (${money.fromMinor(wallet.balanceMinor)} ${wallet.currency}) pa ase.`,
+        message: `Sòld ${requestedCommission ? "komisyon" : "prensipal"} ou (${money.fromMinor(wallet.balanceMinor)} ${wallet.currency}) pa ase.`,
       });
     }
 
@@ -147,7 +162,7 @@ router.post("/", requireAuth, requireEnterprise, async (req, res) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
       )
       .run(
-        requestId, req.user.enterpriseId, req.user.uid, req.user.displayName, amountMinor,
+        requestId, req.user.enterpriseId, sourceUid, req.user.displayName, amountMinor,
         wallet.currency, network, phone,
         network === "bank" ? bank.accountName : String(body.receiverName || req.user.displayName || ""),
         String(body.note || ""), bank.name, bank.accountName, bank.accountNumber, now(), now()
@@ -245,6 +260,7 @@ router.post("/:id/approve", requireAuth, requireEnterprise, requireRole("owner",
         note: row.note || "Payout",
         createdBy: req.user.uid,
         idempotencySeed: `payout:${row.request_id}`,
+        bypassLock: String(row.staff_uid).endsWith("#commission"),
       });
 
       const transfer = result.transfer;

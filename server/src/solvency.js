@@ -41,7 +41,10 @@ function bufferRatio(env = process.env) {
   return Number.isFinite(value) && value >= 0 ? value : DEFAULT_BUFFER;
 }
 
-/** Dèt: sòm float tout staff (ajan ak admin), pa deviz. */
+/**
+ * Dèt: sòm float tout staff (ajan ak admin) + TOUT wallet komisyon yo (ajan
+ * ak owner): komisyon yo se kòb ki pwomèt, bloke sou pasrèl yo.
+ */
 async function liabilities(enterpriseId, rates) {
   const rows = getDb()
     .prepare(
@@ -122,13 +125,26 @@ async function pslCoverage() {
   }
 }
 
-/** Float chak staff (pa owner), an HTG, ak non li. */
+/** Total wallet komisyon antrepriz la, an HTG. */
+async function lockedCommissionsFor(enterpriseId, rates) {
+  const rows = getDb()
+    .prepare(
+      `SELECT currency, SUM(balance_minor) AS total FROM wallets
+        WHERE enterprise_id = ? AND role = 'commission' AND balance_minor > 0 GROUP BY currency`
+    )
+    .all(enterpriseId);
+  let total = 0;
+  for (const row of rows) total += (await rates.convert(row.total, row.currency, "HTG")).amountMinor;
+  return total;
+}
+
+/** Float chak staff (pa owner, pa komisyon), an HTG, ak non li. */
 async function staffFloats(enterpriseId, rates) {
   const rows = getDb()
     .prepare(
       `SELECT w.uid, w.currency, w.balance_minor, COALESCE(u.display_name, '') AS name FROM wallets w
          LEFT JOIN users u ON u.uid = w.uid
-        WHERE w.enterprise_id = ? AND w.role != 'owner' AND w.balance_minor > 0`
+        WHERE w.enterprise_id = ? AND w.role NOT IN ('owner', 'commission') AND w.balance_minor > 0`
     )
     .all(enterpriseId);
   const out = [];
@@ -194,6 +210,13 @@ async function checkSolvency({ enterpriseId }) {
 
   const measurable = reasons.length === 0;
   const coverageHtgMinor = (bazik.htgMinor || 0) + (reloadly.htgMinor || 0) + (psl.htgMinor || 0);
+  // Pati dèt la ki se komisyon (bloke sou pasrèl yo pou retrè yo).
+  let lockedHtgMinor = 0;
+  try {
+    lockedHtgMinor = await lockedCommissionsFor(enterpriseId, rates);
+  } catch {
+    lockedHtgMinor = 0;
+  }
   const gapHtgMinor = debt.htgMinor - coverageHtgMinor;
 
   // Pi gwo transfè MonCash/NatCash YON pasrèl ka voye, frè li ladan.
@@ -232,6 +255,8 @@ async function checkSolvency({ enterpriseId }) {
       reloadly,
       psl,
     },
+    /** Komisyon ajan + owner, an HTG: bloke sou pasrèl yo, yon transfè nòmal pa ka depanse yo. */
+    lockedCommissions: money.fromMinor(lockedHtgMinor),
     /** Pi gwo transfè MonCash/NatCash yon sèl pasrèl ka voye kounye a (HTG). */
     maxSingleTransfer: measurable ? money.fromMinor(maxSingleHtgMinor) : null,
     agentsOverCap: measurable ? agentsOverCap : [],

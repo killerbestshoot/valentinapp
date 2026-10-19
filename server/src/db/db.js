@@ -66,6 +66,9 @@ const COMMISSION_LOG_EXTRA_COLUMNS = [
   ["owner_net_minor", "INTEGER NOT NULL DEFAULT 0"],
   // Komisyon yo anile: tranzaksyon an te make livre pa erè, lajan an pa t pati.
   ["reversed_at", "INTEGER"],
+  // Ki wallet ki te kredite: 'main' (ansyen liy yo) oswa 'commission' (wallet
+  // komisyon apa a). Ranvèsman an debite MENM wallet la.
+  ["credit_target", "TEXT NOT NULL DEFAULT 'main'"],
 ];
 
 /** Rechaj pa virement bancaire: referans ajan an bay la + kont li te vize a. */

@@ -30,6 +30,7 @@ const { money } = require("../../../bazik/index.js");
 const AppIds = require("../../../bazik/src/ids");
 const { getExchangeMargin, applyMargin, getBankAccounts } = require("../settings/settings");
 const { checkCreditCapacity, withCreditLock } = require("../solvency");
+const { commissionUid, COMMISSION_ROLE } = require("../../../bazik/src/commission_wallet");
 
 const router = express.Router();
 
@@ -117,7 +118,37 @@ router.get("/me", requireAuth, requireEnterprise, async (req, res) => {
     return res.json({
       ok: true,
       wallet: await walletOf(req.user.uid, req.user.enterpriseId),
+      commissionWallet: await walletOf(commissionUid(req.user.uid), req.user.enterpriseId),
     });
+  } catch (err) {
+    return send(res, err);
+  }
+});
+
+/** Transfè entèn ant wallet prensipal ak wallet komisyon pwòp itilizatè a. */
+router.post("/transfer-commission", requireAuth, requireEnterprise, async (req, res) => {
+  try {
+    if (!["owner", "agent"].includes(req.user.role)) {
+      return res.status(403).json({ ok: false, code: "forbidden", message: "Wòl sa a pa gen wallet komisyon pèsonèl." });
+    }
+    const body = req.body || {};
+    const amountMinor = money.toMinor(body.amount);
+    const direction = body.direction === "commission_to_main" ? "commission_to_main" : body.direction === "main_to_commission" ? "main_to_commission" : "";
+    if (!direction) return send(res, { code: "invalid_direction", message: "Chwazi ki sans transfè a dwe fèt." });
+    const commission = await getBazikService().store.getWallet({ uid: commissionUid(req.user.uid), enterpriseId: req.user.enterpriseId });
+    const main = await getBazikService().store.getWallet({ uid: req.user.uid, enterpriseId: req.user.enterpriseId });
+    const currency = (direction === "commission_to_main" ? commission : main)?.currency || main?.currency || "USD";
+    const key = `commission-wallet-transfer:${req.user.enterpriseId}:${req.user.uid}:${String(body.idempotencyKey || "").slice(0, 100)}`;
+    if (key.endsWith(":")) return send(res, { code: "missing_idempotency_key", message: "Kle transfè a obligatwa." });
+    const fromCommission = direction === "commission_to_main";
+    const fromUid = fromCommission ? commissionUid(req.user.uid) : req.user.uid;
+    const toUid = fromCommission ? req.user.uid : commissionUid(req.user.uid);
+    const store = getBazikService().store;
+    const result = await store.transferBetweenWallets({
+      from: { uid: fromUid, enterpriseId: req.user.enterpriseId, enterpriseName: req.user.enterpriseName, role: fromCommission ? COMMISSION_ROLE : req.user.role, amountMinor, currency, type: direction, note: String(body.note || "").slice(0, 160), sourceCollection: "wallets", sourceId: key, createdBy: req.user.uid, createdByRole: req.user.role, idempotencyKey: `${key}:debit` },
+      to: { uid: toUid, enterpriseId: req.user.enterpriseId, enterpriseName: req.user.enterpriseName, role: fromCommission ? req.user.role : COMMISSION_ROLE, amountMinor, currency, type: direction, note: String(body.note || "").slice(0, 160), sourceCollection: "wallets", sourceId: key, createdBy: req.user.uid, createdByRole: req.user.role, idempotencyKey: `${key}:credit` },
+    });
+    return res.json({ ok: true, duplicate: result.debit.duplicate && result.credit.duplicate, main: await walletOf(req.user.uid, req.user.enterpriseId), commission: await walletOf(commissionUid(req.user.uid), req.user.enterpriseId) });
   } catch (err) {
     return send(res, err);
   }

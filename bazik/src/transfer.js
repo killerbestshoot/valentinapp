@@ -30,6 +30,9 @@ function createTransferUseCases({
   config,
   rates = createRateBook({ store }),
   isPslFallbackEnabled = () => Boolean(pslClient),
+  // Kòb komisyon yo, an HTG: BLOKE sou pasrèl yo. Yon transfè nòmal pa ka
+  // depanse l; sèl yon retrè komisyon (`bypassLock`) ka itilize l.
+  lockedHtgMinor = async () => 0,
 }) {
   /**
    * Sòld Bazik la chanje dousman; nou kenbe l yon ti moman pou nou pa boule
@@ -70,14 +73,29 @@ function createTransferUseCases({
    * Si nou pa ka li yon sòld (rezo), nou pa bloke: se pasrèl la ki otorite.
    * @returns {Promise<'bazik'|'psl'>}
    */
-  async function resolveRoute({ network, amounts }) {
+  async function resolveRoute({ network, amounts, bypassLock = false }) {
+    // Komisyon yo bloke Bazik an premye, rès la sou PSL.
+    let locked = 0;
+    if (!bypassLock) {
+      try {
+        locked = Math.max(0, Number(await lockedHtgMinor()) || 0);
+      } catch {
+        // Fail closed: si nou pa ka konfime kantite ki rezève a, pa depanse float la.
+        throw new DomainError("commission_reserve_unavailable", "Nou pa ka verifye rezèv komisyon an kounye a. Eseye ankò.");
+      }
+    }
+    const lockNote = (rawMinor, usableMinor) =>
+      rawMinor > usableMinor ? ` (${fromMinor(rawMinor - usableMinor)} HTG rezève pou komisyon yo)` : "";
+
     let bazik = null;
     try {
       bazik = await gatewayBalance();
     } catch (err) {
       if (!(err instanceof BazikError)) throw err;
     }
-    if (!bazik || bazik.availableMinor >= amounts.totalHtgMinor) return "bazik";
+    const bazikUsable = bazik ? Math.max(0, bazik.availableMinor - locked) : null;
+    const lockLeft = bazik ? Math.max(0, locked - bazik.availableMinor) : 0;
+    if (!bazik || bazikUsable >= amounts.totalHtgMinor) return "bazik";
 
     if (canUsePsl(network)) {
       const pslTotalHtgMinor = amounts.amountHtgMinor + Math.round((amounts.amountHtgMinor * PSL_FEE_PCT[network]) / 100);
@@ -88,19 +106,20 @@ function createTransferUseCases({
         if (!(err instanceof PslError)) throw err;
         return "psl"; // sòld PSL enkoni: PSL ap deside
       }
-      if (!psl || psl.availableMinor >= pslTotalHtgMinor) return "psl";
+      const pslUsable = psl ? Math.max(0, psl.availableMinor - lockLeft) : null;
+      if (!psl || pslUsable >= pslTotalHtgMinor) return "psl";
       throw new DomainError(
         "gateway_underfunded",
         `Okenn pasrèl pa ka voye ${fromMinor(amounts.amountHtgMinor)} HTG an yon sèl transfè: ` +
-          `Bazik ${fromMinor(bazik.availableMinor)} HTG (bezwen ${fromMinor(amounts.totalHtgMinor)}), ` +
-          `PSL ${fromMinor(psl.availableMinor)} HTG (bezwen ${fromMinor(pslTotalHtgMinor)}). ` +
+          `Bazik ${fromMinor(bazikUsable)} HTG${lockNote(bazik.availableMinor, bazikUsable)} (bezwen ${fromMinor(amounts.totalHtgMinor)}), ` +
+          `PSL ${fromMinor(pslUsable)} HTG (bezwen ${fromMinor(pslTotalHtgMinor)}). ` +
           `Divize l an plizyè transfè oswa kontakte administratè a.`
       );
     }
 
     throw new DomainError(
       "gateway_underfunded",
-      `Kont Bazik la pa gen ase pwovizyon: ${fromMinor(bazik.availableMinor)} HTG disponib, ` +
+      `Kont Bazik la pa gen ase pwovizyon: ${fromMinor(bazikUsable)} HTG disponib${lockNote(bazik.availableMinor, bazikUsable)}, ` +
         `${fromMinor(amounts.totalHtgMinor)} HTG nesesè (frè ladan). Kontakte administratè a.`
     );
   }
@@ -173,14 +192,14 @@ function createTransferUseCases({
    * Yon estimasyon pou UI a, san anyen pa deplase.
    * Ak `uid`/`enterpriseId`, debi a kalkile nan deviz WALLET ajan an.
    */
-  async function quote({ amountMinor, currency, network = "moncash", uid, enterpriseId }) {
+  async function quote({ amountMinor, currency, network = "moncash", uid, enterpriseId, bypassLock = false }) {
     const wallet = uid && enterpriseId ? await store.getWallet({ uid, enterpriseId }) : null;
     const walletCurrency = wallet?.currency || String(currency || config.walletCurrency).toUpperCase();
     const amountCurrency = String(currency || walletCurrency).toUpperCase();
 
     const amounts = await prepareAmounts({ amountMinor, currency: amountCurrency, walletCurrency, network });
     // Menm règ ak `send`: yon devi ki pase vle di yon pasrèl ka voye l.
-    const provider = await resolveRoute({ network, amounts });
+    const provider = await resolveRoute({ network, amounts, bypassLock });
 
     return {
       network,
@@ -392,6 +411,8 @@ function createTransferUseCases({
     // Li debite nan wallet la ANSANM ak montan an; li pa janm voye bay Bazik.
     // Se nan li komisyon ajan an ak pati owner a soti lè transfè a livre.
     platformFeeMinor = 0,
+    // Retrè komisyon: li gen dwa itilize kòb ki bloke pou komisyon yo.
+    bypassLock = false,
   }) {
     if (!uid || !enterpriseId) {
       throw new DomainError("missing_owner", "uid ak enterpriseId obligatwa.");
@@ -446,7 +467,7 @@ function createTransferUseCases({
     const debitMinor =
       (chargeFeeToWallet ? amounts.debitMinor : amounts.amountWalletMinor) + platformFeeWalletMinor;
 
-    const route = await resolveRoute({ network, amounts });
+    const route = await resolveRoute({ network, amounts, bypassLock });
 
     // --- 1) Liy + debi ann ATOMIK ---
     const opened = await store.openTransfer(

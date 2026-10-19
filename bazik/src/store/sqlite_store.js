@@ -385,6 +385,15 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
       return tx(() => moveSync("debit", move));
     },
 
+    /**
+     * Deplase kòb ant de wallet ann ATOMIK (egz. komisyon → sòld prensipal):
+     * debi a ak kredi a pase ansanm, oswa pa youn ladan yo. `from` / `to` =
+     * menm fòm ak `moveSync`; kle idempotans yo diferan pou chak bò.
+     */
+    async transferBetweenWallets({ from, to }) {
+      return tx(() => ({ debit: moveSync("debit", from), credit: moveSync("credit", to) }));
+    },
+
     async listLedger({ uid, enterpriseId, limit = 50 }) {
       return db
         .prepare(

@@ -31,8 +31,16 @@
  */
 
 const { getDb, now } = require("../db/db");
-const { getBazikService } = require("../bazik_service");
 const { money } = require("../../../bazik/index.js");
+const { commissionUid, COMMISSION_ROLE } = require("../../../bazik/src/commission_wallet");
+const { getBazikService } = require("../bazik_service");
+const store = new Proxy({}, {
+  get: (_target, key) => {
+    const current = getBazikService().store;
+    if (typeof current[key] !== "function") return current[key];
+    return (...args) => current[key](...args);
+  },
+});
 
 /** To legacy yo, si sèvis la pa nan katalòg la. */
 const DEFAULT_AGENT_PCT = 10;
@@ -85,8 +93,6 @@ async function convertMinor(amountMinor, fromCurrency, toCurrency) {
  */
 async function applyCommissionToTx(txId) {
   const db = getDb();
-  const store = getBazikService().store;
-
   const tx = db.prepare("SELECT * FROM transactions WHERE tx_id = ?").get(txId);
 
   if (!tx) return { status: "skipped", reason: "tx_not_found", txId };
@@ -139,17 +145,18 @@ async function applyCommissionToTx(txId) {
 
   const ownerUid = enterprise?.owner_uid || "";
 
-  // --- Kredi ajan ---
+  // --- Kredi ajan --- (sou wallet KOMISYON li, apa sòld prensipal la)
+  // Deviz wallet komisyon an = deviz wallet prensipal la.
   const agentWallet = await store.getWallet({ uid: tx.staff_uid, enterpriseId: tx.enterprise_id });
   const agentCurrency = agentWallet?.currency || tx.currency;
   const agentCreditMinor = await convertMinor(agentMinor, tx.currency, agentCurrency);
 
   if (agentCreditMinor > 0) {
     await store.creditWallet({
-      uid: tx.staff_uid,
+      uid: commissionUid(tx.staff_uid),
       enterpriseId: tx.enterprise_id,
       enterpriseName: tx.enterprise_name || enterprise?.name || "",
-      role: tx.staff_role || "agent",
+      role: COMMISSION_ROLE,
       amountMinor: agentCreditMinor,
       currency: agentCurrency,
       type: "commission_agent",
@@ -177,10 +184,10 @@ async function applyCommissionToTx(txId) {
 
     if (ownerCreditMinor > 0) {
       await store.creditWallet({
-        uid: ownerUid,
+        uid: commissionUid(ownerUid),
         enterpriseId: tx.enterprise_id,
         enterpriseName: tx.enterprise_name || enterprise?.name || "",
-        role: "owner",
+        role: COMMISSION_ROLE,
         amountMinor: ownerCreditMinor,
         currency: ownerCurrency,
         type: "commission_owner",
@@ -207,12 +214,15 @@ async function applyCommissionToTx(txId) {
     const ownerWallet = await store.getWallet({ uid: ownerUid, enterpriseId: tx.enterprise_id });
     const ownerCurrency = ownerWallet?.currency || tx.currency;
     const shortfall = await convertMinor(-ownerNetMinor, tx.currency, ownerCurrency);
+    // Pèt la sòti nan komisyon owner a dabò; si li pa ase, nan sòld prensipal li.
+    const ownerCommission = await store.getWallet({ uid: commissionUid(ownerUid), enterpriseId: tx.enterprise_id });
+    const shortfallUid = ownerCommission && ownerCommission.balanceMinor >= shortfall ? commissionUid(ownerUid) : ownerUid;
     try {
       await store.debitWallet({
-        uid: ownerUid,
+        uid: shortfallUid,
         enterpriseId: tx.enterprise_id,
         enterpriseName: tx.enterprise_name || enterprise?.name || "",
-        role: "owner",
+        role: shortfallUid === ownerUid ? "owner" : COMMISSION_ROLE,
         amountMinor: shortfall,
         currency: ownerCurrency,
         type: "gateway_cost_owner",
@@ -251,8 +261,8 @@ async function applyCommissionToTx(txId) {
     `INSERT INTO commission_logs
       (tx_id, enterprise_id, staff_uid, owner_uid, service, tx_amount_minor, tx_currency,
        agent_pct, owner_pct, agent_minor, owner_minor, agent_credit_minor,
-       owner_credit_minor, fee_minor, gateway_cost_minor, owner_net_minor, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       owner_credit_minor, fee_minor, gateway_cost_minor, owner_net_minor, created_at, credit_target)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'commission')
      ON CONFLICT(tx_id) DO NOTHING`
   ).run(
     txId, tx.enterprise_id, tx.staff_uid, ownerUid, tx.service, tx.amount_minor,

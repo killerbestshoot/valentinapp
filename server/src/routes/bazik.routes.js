@@ -33,6 +33,8 @@ async function settleCommissions(enterpriseId) {
   }
 }
 
+const { commissionUid, COMMISSION_ROLE } = require("../../../bazik/src/commission_wallet");
+
 const router = express.Router();
 
 /** Yon sèl kote pou tradui erè domèn yo an repons HTTP. */
@@ -430,13 +432,15 @@ router.post("/transfers/:id/resolve", requireAuth, requireEnterprise, requireRol
           ["owner", log.owner_uid, log.owner_credit_minor],
         ]) {
           if (!uid || !(minor > 0)) continue;
-          const wallet = await service.store.getWallet({ uid, enterpriseId: transfer.enterpriseId });
+          // Wallet ki te kredite a: komisyon apa a (nouvo) oswa sòld prensipal la (ansyen).
+          const target = log.credit_target === "commission" ? commissionUid(uid) : uid;
+          const wallet = await service.store.getWallet({ uid: target, enterpriseId: transfer.enterpriseId });
           if (!wallet) continue;
           await service.store.debitWallet({
-            uid,
+            uid: target,
             enterpriseId: transfer.enterpriseId,
             enterpriseName: transfer.enterpriseName || "",
-            role: who,
+            role: log.credit_target === "commission" ? COMMISSION_ROLE : who,
             amountMinor: minor,
             currency: wallet.currency,
             type: `commission_${who}_reversal`,

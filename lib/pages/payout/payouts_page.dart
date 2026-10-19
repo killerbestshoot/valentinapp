@@ -54,6 +54,7 @@ class _PayoutsPageState extends State<PayoutsPage> {
     final formKey = GlobalKey<FormState>();
     String? required(String? v) => (v ?? '').trim().isEmpty ? 'Obligatwa.' : null;
     var network = 'moncash';
+    var wallet = 'main';
 
     final ok = await showDialog<bool>(
           context: context,
@@ -66,6 +67,16 @@ class _PayoutsPageState extends State<PayoutsPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      SegmentedButton<String>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(value: 'main', label: Text('Prensipal')),
+                          ButtonSegment(value: 'commission', label: Text('Komisyon')),
+                        ],
+                        selected: {wallet},
+                        onSelectionChanged: (s) => setDialogState(() => wallet = s.first),
+                      ),
+                      const SizedBox(height: 12),
                       SegmentedButton<String>(
                         showSelectedIcon: false,
                         segments: const [
@@ -179,6 +190,7 @@ class _PayoutsPageState extends State<PayoutsPage> {
         bankName: bankName,
         bankAccountName: accountName,
         bankAccountNumber: accountNumber,
+        wallet: wallet,
       );
       _toast('Demann lan voye. Yon administratè ap apwouve l.');
       _listKey.currentState?.reload();

@@ -27,7 +27,7 @@ const { createPslClient } = require("./psl_client");
  * @param {object} [options.ratesPolicy] `{ requireFresh, maxAgeMs }` — serveur a
  *   mande to fre an pwodiksyon (gade `rates.js`).
  */
-function createBazikService({ store, client, pslClient, config, env, ratesPolicy = {}, isPslFallbackEnabled } = {}) {
+function createBazikService({ store, client, pslClient, config, env, ratesPolicy = {}, isPslFallbackEnabled, lockedHtgMinor } = {}) {
   assertStore(store);
   const rates = createRateBook({ store, ...ratesPolicy });
 
@@ -45,6 +45,7 @@ function createBazikService({ store, client, pslClient, config, env, ratesPolicy
     config: resolvedConfig,
     rates,
     isPslFallbackEnabled,
+    ...(lockedHtgMinor ? { lockedHtgMinor } : {}),
   });
   const topups = createTopupUseCases({ store, client: resolvedClient, config: resolvedConfig, rates });
   const webhooks = createWebhookHandler({

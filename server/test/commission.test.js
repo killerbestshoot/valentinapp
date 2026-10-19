@@ -86,7 +86,7 @@ function createTx({ enterpriseId, staffUid, amountMinor, currency = "USD", servi
 }
 
 async function balance(uid, enterpriseId) {
-  const wallet = await getBazikService().store.getWallet({ uid, enterpriseId });
+  const wallet = await getBazikService().store.getWallet({ uid: `${uid}#commission`, enterpriseId });
   return wallet ? wallet.balanceMinor : 0;
 }
 
@@ -126,7 +126,7 @@ test("chak komisyon ekri nan rejis la", async () => {
 
   await engine.applyCommissionToTx(txId);
 
-  const entries = await getBazikService().store.listLedger({ uid: agent.uid, enterpriseId });
+  const entries = await getBazikService().store.listLedger({ uid: `${agent.uid}#commission`, enterpriseId });
   const commission = entries.find((e) => e.type === "commission_agent");
 
   assert.ok(commission, "liy rejis la dwe egziste");

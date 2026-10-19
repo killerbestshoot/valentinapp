@@ -19,6 +19,7 @@ const { applyPendingCommissions } = require("../commission/engine");
 const { validateFeePolicy, ownerMarginPct, GATEWAY_COST_PCT } = require("../commission/fees");
 const { getBazikService } = require("../bazik_service");
 const { money } = require("../../../bazik/index.js");
+const { commissionUid } = require("../../../bazik/src/commission_wallet");
 
 const commissions = express.Router();
 const services = express.Router();
@@ -124,6 +125,7 @@ commissions.get("/live", requireAuth, requireEnterprise, requireRole("owner", "a
     const days = [1, 7, 30].includes(Number(req.query.days)) ? Number(req.query.days) : 1;
     const display = String(req.query.currency || "HTG").toUpperCase();
     const rates = getBazikService().rates;
+    const selfCommission = await getBazikService().store.getWallet({ uid: commissionUid(req.user.uid), enterpriseId: ent });
 
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -253,6 +255,7 @@ commissions.get("/live", requireAuth, requireEnterprise, requireRole("owner", "a
         pendingAgent: sum("pendingAgent"),
         pendingOwner: sum("pendingOwner"),
       },
+      selfCommissionWallet: selfCommission ? { balance: money.fromMinor(selfCommission.balanceMinor), currency: selfCommission.currency } : { balance: 0, currency: "USD" },
       agents,
       recent,
     });

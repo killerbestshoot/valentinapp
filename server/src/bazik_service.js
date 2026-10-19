@@ -43,6 +43,22 @@ function wrapStoreWithMargin(store) {
   };
 }
 
+/** Total wallet komisyon yo (tout antrepriz), an HTG ak to jounen an. */
+async function lockedCommissionsHtgMinor() {
+  const { getDb } = require("./db/db");
+  const rows = getDb()
+    .prepare(
+      `SELECT currency, SUM(balance_minor) AS total FROM wallets
+        WHERE role = 'commission' AND balance_minor > 0 GROUP BY currency`
+    )
+    .all();
+  let total = 0;
+  for (const row of rows) {
+    total += row.currency === "HTG" ? row.total : (await service.rates.convert(row.total, row.currency, "HTG")).amountMinor;
+  }
+  return total;
+}
+
 function getBazikService() {
   if (service) return service;
 
@@ -63,6 +79,9 @@ function getBazikService() {
       requireFresh: process.env.NODE_ENV === "production",
       maxAgeMs: maxAgeHours * 3600 * 1000,
     },
+    // Komisyon ajan + owner yo BLOKE sou pasrèl yo: yon transfè nòmal pa ka
+    // depanse kòb sa a, pou retrè komisyon yo toujou posib.
+    lockedHtgMinor: () => lockedCommissionsHtgMinor(),
     isPslFallbackEnabled: () =>
       Boolean(service?.config.psl?.enabled && !service.config.isFake) &&
       getPslFallbackEnabled(Boolean(service?.config.psl?.enabled && !service.config.isFake)),
@@ -98,4 +117,4 @@ function getBazikService() {
   return service;
 }
 
-module.exports = { getBazikService };
+module.exports = { getBazikService, lockedCommissionsHtgMinor };

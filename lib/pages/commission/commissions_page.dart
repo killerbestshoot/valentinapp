@@ -7,6 +7,7 @@ import 'package:mon_premye_app/core/network/api_client.dart';
 import 'package:mon_premye_app/features/auth/data/auth_repository_provider.dart';
 import 'package:mon_premye_app/core/models/app_role.dart';
 import 'package:mon_premye_app/features/operations/data/operations_api.dart';
+import 'package:mon_premye_app/features/wallet/data/wallet_api.dart';
 import 'package:mon_premye_app/widgets/async_view.dart';
 import 'package:mon_premye_app/widgets/dashboard_ui.dart';
 
@@ -65,6 +66,8 @@ class _CommissionsPageState extends State<CommissionsPage> {
           subtitle: 'Yo soti nan frè chak tranzaksyon, aplike otomatikman lè l livre.',
         ),
         const SizedBox(height: 18),
+        const CommissionWalletPanel(),
+        const SizedBox(height: 18),
         if (_isManager) ...[
           const _SectionTitle('An dirèk'),
           const LiveCommissionsPanel(),
@@ -122,6 +125,63 @@ class _CommissionsPageState extends State<CommissionsPage> {
       ],
     );
   }
+}
+
+class CommissionWalletPanel extends StatefulWidget {
+  const CommissionWalletPanel({super.key});
+
+  @override
+  State<CommissionWalletPanel> createState() => _CommissionWalletPanelState();
+}
+
+class _CommissionWalletPanelState extends State<CommissionWalletPanel> {
+  bool _busy = false;
+  ({WalletSummary main, WalletSummary commission})? _wallets;
+
+  Future<void> _load() async {
+    try {
+      final value = await WalletApi.instance.mineWithCommission();
+      if (mounted) setState(() => _wallets = value);
+    } catch (_) {}
+  }
+
+  Future<void> _transfer(String direction) async {
+    final ctrl = TextEditingController();
+    final amount = await showDialog<double>(context: context, builder: (context) => AlertDialog(
+      title: Text(direction == 'main_to_commission' ? 'Voye sou komisyon' : 'Voye sou prensipal'),
+      content: TextField(controller: ctrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Montan')),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Anile')), FilledButton(onPressed: () => Navigator.pop(context, double.tryParse(ctrl.text.trim())), child: const Text('Kontinye'))],
+    ));
+    if (amount == null || amount <= 0) return;
+    setState(() => _busy = true);
+    try {
+      await WalletApi.instance.transferCommission(amount: amount, direction: direction, idempotencyKey: '${DateTime.now().microsecondsSinceEpoch}');
+      await _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transfè a fini.')));
+    } on ApiException catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  @override
+  Widget build(BuildContext context) => DashboardPanel(child: _wallets == null
+    ? const LinearProgressIndicator()
+    : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Wallet komisyon ak wallet prensipal', style: TextStyle(fontWeight: FontWeight.w900)),
+        const SizedBox(height: 8),
+        Text('Prensipal: ${_wallets!.main.balance.toStringAsFixed(2)} ${_wallets!.main.currency}'),
+        Text('Komisyon: ${_wallets!.commission.balance.toStringAsFixed(2)} ${_wallets!.commission.currency}'),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, children: [
+          OutlinedButton(onPressed: _busy ? null : () => _transfer('commission_to_main'), child: const Text('Komisyon → prensipal')),
+          OutlinedButton(onPressed: _busy ? null : () => _transfer('main_to_commission'), child: const Text('Prensipal → komisyon')),
+        ]),
+      ]));
 }
 
 class _SectionTitle extends StatelessWidget {
