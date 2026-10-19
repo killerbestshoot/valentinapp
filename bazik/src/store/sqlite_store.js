@@ -242,6 +242,12 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
     }
 
     const wallet = ensureWalletSync({ uid, enterpriseId, enterpriseName, role, currency });
+    if (wallet.currency !== String(currency || "USD").toUpperCase()) {
+      throw new DomainError(
+        "currency_mismatch",
+        `Wallet sa a deja nan ${wallet.currency}; mouvman an dwe itilize menm deviz sa a (resevwa ${currency}).`
+      );
+    }
     const before = wallet.balanceMinor;
     const after = direction === "credit" ? before + amountMinor : before - amountMinor;
 

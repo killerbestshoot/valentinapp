@@ -62,3 +62,17 @@ test("transfè atomik ant wallet: komisyon → prensipal, sòld ensifizan = anye
   await assert.rejects(move(50000, "m2"), (err) => err.code === "insufficient_funds");
   assert.equal((await store.getWallet({ uid: "a", enterpriseId: "E" })).balanceMinor, 120000, "kredi a pa pase si debi a echwe");
 });
+
+test("wallet komisyon an kenbe menm deviz ak wallet prensipal la", async (t) => {
+  const service = makeService();
+  t.after(() => service.close());
+  const store = service.store;
+  await seed(store, "a", 0, "USD");
+  await store.ensureWallet({ uid: commissionUid("a"), enterpriseId: "E", role: "commission", currency: "USD" });
+  await store.creditWallet({ uid: commissionUid("a"), enterpriseId: "E", amountMinor: 250, currency: "USD", type: "commission", idempotencyKey: "commission:currency" });
+  assert.equal((await store.getWallet({ uid: commissionUid("a"), enterpriseId: "E" })).currency, "USD");
+  await assert.rejects(
+    store.creditWallet({ uid: commissionUid("a"), enterpriseId: "E", amountMinor: 100, currency: "HTG", type: "commission", idempotencyKey: "commission:wrong-currency" }),
+    (err) => err.code === "currency_mismatch"
+  );
+});

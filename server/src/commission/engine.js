@@ -149,6 +149,13 @@ async function applyCommissionToTx(txId) {
   // Deviz wallet komisyon an = deviz wallet prensipal la.
   const agentWallet = await store.getWallet({ uid: tx.staff_uid, enterpriseId: tx.enterprise_id });
   const agentCurrency = agentWallet?.currency || tx.currency;
+  await store.ensureWallet({
+    uid: commissionUid(tx.staff_uid),
+    enterpriseId: tx.enterprise_id,
+    enterpriseName: tx.enterprise_name || enterprise?.name || "",
+    role: COMMISSION_ROLE,
+    currency: agentCurrency,
+  });
   const agentCreditMinor = await convertMinor(agentMinor, tx.currency, agentCurrency);
 
   if (agentCreditMinor > 0) {
@@ -180,6 +187,13 @@ async function applyCommissionToTx(txId) {
   if (ownerUid && ownerToCredit > 0) {
     const ownerWallet = await store.getWallet({ uid: ownerUid, enterpriseId: tx.enterprise_id });
     const ownerCurrency = ownerWallet?.currency || tx.currency;
+    await store.ensureWallet({
+      uid: commissionUid(ownerUid),
+      enterpriseId: tx.enterprise_id,
+      enterpriseName: tx.enterprise_name || enterprise?.name || "",
+      role: COMMISSION_ROLE,
+      currency: ownerCurrency,
+    });
     ownerCreditMinor = await convertMinor(ownerToCredit, tx.currency, ownerCurrency);
 
     if (ownerCreditMinor > 0) {

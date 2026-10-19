@@ -137,7 +137,10 @@ router.post("/transfer-commission", requireAuth, requireEnterprise, async (req, 
     if (!direction) return send(res, { code: "invalid_direction", message: "Chwazi ki sans transfè a dwe fèt." });
     const commission = await getBazikService().store.getWallet({ uid: commissionUid(req.user.uid), enterpriseId: req.user.enterpriseId });
     const main = await getBazikService().store.getWallet({ uid: req.user.uid, enterpriseId: req.user.enterpriseId });
-    const currency = (direction === "commission_to_main" ? commission : main)?.currency || main?.currency || "USD";
+    const currency = main?.currency || commission?.currency || "USD";
+    if (commission && commission.currency !== currency) {
+      return send(res, { code: "commission_currency_mismatch", message: `Wallet komisyon an nan ${commission.currency}; li dwe rete nan menm deviz ak wallet prensipal la (${currency}).` });
+    }
     const key = `commission-wallet-transfer:${req.user.enterpriseId}:${req.user.uid}:${String(body.idempotencyKey || "").slice(0, 100)}`;
     if (key.endsWith(":")) return send(res, { code: "missing_idempotency_key", message: "Kle transfè a obligatwa." });
     const fromCommission = direction === "commission_to_main";
