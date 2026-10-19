@@ -76,3 +76,14 @@ test("wallet komisyon an kenbe menm deviz ak wallet prensipal la", async (t) => 
     (err) => err.code === "currency_mismatch"
   );
 });
+
+test("wallet komisyon vid ki te nan move deviz la repare sou deviz prensipal la", async (t) => {
+  const service = makeService();
+  t.after(() => service.close());
+  const store = service.store;
+  await seed(store, "a", 0, "MXN");
+  await store.ensureWallet({ uid: commissionUid("a"), enterpriseId: "E", role: "commission", currency: "USD" });
+  const fixed = await store.ensureWallet({ uid: commissionUid("a"), enterpriseId: "E", role: "commission", currency: "MXN" });
+  assert.equal(fixed.currency, "MXN");
+  assert.equal(fixed.balanceMinor, 0);
+});

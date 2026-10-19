@@ -115,6 +115,14 @@ const normRef = (value) => String(value || "").replace(/\s+/g, "").toUpperCase()
 
 router.get("/me", requireAuth, requireEnterprise, async (req, res) => {
   try {
+    const main = await getBazikService().store.getWallet({ uid: req.user.uid, enterpriseId: req.user.enterpriseId });
+    if (main && ["owner", "agent"].includes(req.user.role)) {
+      await getBazikService().store.ensureWallet({
+        uid: commissionUid(req.user.uid), enterpriseId: req.user.enterpriseId,
+        enterpriseName: main.enterpriseName || req.user.enterpriseName || "",
+        role: COMMISSION_ROLE, currency: main.currency,
+      });
+    }
     return res.json({
       ok: true,
       wallet: await walletOf(req.user.uid, req.user.enterpriseId),

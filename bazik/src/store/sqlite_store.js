@@ -374,7 +374,18 @@ function createSqliteStore({ file = ":memory:", seedRates = true } = {}) {
     },
 
     async ensureWallet(args) {
-      return tx(() => ensureWalletSync(args));
+      return tx(() => {
+        const wallet = ensureWalletSync(args);
+        if (wallet.role !== "commission" || !String(wallet.uid).endsWith("#commission")) return wallet;
+        const primaryUid = String(wallet.uid).slice(0, -"#commission".length);
+        const primary = db.prepare("SELECT currency FROM wallets WHERE id = ?").get(walletId(args.enterpriseId, primaryUid));
+        if (!primary || wallet.balanceMinor !== 0 || wallet.currency === primary.currency) return wallet;
+        // Repare ansyen wallet komisyon vid yo sèlman; yon balans ki pa zewo
+        // mande konvèsyon ak to ajou epi pa dwe chanje pa yon senp metadata edit.
+        db.prepare("UPDATE wallets SET currency = ?, updated_at = ? WHERE id = ? AND balance_minor = 0")
+          .run(primary.currency, now(), wallet.id);
+        return mapWallet(db.prepare("SELECT * FROM wallets WHERE id = ?").get(wallet.id));
+      });
     },
 
     async getWallet({ uid, enterpriseId }) {
