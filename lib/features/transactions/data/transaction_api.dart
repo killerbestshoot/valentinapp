@@ -97,21 +97,38 @@ class TransactionRecord {
 /// Yo pa soti nan tab to jounen an: yo fikse sou liy transfè a. Konsa yon resi
 /// ki enprime jodi a bay menm chif yo nan yon mwa, menm si to a bouje.
 class DeliveryDetails {
+  /// Transfè MonCash/NatCash: benefisyè a resevwa gouden.
   const DeliveryDetails({
-    required this.amountHtg,
+    required double amountHtg,
     required this.rateToHtg,
     required this.rateCurrency,
     this.network = '',
-  });
+  })  : amount = amountHtg,
+        currency = 'HTG',
+        estimated = false;
 
-  /// Sa benefisyè a resevwa nan men l, an gouden.
-  final double amountHtg;
+  /// Rechaj minit: kredi benefisyè a resevwa, nan deviz operatè a (HTG, MXN,
+  /// DOP...). [estimated] tank Reloadly poko konfime montan egzak la.
+  const DeliveryDetails.airtime({
+    required this.amount,
+    required this.currency,
+    this.estimated = false,
+  })  : rateToHtg = 0,
+        rateCurrency = '',
+        network = 'airtime';
 
-  /// Konbyen gouden 1 [rateCurrency] te vo lè transfè a fèt.
+  /// Sa benefisyè a resevwa, nan [currency].
+  final double amount;
+  final String currency;
+  final bool estimated;
+
+  /// Konbyen gouden 1 [rateCurrency] te vo lè transfè a fèt (0 pou minit).
   final double rateToHtg;
   final String rateCurrency;
 
   final String network;
+
+  bool get isAirtime => network == 'airtime';
 
   static double _toDouble(Object? value) =>
       value is num ? value.toDouble() : 0;
@@ -123,6 +140,23 @@ class DeliveryDetails {
       rateCurrency: '${json['rateCurrency'] ?? ''}',
       network: '${json['network'] ?? ''}',
     );
+  }
+
+  factory DeliveryDetails.airtimeFromJson(Map<String, dynamic> json) {
+    return DeliveryDetails.airtime(
+      amount: _toDouble(json['amount']),
+      currency: '${json['currency'] ?? 'HTG'}',
+      estimated: json['estimated'] == true,
+    );
+  }
+
+  /// `delivery` (transfè Bazik) oswa `airtimeDelivery` (rechaj minit).
+  static DeliveryDetails? fromResponse(Map<String, dynamic> json) {
+    final transfer = json['delivery'];
+    if (transfer is Map<String, dynamic>) return DeliveryDetails.fromJson(transfer);
+    final airtime = json['airtimeDelivery'];
+    if (airtime is Map<String, dynamic>) return DeliveryDetails.airtimeFromJson(airtime);
+    return null;
   }
 }
 
@@ -267,11 +301,10 @@ class TransactionApi {
   Future<ReceiptData?> findReceipt(String txId) async {
     try {
       final json = await _client.get('/api/transactions/$txId');
-      final delivery = json['delivery'];
       final receipt = json['receipt'];
       return ReceiptData(
         record: TransactionRecord.fromJson(json['transaction'] as Map<String, dynamic>),
-        delivery: delivery is Map<String, dynamic> ? DeliveryDetails.fromJson(delivery) : null,
+        delivery: DeliveryDetails.fromResponse(json),
         receipt: receipt is Map<String, dynamic> ? ReceiptInfo.fromJson(receipt) : null,
       );
     } on ApiException catch (err) {

@@ -94,6 +94,39 @@ function deliveryOf(db, txId) {
   };
 }
 
+/**
+ * Konvèsyon yon rechaj minit pou resi a: sa benefisyè a resevwa an kredi, nan
+ * deviz operatè a (HTG pou Digicel/Natcom, MXN, DOP...).
+ *
+ * Montan Reloadly konfime a si li la; sinon estimasyon devi a (`estimated`).
+ * Kle separe de `delivery`: yon ansyen APK ta afiche l kòm gouden.
+ */
+function airtimeDeliveryOf(db, txId) {
+  const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'airtime_topups'").get();
+  if (!exists) return null;
+
+  const row = db
+    .prepare(
+      `SELECT * FROM airtime_topups
+        WHERE tx_id = ? AND status != 'failed'
+        ORDER BY created_at DESC LIMIT 1`
+    )
+    .get(txId);
+
+  if (!row || !row.delivered_currency) return null;
+  const confirmed = row.delivered_minor > 0;
+  const amountMinor = confirmed ? row.delivered_minor : row.estimated_delivered_minor;
+  if (!(amountMinor > 0)) return null;
+
+  return {
+    network: "airtime",
+    operatorName: row.operator_name,
+    amount: money.fromMinor(amountMinor),
+    currency: row.delivered_currency,
+    estimated: !confirmed,
+  };
+}
+
 function send(res, err) {
   const status = err.status || 400;
   if (status >= 500) console.error("[transactions]", err);
@@ -270,6 +303,7 @@ router.get("/:id", requireAuth, requireEnterprise, (req, res) => {
       ok: true,
       transaction: toJson(row),
       delivery: deliveryOf(getDb(), row.tx_id),
+      airtimeDelivery: airtimeDeliveryOf(getDb(), row.tx_id),
       receipt: receiptInfo(req, row),
     });
   } catch (err) {

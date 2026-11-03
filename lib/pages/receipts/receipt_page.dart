@@ -222,8 +222,8 @@ class ShareableReceipt extends StatelessWidget {
       _ReceiptStatus.failed => 'Pa livre bay $name',
       _ReceiptStatus.pending => '$name ap resevwa',
     };
-    final bigAmount = delivery != null ? delivery.amountHtg : tx.amount;
-    final bigCurrency = delivery != null ? 'HTG' : tx.currency;
+    final bigAmount = delivery != null ? delivery.amount : tx.amount;
+    final bigCurrency = delivery != null ? delivery.currency : tx.currency;
 
     return SizedBox(
       width: receiptWidth,
@@ -411,12 +411,7 @@ class ShareableReceipt extends StatelessWidget {
       ('Benefisyè', tx.customerName.trim().isEmpty ? '—' : tx.customerName.trim(), false),
       ('Telefòn', maskPhone ? maskedPhone(tx.customerPhone) : tx.customerPhone, true),
       // Pa gen ni frè ni to echanj sou resi a: sèlman montan voye a ak konvèsyon an.
-      if (delivery != null)
-        (
-          'Konvèsyon',
-          '${groupedMoney(sentAmount(tx))} ${tx.currency} → ${groupedMoney(delivery.amountHtg)} HTG',
-          false
-        ),
+      if (showConversion(tx, delivery)) ('Konvèsyon', conversionText(tx, delivery!), false),
       if (tx.staffName.trim().isNotEmpty) ('Ajan', tx.staffName.trim(), false),
     ];
     return [
@@ -547,6 +542,15 @@ double sentAmount(TransactionRecord tx) => tx.feeDeducted ? tx.totalPaid : tx.am
 /// revele frè a pa soustraksyon: nou montre sèlman sa benefisyè a resevwa.
 bool showSentAmount(TransactionRecord tx, DeliveryDetails? delivery) => delivery != null || sentAmount(tx) == tx.amount;
 
+/// Minit nan menm deviz la (HTG → HTG): pa gen konvèsyon pou montre.
+bool showConversion(TransactionRecord tx, DeliveryDetails? delivery) =>
+    delivery != null && (!delivery.isAirtime || delivery.currency != tx.currency);
+
+/// `500,00 MXN → 3 500,00 HTG`. `≈` tank Reloadly poko konfime kredi minit la.
+String conversionText(TransactionRecord tx, DeliveryDetails delivery) =>
+    '${groupedMoney(sentAmount(tx))} ${tx.currency} → '
+    '${delivery.estimated ? '≈ ' : ''}${groupedMoney(delivery.amount)} ${delivery.currency}';
+
 /// `+509 37 •• •• 89`: imaj la sikile, nimewo konplè a pa dwe ladan l.
 String maskedPhone(String phone) {
   final digits = phone.replaceAll(RegExp(r'\D'), '');
@@ -592,7 +596,7 @@ String receiptText(ReceiptData data, {bool maskPhone = true}) {
     receiptDate(tx.createdAt),
     '$name — ${maskPhone ? maskedPhone(tx.customerPhone) : tx.customerPhone} (${tx.serviceName})',
     if (showSentAmount(tx, d)) 'Montan voye: ${groupedMoney(sentAmount(tx))} ${tx.currency}',
-    if (d != null) '$name resevwa: ${groupedMoney(d.amountHtg)} HTG',
+    if (d != null) '$name resevwa: ${d.estimated ? '≈ ' : ''}${groupedMoney(d.amount)} ${d.currency}',
     'Estati: $status',
     if (data.receipt != null) 'Verifye: ${data.receipt!.verifyUrl}',
   ].join('\n');

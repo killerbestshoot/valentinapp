@@ -216,6 +216,43 @@ test("yon transfè ki echwe pa parèt sou resi a", async () => {
   assert.equal(json.delivery, null, "lajan an pa janm rive: pa gen anyen pou di");
 });
 
+/** 10 USD minit → 1 320 HTG kredi (estimasyon 1 300 anvan konfimasyon). */
+function insertAirtime(txId, { status = "completed", deliveredMinor = 132000 } = {}) {
+  const at = Date.now();
+  db.getDb()
+    .prepare(
+      `INSERT INTO airtime_topups
+        (topup_id, status, operator_id, operator_name, phone, amount_minor, currency,
+         estimated_delivered_minor, delivered_minor, delivered_currency, uid, enterprise_id, tx_id, created_at, updated_at)
+       VALUES (?, ?, 173, 'Digicel Haiti', '+50937123456', 1000, 'USD', 130000, ?, 'HTG', 'agent', ?, ?, ?, ?)`
+    )
+    .run(`AIR_${txId}`, status, deliveredMinor, ENT, txId, at, at);
+}
+
+test("resi minit: konvèsyon an nan deviz operatè a, separe de `delivery`", async () => {
+  const txId = await create("Minit konfime");
+  insertAirtime(txId);
+
+  const { json } = await call("GET", `/api/transactions/${txId}`, { role: "agent" });
+
+  assert.equal(json.delivery, null, "yon ansyen APK pa dwe wè l kòm transfè gouden");
+  assert.deepEqual(json.airtimeDelivery, {
+    network: "airtime", operatorName: "Digicel Haiti", amount: 1320, currency: "HTG", estimated: false,
+  });
+});
+
+test("resi minit: estimasyon tank Reloadly poko konfime, anyen si l echwe", async () => {
+  const pending = await create("Minit an kou");
+  insertAirtime(pending, { status: "processing", deliveredMinor: 0 });
+  const { json } = await call("GET", `/api/transactions/${pending}`, { role: "agent" });
+  assert.equal(json.airtimeDelivery.amount, 1300);
+  assert.equal(json.airtimeDelivery.estimated, true);
+
+  const failed = await create("Minit echwe");
+  insertAirtime(failed, { status: "failed", deliveredMinor: 0 });
+  assert.equal((await call("GET", `/api/transactions/${failed}`, { role: "agent" })).json.airtimeDelivery, null);
+});
+
 // --- Frè platfòm nan (owner a fikse l, obligatwa) ---
 
 const setPolicy = ({ feePct = 5, minHtg = 0, share = 40 } = {}) =>

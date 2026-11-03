@@ -144,6 +144,47 @@ void main() {
     expect(find.text('Frè'), findsNothing, reason: 'frè a pa janm sou resi a');
   });
 
+  testWidgets('resi minit: konvèsyon an parèt, nan deviz operatè a', (tester) async {
+    await pumpReceipt(
+      tester,
+      record: const TransactionRecord(
+        txId: 'TX_1', serviceName: 'Minit Haiti', customerName: 'Vanessa',
+        customerPhone: '+50937123456', amount: 500, currency: 'MXN', status: 'delivered',
+      ),
+      delivery: const DeliveryDetails.airtime(amount: 3625, currency: 'HTG'),
+    );
+
+    expect(find.text('Vanessa resevwa'), findsOneWidget);
+    expect(find.textContaining('3 625,00'), findsWidgets);
+    expect(find.text('KLIYAN AN VOYE'), findsOneWidget);
+    expect(find.text('500,00 MXN → 3 625,00 HTG'), findsOneWidget);
+    expect(find.textContaining('7,25'), findsNothing, reason: 'to a pa parèt');
+  });
+
+  testWidgets('resi minit: estimasyon make ≈ tank Reloadly poko konfime', (tester) async {
+    await pumpReceipt(
+      tester,
+      record: const TransactionRecord(
+        txId: 'TX_1', serviceName: 'Minit Haiti', customerName: 'Vanessa',
+        customerPhone: '+50937123456', amount: 500, currency: 'USD', status: 'pending',
+      ),
+      delivery: const DeliveryDetails.airtime(amount: 65000, currency: 'HTG', estimated: true),
+    );
+    expect(find.text('500,00 USD → ≈ 65 000,00 HTG'), findsOneWidget);
+  });
+
+  testWidgets('resi minit nan menm deviz la: pa gen liy konvèsyon', (tester) async {
+    await pumpReceipt(
+      tester,
+      record: const TransactionRecord(
+        txId: 'TX_1', serviceName: 'Minit Haiti', customerName: 'Vanessa',
+        customerPhone: '+50937123456', amount: 250, currency: 'HTG', status: 'delivered',
+      ),
+      delivery: const DeliveryDetails.airtime(amount: 250, currency: 'HTG'),
+    );
+    expect(find.text('Konvèsyon'), findsNothing);
+  });
+
   test('tèks resi a pou kopye', () {
     final text = receiptText(
       ReceiptData(record: _tx(senderFee: 100), delivery: _delivery, receipt: _receipt),
